@@ -72,6 +72,11 @@ function navigateFromNotification(
       screen = 'ChallengeDetail';
       params = { challengeId: targetId };
       break;
+    case 'versus_completed':
+      if (!targetId) return;
+      screen = 'VersusDetail';
+      params = { battleId: targetId };
+      break;
     case 'level_up':
     case 'weekly_goal':
       screen = 'MyPage';

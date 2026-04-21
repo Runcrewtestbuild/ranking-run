@@ -32,7 +32,7 @@ class FeedService {
       per_page: number;
     }>(`/feed?${sp.toString()}`);
 
-    const activities: FeedActivity[] = res.data.map((a) => ({
+    const activities: FeedActivity[] = (res.data ?? []).map((a) => ({
       id: a.id,
       userId: a.user.id,
       userNickname: a.user.nickname ?? '',

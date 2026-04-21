@@ -253,56 +253,52 @@ export default function ActivityFeedScreen() {
         })}
       </View>
 
-      {/* Content — keep all tabs mounted, hide inactive ones to prevent re-fetching */}
-      <View style={[s.feedContainer, activeTab !== 'feed' && s.hiddenTab]}>
-        <FlatList
-          data={activities}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
-          contentContainerStyle={s.listContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={handleRefresh}
-              tintColor={colors.primary}
-              colors={[colors.primary]}
-            />
-          }
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.3}
-          ListFooterComponent={renderFooter}
-          ListEmptyComponent={renderEmptyState}
-          removeClippedSubviews
-          maxToRenderPerBatch={8}
-          windowSize={7}
-        />
+      {/* Content */}
+      {activeTab === 'feed' && (
+        <View style={s.feedContainer}>
+          <FlatList
+            data={activities}
+            renderItem={renderItem}
+            keyExtractor={keyExtractor}
+            contentContainerStyle={s.listContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
+                tintColor={colors.primary}
+                colors={[colors.primary]}
+              />
+            }
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.3}
+            ListFooterComponent={renderFooter}
+            ListEmptyComponent={renderEmptyState}
+            removeClippedSubviews
+            maxToRenderPerBatch={8}
+            windowSize={7}
+          />
 
-        {/* FAB for post creation */}
-        <TouchableOpacity
-          style={s.fab}
-          onPress={handleCreatePost}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="add" size={28} color="#FFF" />
-        </TouchableOpacity>
+          {/* FAB for post creation */}
+          <TouchableOpacity
+            style={s.fab}
+            onPress={handleCreatePost}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="add" size={28} color="#FFF" />
+          </TouchableOpacity>
 
-        {/* Initial loading indicator */}
-        {isLoading && !initialLoaded && (
-          <View style={s.initialLoader}>
-            <ActivityIndicator color={colors.primary} size="large" />
-          </View>
-        )}
-      </View>
-      <View style={[s.feedContainer, activeTab !== 'battle' && s.hiddenTab]}>
-        <VersusScreen />
-      </View>
-      <View style={[s.feedContainer, activeTab !== 'crew' && s.hiddenTab]}>
-        <CrewFeedScreen />
-      </View>
-      <View style={[s.feedContainer, activeTab !== 'explore' && s.hiddenTab]}>
-        <DiscoverScreen />
-      </View>
+          {/* Initial loading indicator */}
+          {isLoading && !initialLoaded && (
+            <View style={s.initialLoader}>
+              <ActivityIndicator color={colors.primary} size="large" />
+            </View>
+          )}
+        </View>
+      )}
+      {activeTab === 'battle' && <VersusScreen />}
+      {activeTab === 'crew' && <CrewFeedScreen />}
+      {activeTab === 'explore' && <DiscoverScreen />}
     </SafeAreaView>
   );
 }
