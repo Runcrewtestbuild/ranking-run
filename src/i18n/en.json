@@ -1072,7 +1072,21 @@
     "findFriends": "Find Friends",
     "running": "Running",
     "noFollowers": "No followers yet",
-    "noFollowing": "Not following anyone yet"
+    "noFollowing": "Not following anyone yet",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "cancelJoin": "Cancel",
+    "joinRun": "Join",
+    "pinned": "Pinned",
+    "admin": "Admin",
+    "distance": "Distance",
+    "time": "Time",
+    "avgPace": "Avg Pace",
+    "groupRunDetail": "Group Run",
+    "locationTbd": "Location TBD",
+    "participantCount": "{{count}} participants",
+    "participants": "Participants",
+    "noParticipantsYet": "No participants yet"
   },
   "friend": {
     "title": "Friends",

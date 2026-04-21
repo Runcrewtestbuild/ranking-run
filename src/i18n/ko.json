@@ -1072,7 +1072,21 @@
     "findFriends": "친구 찾기",
     "running": "러닝 중",
     "noFollowers": "아직 팔로워가 없어요",
-    "noFollowing": "아직 팔로잉이 없어요"
+    "noFollowing": "아직 팔로잉이 없어요",
+    "today": "오늘",
+    "tomorrow": "내일",
+    "cancelJoin": "참가 취소",
+    "joinRun": "참가하기",
+    "pinned": "고정됨",
+    "admin": "관리자",
+    "distance": "거리",
+    "time": "시간",
+    "avgPace": "평균 페이스",
+    "groupRunDetail": "그룹런 상세",
+    "locationTbd": "장소 미정",
+    "participantCount": "{{count}}명 참가",
+    "participants": "참가자",
+    "noParticipantsYet": "아직 참가자가 없어요"
   },
   "friend": {
     "title": "친구",

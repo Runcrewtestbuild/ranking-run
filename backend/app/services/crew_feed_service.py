@@ -244,6 +244,38 @@ class CrewFeedService:
         }
 
     # ------------------------------------------------------------------
+    # Like
+    # ------------------------------------------------------------------
+
+    async def toggle_like(
+        self,
+        db: AsyncSession,
+        crew_id: UUID,
+        post_id: UUID,
+        user_id: UUID,
+    ) -> dict:
+        """Increment the like_count on a crew post.
+
+        This is a simple counter-based implementation without per-user
+        tracking.  A dedicated like table can be introduced later for
+        idempotent toggle behaviour.
+        """
+        await self._assert_crew_member(db, crew_id, user_id)
+        post = await self._get_post_or_404(db, post_id)
+
+        if post.crew_id != crew_id:
+            raise BadRequestError(
+                code="POST_NOT_IN_CREW",
+                message="해당 크루의 게시글이 아닙니다",
+            )
+
+        post.like_count = post.like_count + 1
+        await db.flush()
+        await db.refresh(post)
+
+        return await self._post_to_dict(db, post)
+
+    # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 

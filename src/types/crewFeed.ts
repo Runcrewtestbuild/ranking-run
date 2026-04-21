@@ -58,6 +58,31 @@ export interface CrewMiniCard {
   unreadCount: number;
 }
 
+export interface ScheduledRunParticipant {
+  id: string;
+  nickname: string;
+  avatarUrl: string | null;
+  status: 'accepted' | 'declined';
+}
+
+export interface ScheduledRunDetail {
+  id: string;
+  crewId: string;
+  crewName: string;
+  title: string;
+  description: string | null;
+  scheduledAt: string;
+  location: string;
+  latitude: number | null;
+  longitude: number | null;
+  distanceKm: number;
+  participantCount: number;
+  participants: ScheduledRunParticipant[];
+  isJoined: boolean;
+  isLive: boolean;
+  createdBy: string;
+}
+
 export interface DiscoverCrew {
   id: string;
   name: string;

@@ -26,6 +26,7 @@ import Constants from 'expo-constants';
 import { useTheme } from '../../hooks/useTheme';
 import BlurredBackground from '../../components/common/BlurredBackground';
 import ScreenHeader from '../../components/common/ScreenHeader';
+import api from '../../services/api';
 import { FONT_SIZES, SPACING, BORDER_RADIUS } from '../../utils/constants';
 import type { ThemeColors } from '../../utils/constants';
 
@@ -218,54 +219,62 @@ export default function SettingsScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t('settings.privacy')}</Text>
             <View style={styles.card}>
-              <TouchableOpacity
-                style={styles.actionRow}
-                onPress={() => {
-                  const options = [
-                    { key: 'public', label: t('settings.runVisibility.public') },
-                    { key: 'followers', label: t('settings.runVisibility.followers') },
-                    { key: 'private', label: t('settings.runVisibility.private') },
-                  ];
-                  const current = (user as any)?.run_visibility ?? 'public';
-                  Alert.alert(
-                    t('settings.runVisibility.title'),
-                    t('settings.runVisibility.description'),
-                    [
-                      ...options.map((opt) => ({
-                        text: `${opt.label}${current === opt.key ? ' ✓' : ''}`,
-                        onPress: async () => {
-                          try {
-                            const api = require('../../services/api').default;
-                            await api.patch('/users/me', { run_visibility: opt.key });
-                            useAuthStore.getState().setUser({ ...user!, run_visibility: opt.key } as any);
-                          } catch {
-                            // silent
-                          }
-                        },
-                      })),
-                      { text: t('common.cancel'), style: 'cancel' as const },
-                    ],
-                  );
-                }}
-                activeOpacity={0.7}
-              >
+              <View style={styles.actionRow}>
                 <View style={styles.toggleLeft}>
                   <View style={styles.iconCircle}>
                     <Ionicons name="eye-outline" size={20} color={colors.primary} />
                   </View>
-                  <View>
-                    <Text style={styles.actionLabel}>{t('settings.runVisibility.title')}</Text>
-                    <Text style={[styles.actionLabel, { fontSize: FONT_SIZES.xs, color: colors.textTertiary, marginTop: 2 }]}>
-                      {(user as any)?.run_visibility === 'private'
-                        ? t('settings.runVisibility.private')
-                        : (user as any)?.run_visibility === 'followers'
-                          ? t('settings.runVisibility.followers')
-                          : t('settings.runVisibility.public')}
-                    </Text>
-                  </View>
+                  <Text style={styles.actionLabel}>{t('settings.runVisibility.title')}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
-              </TouchableOpacity>
+              </View>
+              <View style={styles.divider} />
+              <View style={{ flexDirection: 'row', padding: SPACING.sm, gap: SPACING.xs }}>
+                {([
+                  { key: 'public', label: t('settings.runVisibility.public'), icon: 'globe-outline' as const },
+                  { key: 'followers', label: t('settings.runVisibility.followers'), icon: 'people-outline' as const },
+                  { key: 'private', label: t('settings.runVisibility.private'), icon: 'lock-closed-outline' as const },
+                ] as const).map((opt) => {
+                  const currentVisibility = (user as any)?.run_visibility ?? 'public';
+                  const isSelected = currentVisibility === opt.key;
+                  return (
+                    <TouchableOpacity
+                      key={opt.key}
+                      style={{
+                        flex: 1,
+                        alignItems: 'center',
+                        paddingVertical: SPACING.md,
+                        borderRadius: BORDER_RADIUS.md,
+                        backgroundColor: isSelected ? colors.primary + '15' : 'transparent',
+                        borderWidth: isSelected ? 1.5 : 1,
+                        borderColor: isSelected ? colors.primary : colors.border,
+                      }}
+                      activeOpacity={0.7}
+                      onPress={async () => {
+                        try {
+                          await api.patch('/users/me', { run_visibility: opt.key });
+                          useAuthStore.getState().setUser({ ...user!, run_visibility: opt.key } as any);
+                        } catch {
+                          // silent
+                        }
+                      }}
+                    >
+                      <Ionicons
+                        name={opt.icon}
+                        size={20}
+                        color={isSelected ? colors.primary : colors.textTertiary}
+                      />
+                      <Text style={{
+                        fontSize: FONT_SIZES.xs,
+                        fontWeight: isSelected ? '700' : '500',
+                        color: isSelected ? colors.primary : colors.textSecondary,
+                        marginTop: 4,
+                      }}>
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
           </View>
 

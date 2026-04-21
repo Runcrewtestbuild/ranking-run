@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '../../lib/icons';
+import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../hooks/useTheme';
 import type { ThemeColors } from '../../utils/constants';
 import { FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '../../utils/constants';
@@ -14,7 +15,7 @@ import type { UpcomingGroupRun } from '../../types/crewFeed';
 
 // ---- Helpers ----
 
-function formatSchedule(isoDate: string): string {
+function formatSchedule(isoDate: string, t: (key: string) => string): string {
   const d = new Date(isoDate);
   const now = new Date();
   const isToday =
@@ -31,8 +32,8 @@ function formatSchedule(isoDate: string): string {
 
   const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
-  if (isToday) return `오늘 ${timeStr}`;
-  if (isTomorrow) return `내일 ${timeStr}`;
+  if (isToday) return `${t('social.today')} ${timeStr}`;
+  if (isTomorrow) return `${t('social.tomorrow')} ${timeStr}`;
 
   const month = d.getMonth() + 1;
   const day = d.getDate();
@@ -49,6 +50,7 @@ interface GroupRunCardProps {
 
 function GroupRunCard({ groupRun, onToggleJoin, onPress }: GroupRunCardProps) {
   const colors = useTheme();
+  const { t } = useTranslation();
   const s = useMemo(() => createStyles(colors), [colors]);
 
   const handleToggle = useCallback(() => {
@@ -89,7 +91,7 @@ function GroupRunCard({ groupRun, onToggleJoin, onPress }: GroupRunCardProps) {
       {/* Info row */}
       <View style={s.infoRow}>
         <Text style={s.infoText}>
-          {formatSchedule(groupRun.scheduledAt)}
+          {formatSchedule(groupRun.scheduledAt, t)}
           {'  \u00B7  '}
           {groupRun.location}
           {'  \u00B7  '}
@@ -132,7 +134,7 @@ function GroupRunCard({ groupRun, onToggleJoin, onPress }: GroupRunCardProps) {
               groupRun.isJoined ? s.rsvpTextJoined : s.rsvpTextDefault,
             ]}
           >
-            {groupRun.isJoined ? '참가 취소' : '참가하기'}
+            {groupRun.isJoined ? t('social.cancelJoin') : t('social.joinRun')}
           </Text>
         </TouchableOpacity>
       </View>

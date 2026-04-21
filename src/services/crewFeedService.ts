@@ -5,6 +5,8 @@ import type {
   UpcomingGroupRun,
   CrewMiniCard,
   DiscoverCrew,
+  ScheduledRunDetail,
+  ScheduledRunParticipant,
 } from '../types/crewFeed';
 
 class CrewFeedService {
@@ -150,6 +152,32 @@ class CrewFeedService {
       region: c.activity_region ?? c.region ?? null,
       badgeColor: c.badge_color ?? '#FF7A33',
     }));
+  }
+
+  async getScheduledRunDetail(runId: string): Promise<ScheduledRunDetail> {
+    const res = await api.get<any>(`/scheduled-runs/${runId}`);
+    return {
+      id: res.id,
+      crewId: res.crew_id,
+      crewName: res.crew_name ?? '',
+      title: res.title ?? '',
+      description: res.description ?? null,
+      scheduledAt: res.scheduled_at,
+      location: res.location ?? '',
+      latitude: res.latitude ?? null,
+      longitude: res.longitude ?? null,
+      distanceKm: res.distance_km ?? 0,
+      participantCount: res.participant_count ?? 0,
+      participants: (res.participants ?? []).map((p: any) => ({
+        id: p.id ?? p.user_id,
+        nickname: p.nickname ?? '',
+        avatarUrl: p.avatar_url ?? null,
+        status: p.status ?? 'accepted',
+      })),
+      isJoined: res.is_joined ?? false,
+      isLive: res.is_live ?? false,
+      createdBy: res.created_by ?? '',
+    };
   }
 
   async togglePostLike(crewId: string, postId: string): Promise<void> {

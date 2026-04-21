@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '../../lib/icons';
+import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../hooks/useTheme';
 import type { ThemeColors } from '../../utils/constants';
 import { FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '../../utils/constants';
@@ -58,6 +59,7 @@ interface CrewPostCardProps {
 
 function CrewPostCard({ post, onLike, onPress, onAuthorPress }: CrewPostCardProps) {
   const colors = useTheme();
+  const { t } = useTranslation();
   const s = useMemo(() => createStyles(colors), [colors]);
 
   const isNotice = post.postType === 'notice';
@@ -81,7 +83,7 @@ function CrewPostCard({ post, onLike, onPress, onAuthorPress }: CrewPostCardProp
       {post.isPinned && (
         <View style={s.pinnedBadge}>
           <Ionicons name="pin" size={12} color={colors.primary} />
-          <Text style={s.pinnedText}>고정됨</Text>
+          <Text style={s.pinnedText}>{t('social.pinned')}</Text>
         </View>
       )}
 
@@ -111,7 +113,7 @@ function CrewPostCard({ post, onLike, onPress, onAuthorPress }: CrewPostCardProp
             </Text>
             {post.author.role === 'admin' && (
               <View style={s.roleBadge}>
-                <Text style={s.roleText}>관리자</Text>
+                <Text style={s.roleText}>{t('social.admin')}</Text>
               </View>
             )}
           </View>
@@ -161,17 +163,17 @@ function CrewPostCard({ post, onLike, onPress, onAuthorPress }: CrewPostCardProp
           <View style={s.runStatsRow}>
             <View style={s.runStat}>
               <Text style={s.runStatValue}>{formatDistance(post.runStats.distanceMeters)}km</Text>
-              <Text style={s.runStatLabel}>거리</Text>
+              <Text style={s.runStatLabel}>{t('social.distance')}</Text>
             </View>
             <View style={s.runStatDivider} />
             <View style={s.runStat}>
               <Text style={s.runStatValue}>{formatDuration(post.runStats.durationSeconds)}</Text>
-              <Text style={s.runStatLabel}>시간</Text>
+              <Text style={s.runStatLabel}>{t('social.time')}</Text>
             </View>
             <View style={s.runStatDivider} />
             <View style={s.runStat}>
               <Text style={s.runStatValue}>{formatPace(post.runStats.avgPaceSecondsPerKm)}</Text>
-              <Text style={s.runStatLabel}>평균 페이스</Text>
+              <Text style={s.runStatLabel}>{t('social.avgPace')}</Text>
             </View>
           </View>
           {post.runStats.courseName && (

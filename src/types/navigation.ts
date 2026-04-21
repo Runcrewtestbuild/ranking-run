@@ -114,6 +114,7 @@ export type CommunityStackParamList = {
   CrewMemberSettings: { crewId: string; crewName: string };
   VersusDetail: { battleId: string };
   VersusCreate: undefined;
+  GroupRunDetail: { groupRunId: string };
 };
 
 export type MyPageStackParamList = {

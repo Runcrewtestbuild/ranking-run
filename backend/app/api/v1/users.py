@@ -246,6 +246,9 @@ async def update_profile(
     # crew_name: update when explicitly sent (including null to clear)
     if "crew_name" in body.model_fields_set:
         current_user.crew_name = body.crew_name
+    # run_visibility: update when explicitly sent
+    if "run_visibility" in body.model_fields_set:
+        current_user.run_visibility = body.run_visibility
 
     await db.flush()
 

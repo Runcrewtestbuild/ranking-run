@@ -51,6 +51,7 @@ class ProfileUpdateRequest(BaseModel):
     activity_region: str | None = Field(None, max_length=100)
     country: str | None = Field(None, max_length=50)
     crew_name: str | None = Field(None, max_length=50)
+    run_visibility: str | None = Field(None, pattern="^(public|followers|private)$")
 
 
 class ProfileResponse(BaseModel):

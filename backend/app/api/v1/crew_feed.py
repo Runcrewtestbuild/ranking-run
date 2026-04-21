@@ -102,6 +102,29 @@ async def pin_post(
 
 
 # ------------------------------------------------------------------
+# Like
+# ------------------------------------------------------------------
+
+
+@router.post("/{post_id}/like", response_model=CrewPostResponse)
+@inject
+async def toggle_crew_post_like(
+    crew_id: UUID,
+    post_id: UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+    service: CrewFeedService = Depends(Provide[Container.crew_feed_service]),
+) -> CrewPostResponse:
+    post = await service.toggle_like(
+        db=db,
+        crew_id=crew_id,
+        post_id=post_id,
+        user_id=current_user.id,
+    )
+    return CrewPostResponse(**post)
+
+
+# ------------------------------------------------------------------
 # Activity summary
 # ------------------------------------------------------------------
 

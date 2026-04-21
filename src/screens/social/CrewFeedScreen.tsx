@@ -233,6 +233,11 @@ export default function CrewFeedScreen() {
     [navigation],
   );
 
+  const handleGroupRunPress = useCallback(
+    (groupRunId: string) => navigation.navigate('GroupRunDetail' as any, { groupRunId }),
+    [navigation],
+  );
+
   // ---- Build section list data ----
 
   const sections: SectionItem[] = useMemo(() => {
@@ -293,6 +298,7 @@ export default function CrewFeedScreen() {
             <GroupRunCard
               groupRun={item.data}
               onToggleJoin={handleToggleGroupRunJoin}
+              onPress={handleGroupRunPress}
             />
           );
 
@@ -404,6 +410,7 @@ export default function CrewFeedScreen() {
       myCrews.length,
       selectedCrewId,
       handleToggleGroupRunJoin,
+      handleGroupRunPress,
       handlePostLike,
       handleAuthorPress,
       handleCrewSearch,
