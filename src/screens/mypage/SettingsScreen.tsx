@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useCallback } from 'react';
+import React, { useMemo, useRef, useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -33,7 +33,7 @@ export default function SettingsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<MyPageStackParamList>>();
   const colors = useTheme();
   const { t } = useTranslation();
-  const { logout, deleteAccount } = useAuthStore();
+  const { logout, deleteAccount, user } = useAuthStore();
   const {
     language,
     setLanguage,
@@ -211,6 +211,61 @@ export default function SettingsScreen() {
                   thumbColor="#FFFFFF"
                 />
               </View>
+            </View>
+          </View>
+
+          {/* Privacy Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t('settings.privacy')}</Text>
+            <View style={styles.card}>
+              <TouchableOpacity
+                style={styles.actionRow}
+                onPress={() => {
+                  const options = [
+                    { key: 'public', label: t('settings.runVisibility.public') },
+                    { key: 'followers', label: t('settings.runVisibility.followers') },
+                    { key: 'private', label: t('settings.runVisibility.private') },
+                  ];
+                  const current = (user as any)?.run_visibility ?? 'public';
+                  Alert.alert(
+                    t('settings.runVisibility.title'),
+                    t('settings.runVisibility.description'),
+                    [
+                      ...options.map((opt) => ({
+                        text: `${opt.label}${current === opt.key ? ' ✓' : ''}`,
+                        onPress: async () => {
+                          try {
+                            const api = require('../../services/api').default;
+                            await api.patch('/users/me', { run_visibility: opt.key });
+                            useAuthStore.getState().setUser({ ...user!, run_visibility: opt.key } as any);
+                          } catch {
+                            // silent
+                          }
+                        },
+                      })),
+                      { text: t('common.cancel'), style: 'cancel' as const },
+                    ],
+                  );
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.toggleLeft}>
+                  <View style={styles.iconCircle}>
+                    <Ionicons name="eye-outline" size={20} color={colors.primary} />
+                  </View>
+                  <View>
+                    <Text style={styles.actionLabel}>{t('settings.runVisibility.title')}</Text>
+                    <Text style={[styles.actionLabel, { fontSize: FONT_SIZES.xs, color: colors.textTertiary, marginTop: 2 }]}>
+                      {(user as any)?.run_visibility === 'private'
+                        ? t('settings.runVisibility.private')
+                        : (user as any)?.run_visibility === 'followers'
+                          ? t('settings.runVisibility.followers')
+                          : t('settings.runVisibility.public')}
+                    </Text>
+                  </View>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
+              </TouchableOpacity>
             </View>
           </View>
 

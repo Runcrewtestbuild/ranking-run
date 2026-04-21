@@ -8,6 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, status
 from pydantic import BaseModel
 from geoalchemy2.functions import ST_AsGeoJSON
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 
 from app.core.container import Container
 from app.core.deps import CurrentUser, DbSession
@@ -361,6 +362,119 @@ async def get_run_record_detail(
             geo = json.loads(route_geojson_str)
             coords = geo.get("coordinates", [])
             # If map-matched route has too few points, prefer raw GPS route
+            if len(coords) < 5 and raw_route_geojson_str:
+                route_geo = json.loads(raw_route_geojson_str)
+            else:
+                route_geo = geo
+        except (json.JSONDecodeError, TypeError):
+            route_geo = None
+    if route_geo is None and raw_route_geojson_str:
+        try:
+            route_geo = json.loads(raw_route_geojson_str)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    splits = None
+    if record.splits:
+        splits = [RunSplitDetail(**s) if isinstance(s, dict) else s for s in record.splits]
+
+    return RunRecordDetail(
+        id=str(record.id),
+        user_id=str(record.user_id),
+        course_id=str(record.course_id) if record.course_id else None,
+        distance_meters=record.distance_meters,
+        duration_seconds=record.duration_seconds,
+        total_elapsed_seconds=record.total_elapsed_seconds,
+        avg_pace_seconds_per_km=record.avg_pace_seconds_per_km,
+        best_pace_seconds_per_km=record.best_pace_seconds_per_km,
+        avg_speed_ms=record.avg_speed_ms,
+        max_speed_ms=record.max_speed_ms,
+        calories=record.calories,
+        elevation_gain_meters=record.elevation_gain_meters,
+        elevation_loss_meters=record.elevation_loss_meters,
+        route_geometry=route_geo,
+        elevation_profile=record.elevation_profile,
+        splits=splits,
+        started_at=record.started_at,
+        finished_at=record.finished_at,
+        course=course_info,
+        course_completion=course_completion,
+        route_thumbnail_url=record.route_thumbnail_url,
+        goal_data=record.goal_data,
+    )
+
+
+@router.get("/public/{run_id}", response_model=RunRecordDetail)
+@inject
+async def get_public_run_record_detail(
+    run_id: UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+    run_service: RunService = Depends(Provide[Container.run_service]),
+) -> RunRecordDetail:
+    """Get a run record by anyone (public view for feed/notification).
+
+    Respects the run owner's visibility setting:
+    - public: anyone can view
+    - followers: only followers of the owner can view
+    - private: only the owner can view
+    """
+    result = await db.execute(
+        select(
+            RunRecord,
+            ST_AsGeoJSON(RunRecord.route_geometry).label("route_geojson"),
+            ST_AsGeoJSON(RunRecord.raw_route_geometry).label("raw_route_geojson"),
+        )
+        .options(joinedload(RunRecord.user))
+        .where(RunRecord.id == run_id)
+    )
+    row = result.unique().first()
+    if row is None:
+        raise NotFoundError(code="NOT_FOUND", message="Run record not found")
+
+    record = row[0]
+
+    # Check visibility
+    owner = record.user
+    if owner and owner.id != current_user.id:
+        visibility = getattr(owner, "run_visibility", "public")
+        if visibility == "private":
+            raise NotFoundError(code="NOT_FOUND", message="Run record not found")
+        if visibility == "followers":
+            from app.models.follow import Follow
+            is_follower = await db.execute(
+                select(Follow.id).where(
+                    Follow.follower_id == current_user.id,
+                    Follow.following_id == owner.id,
+                ).limit(1)
+            )
+            if not is_follower.scalar_one_or_none():
+                raise NotFoundError(code="NOT_FOUND", message="Run record not found")
+
+    record = row[0]
+    route_geojson_str = row[1]
+    raw_route_geojson_str = row[2]
+
+    course_info = None
+    if record.course is not None:
+        course_info = RunCourseInfo(
+            id=str(record.course.id),
+            title=record.course.title,
+            distance_meters=record.course.distance_meters,
+        )
+
+    course_completion = None
+    if record.course_completed is not None:
+        course_completion = RunCourseCompletion(
+            is_completed=record.course_completed,
+            route_match_percent=record.route_match_percent or 0.0,
+        )
+
+    route_geo = None
+    if route_geojson_str:
+        try:
+            geo = json.loads(route_geojson_str)
+            coords = geo.get("coordinates", [])
             if len(coords) < 5 and raw_route_geojson_str:
                 route_geo = json.loads(raw_route_geojson_str)
             else:

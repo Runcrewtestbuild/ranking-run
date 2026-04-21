@@ -61,7 +61,12 @@ export const userService = {
    * Fetch detailed information for a specific run record.
    */
   async getRunDetail(runId: string): Promise<RunRecordDetail> {
-    return api.get<RunRecordDetail>(`/runs/${runId}`);
+    try {
+      return await api.get<RunRecordDetail>(`/runs/${runId}`);
+    } catch {
+      // Fallback to public endpoint (for viewing other users' runs)
+      return api.get<RunRecordDetail>(`/runs/public/${runId}`);
+    }
   },
 
   /**

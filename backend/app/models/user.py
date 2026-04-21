@@ -59,6 +59,7 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     total_points: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     runner_level: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     weekly_goal_km: Mapped[float] = mapped_column(Float, default=20.0, server_default="20.0", nullable=False)
+    run_visibility: Mapped[str] = mapped_column(String(20), default="public", server_default="public", nullable=False)  # public | followers | private
 
     # Ban
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

@@ -531,6 +531,14 @@
     "map3dOnDesc": "월드탭 3D 지도 사용 중",
     "map3dOffDesc": "월드탭 2D 지도 사용 중",
     "integration": "연동",
+    "privacy": "개인정보",
+    "runVisibility": {
+      "title": "러닝 기록 공개",
+      "description": "다른 사람이 내 러닝 기록을 볼 수 있는 범위를 설정합니다",
+      "public": "전체 공개",
+      "followers": "팔로워만",
+      "private": "비공개"
+    },
     "legal": "약관 및 정책",
     "termsOfService": "이용약관",
     "privacyPolicy": "개인정보 처리방침",

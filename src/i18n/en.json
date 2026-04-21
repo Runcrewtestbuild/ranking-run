@@ -568,6 +568,14 @@
     "map3dOnDesc": "3D map enabled in World tab",
     "map3dOffDesc": "2D map enabled in World tab",
     "integration": "Integration",
+    "privacy": "Privacy",
+    "runVisibility": {
+      "title": "Run Visibility",
+      "description": "Choose who can see your running records",
+      "public": "Everyone",
+      "followers": "Followers Only",
+      "private": "Private"
+    },
     "legal": "Legal",
     "termsOfService": "Terms of Service",
     "privacyPolicy": "Privacy Policy",
