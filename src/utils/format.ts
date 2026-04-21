@@ -112,3 +112,52 @@ export function formatNumber(num: number): string {
 export function estimateCalories(distanceMeters: number): number {
   return Math.round((distanceMeters / 1000) * 60);
 }
+
+/**
+ * Returns a compact goal achievement tag for run history display.
+ * - achieved: true = goal met, false = not met, null = free run (no goal)
+ */
+export function formatRunGoalTag(
+  goalData: { type: string; value?: number | null; intervalSets?: number; intervalRunSeconds?: number; intervalWalkSeconds?: number } | null | undefined,
+  runData: { distance_meters: number; duration_seconds: number; avg_pace_seconds_per_km: number; completedSets?: number },
+): { label: string; achieved: boolean | null } {
+  if (!goalData?.type) {
+    return { label: '\uC790\uC720\uB7EC\uB2DD', achieved: null };
+  }
+
+  switch (goalData.type) {
+    case 'distance': {
+      const goalKm = ((goalData.value ?? 0) / 1000).toFixed(1);
+      const met = runData.distance_meters >= (goalData.value ?? 0);
+      return { label: `\uAC70\uB9AC \uBAA9\uD45C ${goalKm}km \u00B7 ${met ? '\uB2EC\uC131' : '\uBBF8\uB2EC\uC131'}`, achieved: met };
+    }
+    case 'time': {
+      const goalMin = Math.floor((goalData.value ?? 0) / 60);
+      const met = runData.duration_seconds >= (goalData.value ?? 0);
+      return { label: `\uC2DC\uAC04 \uBAA9\uD45C ${goalMin}\uBD84 \u00B7 ${met ? '\uB2EC\uC131' : '\uBBF8\uB2EC\uC131'}`, achieved: met };
+    }
+    case 'pace': {
+      const goalPace = formatPace(goalData.value ?? 0);
+      const met = runData.avg_pace_seconds_per_km > 0 && runData.avg_pace_seconds_per_km <= (goalData.value ?? 0);
+      return { label: `\uD398\uC774\uC2A4 \uBAA9\uD45C ${goalPace} \u00B7 ${met ? '\uB2EC\uC131' : '\uBBF8\uB2EC\uC131'}`, achieved: met };
+    }
+    case 'program': {
+      const goalKm = ((goalData.value ?? 0) / 1000).toFixed(1);
+      const met = runData.distance_meters >= (goalData.value ?? 0);
+      return { label: `\uBAA9\uD45C\uB7EC\uB2DD ${goalKm}km \u00B7 ${met ? '\uB2EC\uC131' : '\uBBF8\uB2EC\uC131'}`, achieved: met };
+    }
+    case 'interval': {
+      const targetSets = goalData.intervalSets ?? 0;
+      const completed = runData.completedSets ?? 0;
+      const met = completed >= targetSets;
+      return {
+        label: met
+          ? `인터벌 ${targetSets}세트 · 완료`
+          : `인터벌 ${completed}/${targetSets}세트 · 미완료`,
+        achieved: met,
+      };
+    }
+    default:
+      return { label: '\uC790\uC720\uB7EC\uB2DD', achieved: null };
+  }
+}

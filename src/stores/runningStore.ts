@@ -4,6 +4,17 @@ import type { Split, PauseInterval, CheckpointPass } from '../types/api';
 import { haversineDistance } from '../utils/geo';
 import { useSettingsStore } from './settingsStore';
 
+// ---- Mutable backing arrays (NOT in Zustand state) ----
+// These arrays are mutated in-place via push() to avoid O(n) concat() on every
+// GPS tick. Zustand store holds a version counter that increments when the array
+// changes, so subscribers can react without comparing array references.
+// Access the actual data via getRoutePoints() / getFilteredLocations().
+let _routePoints: Array<{ latitude: number; longitude: number }> = [];
+let _filteredLocations: FilteredLocation[] = [];
+
+export function getRoutePoints() { return _routePoints; }
+export function getFilteredLocations() { return _filteredLocations; }
+
 // Loop detection constants
 const LOOP_MIN_DISTANCE_M = 300;      // Min distance before checking (avoid false positive at start)
 const LOOP_PROXIMITY_RADIUS_M = 30;   // "Near start" radius
@@ -21,6 +32,14 @@ const MAX_FILTERED_LOCATIONS = 50_000;
 const FILTERED_LOCATIONS_TRIM_RATIO = 0.8; // keep last 80%
 
 export type RunningPhase = 'idle' | 'countdown' | 'running' | 'paused' | 'completed';
+
+export interface IntervalSegment {
+  set: number;           // 1-based
+  phase: 'run' | 'walk';
+  distanceMeters: number;
+  durationSeconds: number;
+  avgPaceSecondsPerKm: number;
+}
 
 interface RunningState {
   // Session
@@ -44,6 +63,12 @@ interface RunningState {
   gpsAccuracy: number | null;
   distanceSource: 'gps' | 'pedometer';
   currentLocation: LocationUpdateEvent | null;
+  // routePoints and filteredLocations live in mutable backing arrays
+  // (_routePoints, _filteredLocations) for O(1) push. Store holds version
+  // counters so subscribers know when to re-read via getRoutePoints().
+  routePointsVersion: number;
+  filteredLocationsVersion: number;
+  // Legacy accessors kept for backward compatibility (read from backing arrays)
   routePoints: Array<{ latitude: number; longitude: number }>;
   filteredLocations: FilteredLocation[];
 
@@ -79,6 +104,7 @@ interface RunningState {
   isNearStart: boolean;          // within 30m of start
   loopDetected: boolean;         // confirmed round-trip
   loopDetectedAt: number | null; // timestamp of detection (for cooldown)
+  lapCount: number;              // number of completed laps (start point crossings)
 
   // Checkpoint passes (course running)
   checkpointPasses: CheckpointPass[];
@@ -103,10 +129,14 @@ interface RunningState {
     value: number | null;
     targetTime?: number | null;
     cadenceBPM?: number | null;
+    adaptiveMetronome?: boolean;
     intervalRunSeconds?: number;
     intervalWalkSeconds?: number;
     intervalSets?: number;
   };
+
+  // Interval segment tracking
+  intervalSegments: IntervalSegment[];
 
   // Actions
   startSession: (sessionId: string, courseId: string | null) => void;
@@ -121,13 +151,14 @@ interface RunningState {
   reset: () => void;
   addSplit: (split: Split) => void;
   incrementChunkSequence: () => void;
-  markChunkUploaded: (sequence: number, pointIndex: number, distance: number) => void;
+  markChunkUploaded: (sequence: number, pointCount: number, distance: number) => void;
   setPhase: (phase: RunningPhase) => void;
   updateHeartRate: (bpm: number) => void;
   setWatchConnected: (connected: boolean) => void;
   setCheckpointPasses: (passes: CheckpointPass[]) => void;
   setAutoPaused: (paused: boolean) => void;
-  setRunGoal: (goal: { type: 'distance' | 'time' | 'pace' | 'program' | 'interval' | null; value: number | null; targetTime?: number | null; cadenceBPM?: number | null; intervalRunSeconds?: number; intervalWalkSeconds?: number; intervalSets?: number }) => void;
+  setRunGoal: (goal: { type: 'distance' | 'time' | 'pace' | 'program' | 'interval' | null; value: number | null; targetTime?: number | null; cadenceBPM?: number | null; adaptiveMetronome?: boolean; intervalRunSeconds?: number; intervalWalkSeconds?: number; intervalSets?: number }) => void;
+  addIntervalSegment: (segment: IntervalSegment) => void;
   addSnappedPoint: (coord: { latitude: number; longitude: number }) => void;
   restoreSession: (data: {
     sessionId: string;
@@ -156,7 +187,7 @@ interface RunningState {
     snappedRoutePoints: Array<{ latitude: number; longitude: number }>;
     deviationLog: Array<{ index: number; deviation: number }>;
     startPoint: { latitude: number; longitude: number } | null;
-    runGoal: { type: 'distance' | 'time' | 'pace' | 'program' | 'interval' | null; value: number | null; targetTime?: number | null; cadenceBPM?: number | null; intervalRunSeconds?: number; intervalWalkSeconds?: number; intervalSets?: number };
+    runGoal: { type: 'distance' | 'time' | 'pace' | 'program' | 'interval' | null; value: number | null; targetTime?: number | null; cadenceBPM?: number | null; adaptiveMetronome?: boolean; intervalRunSeconds?: number; intervalWalkSeconds?: number; intervalSets?: number };
   }) => void;
 }
 
@@ -179,8 +210,10 @@ export const useRunningStore = create<RunningState>((set, get) => ({
   gpsAccuracy: null,
   distanceSource: 'gps',
   currentLocation: null,
-  routePoints: [],
-  filteredLocations: [],
+  routePointsVersion: 0,
+  filteredLocationsVersion: 0,
+  routePoints: _routePoints,
+  filteredLocations: _filteredLocations,
   snappedRoutePoints: [],
   deviationLog: [],
 
@@ -205,6 +238,7 @@ export const useRunningStore = create<RunningState>((set, get) => ({
   isNearStart: false,
   loopDetected: false,
   loopDetectedAt: null,
+  lapCount: 0,
 
   checkpointPasses: [],
   stopLocation: null,
@@ -215,8 +249,18 @@ export const useRunningStore = create<RunningState>((set, get) => ({
   speedAnomalyDetected: false,
   highSpeedCount: 0,
   runGoal: { type: null, value: null, targetTime: null, cadenceBPM: null },
+  intervalSegments: [],
 
   startSession: (sessionId, courseId) => {
+    // Guard: prevent duplicate sessions (e.g. widget tap during active run)
+    const currentPhase = get().phase;
+    if (currentPhase === 'running' || currentPhase === 'paused') {
+      console.warn('[RunningStore] startSession blocked: already in phase', currentPhase);
+      return;
+    }
+    // Reset mutable backing arrays to prevent stale data from previous sessions
+    _routePoints = [];
+    _filteredLocations = [];
     set({
       sessionId,
       courseId,
@@ -233,8 +277,10 @@ export const useRunningStore = create<RunningState>((set, get) => ({
       gpsStatus: 'searching',
       gpsAccuracy: null,
       currentLocation: null,
-      routePoints: [],
-      filteredLocations: [],
+      routePoints: _routePoints,
+      filteredLocations: _filteredLocations,
+      routePointsVersion: 1,
+      filteredLocationsVersion: 1,
       snappedRoutePoints: [],
       deviationLog: [],
       splits: [],
@@ -256,11 +302,13 @@ export const useRunningStore = create<RunningState>((set, get) => ({
       isNearStart: false,
       loopDetected: false,
       loopDetectedAt: null,
+      lapCount: 0,
       checkpointPasses: [],
       stopLocation: null,
       isAutoPaused: false,
       speedAnomalyDetected: false,
       highSpeedCount: 0,
+      intervalSegments: [],
       // runGoal is intentionally NOT reset here — it's set before startSession
     });
   },
@@ -272,6 +320,16 @@ export const useRunningStore = create<RunningState>((set, get) => ({
   updateLocation: (event) => {
     const state = get();
     if (state.phase !== 'running' || state.isPaused) return;
+
+    // Validate GPS event — reject malformed data that would corrupt state
+    if (
+      event.latitude == null || event.longitude == null ||
+      event.distanceFromStart == null || isNaN(event.distanceFromStart) ||
+      event.speed == null || isNaN(event.speed) ||
+      !isFinite(event.latitude) || !isFinite(event.longitude)
+    ) {
+      return;
+    }
 
     const currentPos = { latitude: event.latitude, longitude: event.longitude };
 
@@ -317,36 +375,18 @@ export const useRunningStore = create<RunningState>((set, get) => ({
       return;
     }
 
-    // Interpolate intermediate points for smooth route rendering (7 points between GPS fixes)
-    const prevPos = state.routePoints.length > 0
-      ? state.routePoints[state.routePoints.length - 1]
-      : null;
-    let newRoutePoints: Array<{ latitude: number; longitude: number }>;
-    if (prevPos) {
-      const STEPS = 7;
-      const interp: Array<{ latitude: number; longitude: number }> = [];
-      for (let i = 1; i <= STEPS; i++) {
-        const f = i / (STEPS + 1);
-        interp.push({
-          latitude: prevPos.latitude + (currentPos.latitude - prevPos.latitude) * f,
-          longitude: prevPos.longitude + (currentPos.longitude - prevPos.longitude) * f,
-        });
-      }
-      const combined = state.routePoints.concat(interp, currentPos);
-      // Cap route points to prevent unbounded memory growth during long runs.
-      // Keep last 10,000 points (~20min of data at 8pts/sec).
-      // Older points are already captured in chunk uploads.
-      const MAX_ROUTE_POINTS = 10_000;
-      newRoutePoints = combined.length > MAX_ROUTE_POINTS
-        ? combined.slice(combined.length - MAX_ROUTE_POINTS)
-        : combined;
-    } else {
-      newRoutePoints = [currentPos];
+    // Append GPS point via mutable push — O(1) instead of O(n) concat.
+    // The backing array (_routePoints) is shared by reference; bumping
+    // routePointsVersion in the store signals subscribers to re-read.
+    const MAX_ROUTE_POINTS = 10_000;
+    _routePoints.push(currentPos);
+    if (_routePoints.length > MAX_ROUTE_POINTS) {
+      _routePoints = _routePoints.slice(-MAX_ROUTE_POINTS);
     }
 
     // Build filtered location for chunk upload (rich GPS data for server)
-    const prevDistance = state.filteredLocations.length > 0
-      ? state.filteredLocations[state.filteredLocations.length - 1].cumulativeDistance
+    const prevDistance = _filteredLocations.length > 0
+      ? _filteredLocations[_filteredLocations.length - 1].cumulativeDistance
       : state.lastChunkDistance;
     const newFilteredLocation: FilteredLocation = {
       latitude: event.latitude,
@@ -358,15 +398,14 @@ export const useRunningStore = create<RunningState>((set, get) => ({
       distanceFromPrevious: event.distanceFromStart - prevDistance,
       cumulativeDistance: event.distanceFromStart,
       isInterpolated: false,
+      cadence: state.cadence > 0 ? state.cadence : undefined,
+      heartRate: state.heartRate > 0 ? state.heartRate : undefined,
     };
-    // Use concat instead of spread — avoids copying entire array into a new
-    // temporary array on every GPS update (O(n) allocation per tick).
-    let newFilteredLocations = state.filteredLocations.concat(newFilteredLocation);
+    _filteredLocations.push(newFilteredLocation);
     // Cap filteredLocations to prevent unbounded memory growth on ultra-long runs.
-    // markChunkUploaded trims uploaded points, but if uploads stall, this is a safety net.
-    if (newFilteredLocations.length > MAX_FILTERED_LOCATIONS) {
-      const keepFrom = Math.floor(newFilteredLocations.length * (1 - FILTERED_LOCATIONS_TRIM_RATIO));
-      newFilteredLocations = newFilteredLocations.slice(keepFrom);
+    if (_filteredLocations.length > MAX_FILTERED_LOCATIONS) {
+      const keepFrom = Math.floor(_filteredLocations.length * (1 - FILTERED_LOCATIONS_TRIM_RATIO));
+      _filteredLocations = _filteredLocations.slice(keepFrom);
     }
 
     // Save start point from first GPS fix
@@ -386,7 +425,8 @@ export const useRunningStore = create<RunningState>((set, get) => ({
     let avgPace = state.avgPaceSecondsPerKm;
     if (event.speed > 0.3 && distance > 0) {
       // Only update avg pace when actually moving
-      avgPace = (elapsedDuration / distance) * 1000;
+      const rawAvgPace = (elapsedDuration / distance) * 1000;
+      avgPace = isFinite(rawAvgPace) ? rawAvgPace : state.avgPaceSecondsPerKm;
     } else if (distance <= 0) {
       avgPace = 0;
     }
@@ -400,9 +440,15 @@ export const useRunningStore = create<RunningState>((set, get) => ({
     let isNearStart = state.isNearStart;
     let loopDetected = state.loopDetected;
     let loopDetectedAt = state.loopDetectedAt;
+    let lapCount = state.lapCount;
 
-    // Only run loop detection in free running (no courseId) and after traveling enough distance
-    if (!state.courseId && distance > LOOP_MIN_DISTANCE_M) {
+    // Only run loop detection in free running (no courseId) and after traveling enough distance.
+    // Use cheap coordinate delta pre-check (~0.002° ≈ 200m) to skip expensive haversine
+    // when clearly far from start — saves trig computation on every GPS tick.
+    const roughlyNearStart = startPoint &&
+      Math.abs(currentPos.latitude - startPoint.latitude) < 0.002 &&
+      Math.abs(currentPos.longitude - startPoint.longitude) < 0.002;
+    if (!state.courseId && distance > LOOP_MIN_DISTANCE_M && roughlyNearStart) {
       distanceToStart = haversineDistance(currentPos, startPoint);
 
       // Check cooldown: don't re-trigger within 60s of last detection
@@ -416,6 +462,7 @@ export const useRunningStore = create<RunningState>((set, get) => ({
           // Just entered the proximity zone — confirm loop
           loopDetected = true;
           loopDetectedAt = Date.now();
+          lapCount += 1;
         }
 
         // Clear loop flag when user moves away from start (cooldown expired)
@@ -456,8 +503,11 @@ export const useRunningStore = create<RunningState>((set, get) => ({
       currentSpeedMs: event.speed,
       currentPaceSecondsPerKm: currentPace,
       avgPaceSecondsPerKm: avgPace,
-      routePoints: newRoutePoints,
-      filteredLocations: newFilteredLocations,
+      // Bump version counters — subscribers use getRoutePoints() to read
+      routePointsVersion: state.routePointsVersion + 1,
+      filteredLocationsVersion: state.filteredLocationsVersion + 1,
+      routePoints: _routePoints,
+      filteredLocations: _filteredLocations,
       calories: caloriesBurned,
       cadence: event.cadence ?? state.cadence,
       distanceSource: event.distanceSource ?? 'gps',
@@ -469,6 +519,7 @@ export const useRunningStore = create<RunningState>((set, get) => ({
       isNearStart,
       loopDetected,
       loopDetectedAt,
+      lapCount,
       highSpeedCount,
       speedAnomalyDetected,
       // Auto-pause timer state
@@ -493,9 +544,10 @@ export const useRunningStore = create<RunningState>((set, get) => ({
 
     // RLE: only store state transitions (on↔off) or every 10th point
     if (isOff !== wasOff || index % 10 === 0) {
-      set((state) => ({
-        deviationLog: [...state.deviationLog, { index, deviation }],
-      }));
+      set((state) => {
+        const log = state.deviationLog.concat({ index, deviation });
+        return { deviationLog: log.length > 5000 ? log.slice(-4000) : log };
+      });
     }
   },
 
@@ -560,6 +612,9 @@ export const useRunningStore = create<RunningState>((set, get) => ({
   },
 
   reset: () => {
+    // Clear mutable backing arrays
+    _routePoints = [];
+    _filteredLocations = [];
     set({
       sessionId: null,
       courseId: null,
@@ -576,8 +631,10 @@ export const useRunningStore = create<RunningState>((set, get) => ({
       gpsStatus: 'searching',
       distanceSource: 'gps',
       currentLocation: null,
-      routePoints: [],
-      filteredLocations: [],
+      routePointsVersion: 0,
+      filteredLocationsVersion: 0,
+      routePoints: _routePoints,
+      filteredLocations: _filteredLocations,
       splits: [],
       currentSplitDistance: 0,
       pauseIntervals: [],
@@ -595,6 +652,7 @@ export const useRunningStore = create<RunningState>((set, get) => ({
       isNearStart: false,
       loopDetected: false,
       loopDetectedAt: null,
+      lapCount: 0,
       checkpointPasses: [],
       stopLocation: null,
       startTime: null,
@@ -603,6 +661,7 @@ export const useRunningStore = create<RunningState>((set, get) => ({
       speedAnomalyDetected: false,
       highSpeedCount: 0,
       runGoal: { type: null, value: null, targetTime: null, cadenceBPM: null },
+      intervalSegments: [],
       gpsAccuracy: null,
       snappedRoutePoints: [],
       deviationLog: [],
@@ -623,12 +682,13 @@ export const useRunningStore = create<RunningState>((set, get) => ({
     }));
   },
 
-  markChunkUploaded: (sequence, pointIndex, distance) => {
+  markChunkUploaded: (sequence, pointCount, distance) => {
+    // Trim the mutable backing array — remove the first `pointCount` points that were uploaded
+    _filteredLocations = _filteredLocations.slice(pointCount);
     set((state) => ({
-      uploadedChunkSequences: [...state.uploadedChunkSequences, sequence],
-      // Trim already-uploaded points to prevent unbounded memory growth
-      // on long runs. Reset index to 0 since the array is sliced.
-      filteredLocations: state.filteredLocations.slice(pointIndex),
+      uploadedChunkSequences: state.uploadedChunkSequences.concat(sequence),
+      filteredLocations: _filteredLocations,
+      filteredLocationsVersion: state.filteredLocationsVersion + 1,
       lastChunkPointIndex: 0,
       lastChunkDistance: distance,
       lastChunkTimestamp: Date.now(),
@@ -669,13 +729,23 @@ export const useRunningStore = create<RunningState>((set, get) => ({
 
   setRunGoal: (goal) => set({ runGoal: goal }),
 
-  addSnappedPoint: (coord) => {
+  addIntervalSegment: (segment) => {
     set((state) => ({
-      snappedRoutePoints: [...state.snappedRoutePoints, coord],
+      intervalSegments: [...state.intervalSegments, segment],
     }));
   },
 
+  addSnappedPoint: (coord) => {
+    set((state) => {
+      const pts = state.snappedRoutePoints.concat(coord);
+      return { snappedRoutePoints: pts.length > 10000 ? pts.slice(-8000) : pts };
+    });
+  },
+
   restoreSession: (data) => {
+    // Restore mutable backing arrays
+    _routePoints = data.routePoints;
+    _filteredLocations = data.filteredLocations;
     set({
       sessionId: data.sessionId,
       courseId: data.courseId,
@@ -691,8 +761,10 @@ export const useRunningStore = create<RunningState>((set, get) => ({
       elevationGainMeters: data.elevationGainMeters,
       elevationLossMeters: data.elevationLossMeters,
       calories: data.calories,
-      filteredLocations: data.filteredLocations,
-      routePoints: data.routePoints,
+      filteredLocations: _filteredLocations,
+      filteredLocationsVersion: 1,
+      routePoints: _routePoints,
+      routePointsVersion: 1,
       splits: data.splits,
       pauseIntervals: data.pauseIntervals,
       chunkSequence: data.chunkSequence,
@@ -718,6 +790,7 @@ export const useRunningStore = create<RunningState>((set, get) => ({
       isNearStart: false,
       loopDetected: false,
       loopDetectedAt: null,
+      lapCount: 0,
       checkpointPasses: [],
     });
   },

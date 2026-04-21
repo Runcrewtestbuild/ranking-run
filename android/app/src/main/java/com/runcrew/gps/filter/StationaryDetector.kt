@@ -32,8 +32,8 @@ class StationaryDetector(
         private const val SPEED_THRESHOLD = 0.3
 
         // Speed above which a stationary user is considered moving again (m/s)
-        // Matched with iOS: lowered from 0.5 to 0.35 for faster resume detection
-        private const val RESUME_SPEED_THRESHOLD = 0.35
+        // Matched with iOS: 0.5 m/s ~ 1.8 km/h
+        private const val RESUME_SPEED_THRESHOLD = 0.5
 
         // Window duration for accelerometer variance calculation (ms)
         private const val WINDOW_DURATION_MS = 3000L

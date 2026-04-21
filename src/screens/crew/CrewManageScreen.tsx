@@ -379,47 +379,6 @@ export default function CrewManageScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Pending Requests Inline */}
-          {pendingRequests.length > 0 && (
-            <View style={styles.pendingCard}>
-              {pendingRequests.map((req) => (
-                <View key={req.id} style={styles.pendingRow}>
-                  <View style={styles.pendingUserInfo}>
-                    {req.user.avatar_url ? (
-                      <Image source={{ uri: req.user.avatar_url }} style={styles.pendingAvatar} />
-                    ) : (
-                      <View style={[styles.pendingAvatar, styles.pendingAvatarPlaceholder]}>
-                        <Ionicons name="person" size={14} color={colors.textTertiary} />
-                      </View>
-                    )}
-                    <View>
-                      <Text style={styles.pendingNickname}>{req.user.nickname ?? '?'}</Text>
-                      {req.message && (
-                        <Text style={styles.pendingMessage} numberOfLines={1}>{req.message}</Text>
-                      )}
-                    </View>
-                  </View>
-                  <View style={styles.pendingActions}>
-                    <TouchableOpacity
-                      style={styles.approveBtn}
-                      onPress={() => handleApprove(req.id)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.approveBtnText}>{t('crew.approve')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.rejectBtn}
-                      onPress={() => handleReject(req.id)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.rejectBtnText}>{t('crew.reject')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-            </View>
-          )}
-
           {/* Grade Overview Section */}
           <Text style={styles.sectionTitle}>{t('crew.manageGrades')}</Text>
           <View style={styles.gradeCard}>

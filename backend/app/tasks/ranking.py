@@ -11,8 +11,11 @@ from app.models.crew import CrewMember
 from app.models.crew_challenge import CrewChallenge, CrewChallengeRecord
 from app.models.group_run import GroupRun, GroupRunMember
 from app.models.run_record import RunRecord
+from app.core.config import get_settings
+from app.models.course import Course
 from app.services.crew_ranking_service import CrewRankingService
 from app.services.group_ranking_service import GroupRankingService
+from app.services.notification_service import NotificationService
 from app.services.ranking_service import RankingService
 
 logger = logging.getLogger(__name__)
@@ -71,6 +74,17 @@ async def recalculate_course_ranking(
             if pace is None:
                 pace = 0
 
+            # Check if user had a previous best (for course_record notification)
+            from app.models.ranking import Ranking as RankingModel
+            prev_ranking_result = await db.execute(
+                select(RankingModel).where(
+                    RankingModel.course_id == course_id,
+                    RankingModel.user_id == user_id,
+                )
+            )
+            prev_entry = prev_ranking_result.scalar_one_or_none()
+            prev_best_duration = prev_entry.best_duration_seconds if prev_entry else None
+
             await ranking_service.upsert_ranking(
                 db=db,
                 course_id=course_id,
@@ -81,6 +95,56 @@ async def recalculate_course_ranking(
             )
 
             await ranking_service.recalculate_ranks(db, course_id)
+
+            # --- Ranking achievement & course record notifications ---
+            try:
+                notification_svc = NotificationService(get_settings())
+
+                # Get course title for notification messages
+                course_result = await db.execute(
+                    select(Course.title).where(Course.id == course_id)
+                )
+                course_title = course_result.scalar_one_or_none() or ""
+
+                # Check new rank after recalculation
+                updated_ranking_result = await db.execute(
+                    select(RankingModel).where(
+                        RankingModel.course_id == course_id,
+                        RankingModel.user_id == user_id,
+                    )
+                )
+                updated_entry = updated_ranking_result.scalar_one_or_none()
+
+                if updated_entry and updated_entry.rank is not None and updated_entry.rank <= 10:
+                    await notification_svc.create_and_send(
+                        db=db,
+                        user_id=user_id,
+                        notification_type="ranking_achievement",
+                        actor_id=user_id,
+                        title="랭킹 달성!",
+                        body=f"'{course_title}' 코스에서 {updated_entry.rank}위를 달성했습니다!",
+                        target_id=str(course_id),
+                        target_type="course",
+                    )
+
+                # Course record notification (new personal best)
+                is_new_record = (
+                    prev_best_duration is not None
+                    and run_record.duration_seconds < prev_best_duration
+                )
+                if is_new_record:
+                    await notification_svc.create_and_send(
+                        db=db,
+                        user_id=user_id,
+                        notification_type="course_record",
+                        actor_id=user_id,
+                        title="개인 최고 기록!",
+                        body=f"'{course_title}' 코스에서 새 기록을 세웠습니다!",
+                        target_id=str(course_id),
+                        target_type="course",
+                    )
+            except Exception:
+                logger.warning("Failed to send ranking/record notification for user %s", user_id)
 
             # Update group rankings for any active groups the user belongs to
             group_ranking_service = GroupRankingService()

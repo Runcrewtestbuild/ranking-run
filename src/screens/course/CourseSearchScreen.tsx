@@ -103,9 +103,10 @@ const CourseRowCard = React.memo(function CourseRowCard({
       activeOpacity={0.7}
     >
       {/* Thumbnail */}
-      {course.route_preview && course.route_preview.length >= 2 ? (
+      {course.thumbnail_url || (course.route_preview && course.route_preview.length >= 2) ? (
         <CourseThumbnailMap
-          routePreview={course.route_preview}
+          routePreview={course.route_preview ?? []}
+          thumbnailUrl={course.thumbnail_url}
           width={THUMBNAIL_SIZE}
           height={THUMBNAIL_SIZE}
           borderRadius={BORDER_RADIUS.sm}

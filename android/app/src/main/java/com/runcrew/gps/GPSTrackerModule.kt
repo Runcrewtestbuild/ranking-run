@@ -128,9 +128,15 @@ class GPSTrackerModule(
                 // Required for foreground service notification
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     if (!hasPermission(Manifest.permission.POST_NOTIFICATIONS)) {
-                        Log.w(TAG, "POST_NOTIFICATIONS permission not granted. Foreground service notification may not appear.")
-                        // Don't reject -- the service can still run, but the notification won't show
-                        // The JS layer should request this permission before calling startTracking
+                        if (Build.VERSION.SDK_INT >= 34) {
+                            // Android 14+: foreground service REQUIRES notification permission.
+                            // Without it the OS kills the service after 5-30 seconds.
+                            promise.reject("NOTIFICATION_PERMISSION_REQUIRED",
+                                "Notification permission required for GPS tracking on Android 14+")
+                            return
+                        }
+                        // Android 13: service still runs, but notification won't show
+                        Log.w(TAG, "POST_NOTIFICATIONS not granted. Notification may not appear.")
                     }
                 }
 
@@ -199,6 +205,19 @@ class GPSTrackerModule(
             } catch (e: Exception) {
                 Log.e(TAG, "Error resuming tracking", e)
                 promise.reject(ERROR_SERVICE_UNAVAILABLE, "Failed to resume tracking: ${e.message}", e)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun restartTracking(promise: Promise) {
+        synchronized(trackingLock) {
+            try {
+                locationEngine?.restart()
+                promise.resolve(null)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error restarting tracking", e)
+                promise.reject(ERROR_SERVICE_UNAVAILABLE, "Failed to restart tracking: ${e.message}", e)
             }
         }
     }

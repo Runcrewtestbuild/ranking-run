@@ -80,7 +80,7 @@ export function useLiveActivity() {
     if (updateTimerRef.current) {
       clearInterval(updateTimerRef.current);
     }
-    updateTimerRef.current = setInterval(pushUpdate, 1000);
+    updateTimerRef.current = setInterval(pushUpdate, 3000);
 
     return () => {
       if (updateTimerRef.current) {

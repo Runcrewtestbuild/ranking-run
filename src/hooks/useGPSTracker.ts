@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { NativeModules, NativeEventEmitter } from 'react-native';
+import { NativeModules, NativeEventEmitter, AppState } from 'react-native';
 import { useRunningStore } from '../stores/runningStore';
 import type {
   LocationUpdateEvent,
@@ -83,11 +83,50 @@ export function useGPSTracker() {
 
     const emitter = new NativeEventEmitter(GPSTrackerModule);
 
+    // Throttle location updates to prevent OOM on foreground resume.
+    // When app returns from background, the JS bridge flushes ALL queued native
+    // events SYNCHRONOUSLY in a tight loop. Time-based throttle doesn't work
+    // because Date.now() barely changes during synchronous flush.
+    // Solution: count-based skip — only process every Nth event during burst,
+    // plus always process the LAST event via a microtask.
+    let eventCount = 0;
+    let lastEvent: LocationUpdateEvent | null = null;
+    let flushScheduled = false;
+
+    const processEvent = (event: LocationUpdateEvent) => {
+      lastUpdateTimeRef.current = Date.now();
+      updateLocation(event);
+    };
+
     const locationSub = emitter.addListener(
       GPS_EVENTS.LOCATION_UPDATE,
       (event: LocationUpdateEvent) => {
-        lastUpdateTimeRef.current = Date.now();
-        updateLocation(event);
+        eventCount++;
+        lastEvent = event;
+
+        // During normal 1Hz GPS: eventCount resets via the flush below,
+        // so every event is processed (count % 1 === 0 after reset).
+        // During burst flush (1000+ events in <100ms): only every 50th
+        // event is processed synchronously, preventing OOM.
+        // The final event is ALWAYS processed via the scheduled flush.
+        if (eventCount <= 3 || eventCount % 50 === 0) {
+          processEvent(event);
+        }
+
+        // Schedule a microtask to process the very last event after
+        // the synchronous flush loop completes. This ensures we never
+        // miss the final (most recent) GPS position.
+        if (!flushScheduled) {
+          flushScheduled = true;
+          Promise.resolve().then(() => {
+            if (lastEvent) {
+              processEvent(lastEvent);
+              lastEvent = null;
+            }
+            eventCount = 0;
+            flushScheduled = false;
+          });
+        }
       },
     );
 
@@ -160,24 +199,50 @@ export function useGPSTracker() {
     }, 3000) };
 
     // Heartbeat: if no GPS updates for 30s while in 'running' phase, restart tracking
+    // Clear any existing heartbeat interval to prevent accumulation on re-subscribe
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+    }
     lastUpdateTimeRef.current = Date.now();
-    heartbeatIntervalRef.current = setInterval(() => {
+    const runHeartbeatCheck = () => {
       const currentPhase = useRunningStore.getState().phase;
       if (currentPhase !== 'running') return;
       const elapsed = Date.now() - lastUpdateTimeRef.current;
       if (elapsed > GPS_HEARTBEAT_TIMEOUT_MS) {
         console.warn(`[useGPSTracker] No GPS update for ${Math.round(elapsed / 1000)}s, attempting restart`);
-        GPSTrackerModule.stopTracking()
-          .then(() => GPSTrackerModule.startTracking())
+        GPSTrackerModule.restartTracking()
           .then(() => {
             lastUpdateTimeRef.current = Date.now();
-            console.log('[useGPSTracker] GPS tracking restarted via heartbeat');
+            console.log('[useGPSTracker] GPS tracking restarted via heartbeat (state preserved)');
           })
           .catch((err: any) => {
             console.error('[useGPSTracker] Heartbeat restart failed:', err);
           });
       }
-    }, 10_000);
+    };
+    heartbeatIntervalRef.current = setInterval(runHeartbeatCheck, 10_000);
+
+    // AppState listener: when returning to foreground, immediately run heartbeat
+    // check (setInterval may have been suspended while backgrounded) and force
+    // a getCurrentPosition call to sync the latest location state rather than
+    // waiting for queued NativeEventEmitter events to process.
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        runHeartbeatCheck();
+        // Sync auto-pause state after returning from background
+        // JS may have missed native "moving" events while suspended
+        const store = useRunningStore.getState();
+        if (store.phase === 'running' && store.isAutoPaused) {
+          // Check current speed — if moving, release auto-pause
+          // Use currentLocation (latest event from native) instead of
+          // filteredLocations (chunk upload data that may be stale)
+          const curLoc = store.currentLocation;
+          if (curLoc && curLoc.speed > 0.5) {
+            store.setAutoPaused(false);
+          }
+        }
+      }
+    });
 
     return () => {
       subscriptionsRef.current.forEach((sub) => sub.remove());
@@ -187,6 +252,7 @@ export function useGPSTracker() {
         clearInterval(heartbeatIntervalRef.current);
         heartbeatIntervalRef.current = null;
       }
+      appStateSubscription.remove();
     };
   }, [phase, updateLocation, updateGPSStatus, addSplit, setAutoPaused]);
 

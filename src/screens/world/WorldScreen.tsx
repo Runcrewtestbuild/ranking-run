@@ -1,9 +1,14 @@
+// TODO: This component is too large (~2600 lines, 50+ hooks).
+// Performance-critical sections should be extracted into:
+// - RunningMapContainer (RouteMapView + running props)
+// - RunningHUD (stats panel)
+// - CourseNavigationOverlay (deviation/checkpoint UI)
+// - WorldIdleOverlay (weather, welcome, marker selection)
 import React, { useEffect, useCallback, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   StatusBar,
   Alert,
   Platform,
@@ -15,6 +20,7 @@ import {
   Dimensions,
   Easing,
 } from 'react-native';
+import { TouchableOpacity } from '../../lib/touchables';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '../../lib/icons';
 import * as Haptics from 'expo-haptics';
@@ -45,6 +51,8 @@ import { usePaceCoaching } from '../../hooks/usePaceCoaching';
 import { useVoiceGuidance } from '../../hooks/useVoiceGuidance';
 import { useLiveActivity } from '../../hooks/useLiveActivity';
 import { useIntervalTraining } from '../../hooks/useIntervalTraining';
+import { useIntervalSegmentTracker } from '../../hooks/useIntervalSegmentTracker';
+import { useRunningSessionPersistence } from '../../hooks/useRunningSessionPersistence';
 
 import * as Location from 'expo-location';
 import { useTheme } from '../../hooks/useTheme';
@@ -54,7 +62,7 @@ import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '../../utils
 import { useCompassHeading } from '../../hooks/useCompassHeading';
 import { haversineDistance, bearing as geoBearing } from '../../utils/geo';
 import { savePendingRunRecord, removePendingRunRecord } from '../../services/pendingSyncService';
-import api from '../../services/api';
+import api, { performTokenRefresh } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../stores/authStore';
 import { MAPBOX_ACCESS_TOKEN } from '../../config/env';
@@ -322,7 +330,6 @@ export default function WorldScreen() {
     durationSeconds,
     avgPaceSecondsPerKm,
     gpsStatus,
-    runRoutePoints,
     calories,
     heartRate,
     cadence,
@@ -333,17 +340,18 @@ export default function WorldScreen() {
     isApproachingStart,
     isNearStart,
     loopDetected,
+    lapCount,
     distanceToStart,
     runCourseId,
     storeRunGoal,
     splits,
+    intervalSegments,
   } = useRunningStore(useShallow((s) => ({
     phase: s.phase,
     distanceMeters: s.distanceMeters,
     durationSeconds: s.durationSeconds,
     avgPaceSecondsPerKm: s.avgPaceSecondsPerKm,
     gpsStatus: s.gpsStatus,
-    runRoutePoints: s.routePoints,
     calories: s.calories,
     heartRate: s.heartRate,
     cadence: s.cadence,
@@ -354,10 +362,12 @@ export default function WorldScreen() {
     isApproachingStart: s.isApproachingStart,
     isNearStart: s.isNearStart,
     loopDetected: s.loopDetected,
+    lapCount: s.lapCount,
     distanceToStart: s.distanceToStart,
     runCourseId: s.courseId,
     storeRunGoal: s.runGoal,
     splits: s.splits,
+    intervalSegments: s.intervalSegments,
   })));
 
   // Actions don't change — subscribe outside useShallow to avoid object recreation
@@ -373,10 +383,26 @@ export default function WorldScreen() {
 
   const isInRun = phase !== 'idle';  // includes completed to keep route visible
 
+  // Auto-redirect to RunningMain if session is active (e.g. after widget cold start)
+  const autoRedirectedRef = useRef(false);
+  useEffect(() => {
+    if ((phase === 'running' || phase === 'paused') && !autoRedirectedRef.current) {
+      autoRedirectedRef.current = true;
+      // Defer navigation to avoid "cannot update during render" warning
+      InteractionManager.runAfterInteractions(() => {
+        navigation.navigate('RunningMain');
+      });
+    }
+    if (phase === 'idle') {
+      autoRedirectedRef.current = false;
+    }
+  }, [phase, navigation]);
+
   // GPS & timer hooks (always mounted, only active when phase is running/paused)
   const { startTracking, stopTracking, pauseTracking, resumeTracking } = useGPSTracker();
   useRunTimer();
   useLiveActivity();
+  useRunningSessionPersistence();
 
   // Pace coaching (program goal only)
   const paceCoachingEnabled = storeRunGoal?.type === 'program';
@@ -405,17 +431,64 @@ export default function WorldScreen() {
   // Metronome auto-start/stop
   const [metronomeMuted, setMetronomeMuted] = useState(false);
   const MetronomeModule = NativeModules.MetronomeModule;
+  const baseBPM = storeRunGoal?.type === 'program' ? (storeRunGoal.cadenceBPM ?? 0) : 0;
+  const isAdaptiveMetronome = storeRunGoal?.type === 'program' && (storeRunGoal.adaptiveMetronome ?? false);
   useEffect(() => {
     if (!MetronomeModule) return;
-    const bpm = storeRunGoal?.type === 'program' ? (storeRunGoal.cadenceBPM ?? 0) : 0;
 
-    if (phase === 'running' && bpm > 0 && !metronomeMuted) {
-      MetronomeModule.start(bpm);
+    if (phase === 'running' && baseBPM > 0 && !metronomeMuted) {
+      MetronomeModule.start(baseBPM);
     } else {
       MetronomeModule.stop();
     }
-    return () => { MetronomeModule.stop(); };
-  }, [phase, storeRunGoal?.type, storeRunGoal?.cadenceBPM, metronomeMuted]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Heartbeat: check if metronome died in background and restart it.
+    // Android system can kill AudioTrack in background (USAGE_MEDIA policy).
+    // Poll every 10s — if should be playing but isPlaying=false, restart.
+    let metronomeHeartbeat: ReturnType<typeof setInterval> | null = null;
+    if (phase === 'running' && baseBPM > 0 && !metronomeMuted && MetronomeModule.isPlaying) {
+      metronomeHeartbeat = setInterval(() => {
+        MetronomeModule.isPlaying()
+          .then((playing: boolean) => {
+            if (!playing && useRunningStore.getState().phase === 'running') {
+              // Use lastSetBPMRef which tracks adaptive BPM adjustments,
+              // not baseBPM which is the original cadenceBPM from goal.
+              const currentBPM = lastSetBPMRef.current || baseBPM;
+              console.warn(`[Metronome] Died in background, restarting at ${currentBPM} BPM`);
+              MetronomeModule.start(currentBPM);
+            }
+          })
+          .catch(() => {});
+      }, 10_000);
+    }
+
+    return () => {
+      MetronomeModule.stop();
+      if (metronomeHeartbeat) clearInterval(metronomeHeartbeat);
+    };
+  }, [phase, baseBPM, metronomeMuted]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Adaptive metronome: adjust BPM based on pace coaching status.
+  // Only changes BPM when paceStatus transitions — not on every render.
+  const paceStatus = paceCoaching?.status ?? null;
+  const lastSetBPMRef = useRef(baseBPM);
+  useEffect(() => {
+    if (!MetronomeModule || !isAdaptiveMetronome || baseBPM <= 0 || metronomeMuted) return;
+    if (phase !== 'running' || !paceStatus) return;
+
+    let adjustedBPM = baseBPM;
+    if (paceStatus === 'behind' || paceStatus === 'critical') {
+      adjustedBPM = Math.round(baseBPM * 1.05); // +5% (was 15% — too aggressive)
+    } else if (paceStatus === 'ahead') {
+      adjustedBPM = Math.round(baseBPM * 0.95); // -5% (was 10%)
+    }
+
+    // Only call setBPM if the value actually changed
+    if (adjustedBPM !== lastSetBPMRef.current) {
+      lastSetBPMRef.current = adjustedBPM;
+      MetronomeModule.setBPM(adjustedBPM);
+    }
+  }, [paceStatus, isAdaptiveMetronome, baseBPM, metronomeMuted, phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Interval training
   const intervalState = useIntervalTraining({
@@ -425,6 +498,12 @@ export default function WorldScreen() {
     sets: storeRunGoal?.intervalSets ?? 0,
     elapsedSeconds: durationSeconds,
     phase,
+  });
+
+  // Track per-segment stats during interval training
+  useIntervalSegmentTracker({
+    intervalState,
+    isRunning: phase === 'running',
   });
 
   // Countdown state
@@ -440,11 +519,19 @@ export default function WorldScreen() {
   const [courseCheckpoints, setCourseCheckpoints] = useState<CourseCheckpoint[] | null>(null);
   const [courseElevationProfile, setCourseElevationProfile] = useState<number[] | null>(null);
 
+  // Stabilize location coordinate reference for useCourseNavigation to avoid
+  // re-computing navigation on every render when lat/lng haven't changed.
+  const stableNavLocation = useMemo(
+    () => currentLocation ? { latitude: currentLocation.latitude, longitude: currentLocation.longitude } : null,
+    [currentLocation?.latitude, currentLocation?.longitude],
+  );
+  const stableNavBearing = currentLocation?.bearing ?? 0;
+
   // Course navigation & checkpoint tracking hooks
   const courseNavigation = useCourseNavigation(
     courseRoute,
-    currentLocation ? { latitude: currentLocation.latitude, longitude: currentLocation.longitude } : null,
-    currentLocation?.bearing ?? 0,
+    stableNavLocation,
+    stableNavBearing,
   );
   const {
     checkpointPasses,
@@ -465,6 +552,7 @@ export default function WorldScreen() {
   const [screenLocked, setScreenLocked] = useState(false);
   const lockProgressAnim = useRef(new Animated.Value(0)).current;
   const trackingStartedRef = useRef(false);
+  const finishingRef = useRef(false);
 
   // Refs to avoid stale closures in finishRun callback
   const finishReachedRef = useRef(finishReached);
@@ -491,7 +579,7 @@ export default function WorldScreen() {
 
     // Log deviation for result screen visualization
     if (runCourseId) {
-      addDeviationPoint(runRoutePoints.length - 1, courseNavigation.deviationMeters);
+      addDeviationPoint(useRunningStore.getState().routePoints.length - 1, courseNavigation.deviationMeters);
     }
 
     if (courseNavigation.isOffCourse) {
@@ -617,6 +705,7 @@ export default function WorldScreen() {
   // Result upload state (for completed phase)
   const [resultUploading, setResultUploading] = useState(false);
   const [resultRunRecordId, setResultRunRecordId] = useState<string | null>(null);
+  const resultRunRecordIdRef = useRef<string | null>(null);
   const [resultSavedLocally, setResultSavedLocally] = useState(false);
   const [courseRegistrationStarted, setCourseRegistrationStarted] = useState(false);
 
@@ -636,6 +725,9 @@ export default function WorldScreen() {
       ]).start();
       countdownTranslateY.setValue(0);
       setShowCountdownOverlay(false);
+      // Reset stop button state
+      stopProgressAnim.setValue(0);
+      setStopProgressVisible(false);
       // Reset running panel padding so GPS centers properly
       setPanelHeight(0);
       // Re-center map on user location when returning to idle (e.g. after RunResult dismiss)
@@ -689,6 +781,7 @@ export default function WorldScreen() {
     setRunGoal({ type: null, value: null }); // Reset goal settings
     setResultUploading(false);
     setResultRunRecordId(null);
+    resultRunRecordIdRef.current = null;
     setResultSavedLocally(false);
     setGoalReachedShown(false);
     setCourseRegistrationStarted(false);
@@ -855,6 +948,12 @@ export default function WorldScreen() {
       }
     } catch (err) {
       console.warn('[WorldScreen] 카운트다운 네이티브 호출 실패:', err);
+    }
+
+    // Pre-warm GPS during countdown so first fix is instant when running starts
+    if (!trackingStartedRef.current) {
+      startTracking().catch(() => {});
+      trackingStartedRef.current = true;
     }
 
     for (let i = countdownSeconds; i > 0; i--) {
@@ -1200,6 +1299,10 @@ export default function WorldScreen() {
 
   // Complete run inline — no navigation, show result summary in-place
   const finishRun = useCallback(async () => {
+    // H1: Guard against double-tap — once finishing starts, ignore subsequent calls
+    if (finishingRef.current) return;
+    finishingRef.current = true;
+
     const store = useRunningStore.getState();
     const sid = store.sessionId;
     // Save checkpoint passes before completing
@@ -1209,25 +1312,30 @@ export default function WorldScreen() {
     await stopTracking();
     trackingStartedRef.current = false;
     setScreenLocked(false);
-    complete();
 
     if (hapticFeedback) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
 
     // Fit map to completed route after UI settles
-    if (store.routePoints.length >= 2) {
+    const captureRoutePoints = [...store.routePoints];
+    const shouldCapture = store.distanceMeters >= 100 && captureRoutePoints.length >= 2;
+    if (captureRoutePoints.length >= 2) {
       InteractionManager.runAfterInteractions(() => {
         mapRef.current?.animateCamera({ pitch: 0, heading: 0 }, 800);
         setTimeout(() => {
-          mapRef.current?.fitToCoordinates(store.routePoints, {
+          mapRef.current?.fitToCoordinates(captureRoutePoints, {
             top: 120, right: 60, bottom: 380, left: 60,
           }, true);
         }, 900);
       });
     }
 
-    if (!sid) return;
+    if (!sid) {
+      // No session — just mark complete and return
+      complete();
+      return;
+    }
 
     // Build payload (same as RunResultScreen)
     const runPayload = {
@@ -1254,16 +1362,35 @@ export default function WorldScreen() {
       elevation_loss_meters: Math.round(store.elevationLossMeters),
       elevation_profile: store.filteredLocations.map(loc => Math.round(loc.altitude)),
       splits: store.splits,
-      pause_intervals: [] as { paused_at: string; resumed_at: string }[],
+      pause_intervals: store.pauseIntervals.map((pi) => ({
+        paused_at: pi.paused_at,
+        resumed_at: pi.resumed_at,
+      })),
       filter_config: {
-        kalman_q: 3.0,
-        kalman_r_base: 10.0,
-        outlier_speed_threshold: 12.0,
-        outlier_accuracy_threshold: 50.0,
+        kalman_q: 1.2,
+        kalman_r_base: 1.0,
+        outlier_speed_threshold: 15.0,
+        outlier_accuracy_threshold: 30.0,
       },
       total_chunks: 0,
       uploaded_chunk_sequences: [] as number[],
       ...(store.checkpointPasses.length > 0 ? { checkpoint_passes: store.checkpointPasses } : {}),
+      ...(store.runGoal?.type ? {
+        goal_data: {
+          type: store.runGoal.type,
+          value: store.runGoal.value,
+          ...(store.runGoal.type === 'interval' ? {
+            intervalRunSeconds: store.runGoal.intervalRunSeconds,
+            intervalWalkSeconds: store.runGoal.intervalWalkSeconds,
+            intervalSets: store.runGoal.intervalSets,
+            completedSets: Math.max(...store.intervalSegments.map(s => s.set), 0),
+          } : {}),
+          ...(store.runGoal.type === 'program' ? {
+            targetTime: store.runGoal.targetTime,
+            cadenceBPM: store.runGoal.cadenceBPM,
+          } : {}),
+        },
+      } : {}),
       ...(runCourseIdRef.current && finishReachedRef.current ? {
         course_completion: {
           is_completed: true,
@@ -1276,7 +1403,7 @@ export default function WorldScreen() {
       } : {}),
     };
 
-    // Save locally first
+    // C4: Save pending record BEFORE server upload — protects against app kill
     const pendingId = `local-run-${Date.now()}`;
     setResultUploading(true);
     try {
@@ -1291,19 +1418,60 @@ export default function WorldScreen() {
       // Local save failed — continue with server attempt
     }
 
-    // Upload to server
+    // C5: Upload to server with 401 retry after token refresh
     try {
-      const response = await runService.completeRun(sid, runPayload);
-      setResultRunRecordId(response?.run_record_id ?? null);
-      await removePendingRunRecord(pendingId).catch((err) => {
-        console.warn('[WorldScreen] 로컬 대기 기록 삭제 실패:', err);
-      });
+      let response;
+      try {
+        response = await runService.completeRun(sid, runPayload);
+      } catch (err: any) {
+        if (err?.response?.status === 401 || err?.status === 401 || err?.message?.includes('401')) {
+          // Token may have expired during long run — refresh and retry once
+          try {
+            await performTokenRefresh();
+            response = await runService.completeRun(sid, runPayload);
+          } catch {
+            // Retry also failed — local pending record is safe
+            response = null;
+          }
+        } else {
+          // Non-401 error — local pending record is safe
+          response = null;
+        }
+      }
+
+      if (response) {
+        const recordId = response?.run_record_id ?? null;
+        setResultRunRecordId(recordId);
+        resultRunRecordIdRef.current = recordId;
+        await removePendingRunRecord(pendingId).catch((err) => {
+          console.warn('[WorldScreen] 로컬 대기 기록 삭제 실패:', err);
+        });
+
+        // Capture route thumbnail from the map (world map custom style)
+        if (recordId && shouldCapture) {
+          // Wait for fitToCoordinates animation to complete + tiles to load
+          setTimeout(async () => {
+            try {
+              const uri = await mapRef.current?.takeSnapshot?.(true);
+              if (!uri) return;
+              const url = await runService.uploadRouteSnapshot(uri);
+              await runService.updateRouteThumbnail(recordId, url);
+              if (__DEV__) console.log('[WorldScreen] Route thumbnail captured');
+            } catch (e) {
+              if (__DEV__) console.log('[WorldScreen] Thumbnail capture failed:', e);
+            }
+          }, 2000);
+        }
+      }
     } catch {
       // Server failed — local data is safe
     } finally {
       setResultUploading(false);
+      // C4: Mark complete AFTER pending save and server attempt are done
+      complete();
     }
   }, [stopTracking, complete, hapticFeedback]);
+
 
   // Auto-finish when finish checkpoint (last) is reached
   const finishTriggeredRef = useRef(false);
@@ -1386,7 +1554,9 @@ export default function WorldScreen() {
   const handleStopPressOut = useCallback(() => {
     if (stopUnlockedRef.current) return;
     cleanupStopTimers();
-    stopProgressAnim.stopAnimation();
+    stopProgressAnim.stopAnimation(() => {
+      stopProgressAnim.setValue(0);
+    });
     stopProgressAnim.setValue(0);
     setStopProgressVisible(false);
     // 짧게 탭한 경우 힌트 표시
@@ -1787,10 +1957,10 @@ export default function WorldScreen() {
       <RouteMapView
         ref={mapRef}
         markers={isInRun || navigatingToStart || is3DMode ? [] : mapMarkers}
-        routePoints={isInRun && !runCourseId ? runRoutePoints : undefined}
+        subscribeToRunningRoute={isInRun}
         previewPolyline={
           isInRun
-            ? undefined
+            ? (runCourseId && courseRoute ? courseRoute : undefined)
             : navigatingToStart && !readyToStart
               ? (navRoute.length > 0 ? navRoute : (currentLocation && startCheckpoint ? [
                   { latitude: currentLocation.latitude, longitude: currentLocation.longitude },
@@ -1830,6 +2000,8 @@ export default function WorldScreen() {
         interactive={touring || isInRun}
         pitchEnabled={map3DStyle || is3DMode || isInRun}
         use3DStyle={map3DStyle}
+        useGradient={false}
+        lapCount={isInRun && !runCourseId ? lapCount : undefined}
         style={styles.map}
       />
 
@@ -1874,7 +2046,7 @@ export default function WorldScreen() {
       </Animated.View>
 
       {/* Run FAB — visible during tour mode to quickly start running */}
-      {touring && phase === 'idle' && (
+      {touring && phase === 'idle' && !selectedMarker && (
         <Animated.View style={{ opacity: worldOverlayOpacity }} pointerEvents="auto">
           <TouchableOpacity
             style={styles.fabRun}
@@ -2138,7 +2310,9 @@ export default function WorldScreen() {
               {loopDetected && distanceMeters >= 300 && (
                 <View style={styles.loopBanner}>
                   <Ionicons name="flag" size={16} color={COLORS.white} />
-                  <Text style={styles.loopBannerText}>Finish! Loop complete</Text>
+                  <Text style={styles.loopBannerText}>
+                    {lapCount > 1 ? `${lapCount}바퀴 완료!` : '1바퀴 완료!'}
+                  </Text>
                 </View>
               )}
               {isApproachingStart && !isNearStart && !loopDetected && distanceMeters >= 300 && (
@@ -2351,7 +2525,7 @@ export default function WorldScreen() {
                   </Text>
                 </View>
                 <View style={styles.paceCoachingBottom}>
-                  <Text style={styles.paceCoachingPaceLabel}>목표</Text>
+                  <Text style={styles.paceCoachingPaceLabel}>필요</Text>
                   <Text style={styles.paceCoachingPaceValue}>{formatPace(paceCoaching.requiredPace)}</Text>
                   <View style={styles.paceCoachingPaceDivider} />
                   <Text style={styles.paceCoachingPaceLabel}>현재</Text>
@@ -2445,6 +2619,26 @@ export default function WorldScreen() {
               );
             })()}
 
+            {/* Interval per-segment stats — after completion */}
+            {phase === 'completed' && storeRunGoal?.type === 'interval' && intervalSegments.length > 0 && (
+              <View style={styles.intervalSummary}>
+                <Text style={styles.intervalSummaryTitle}>인터벌 구간 통계</Text>
+                {intervalSegments.map((seg, idx) => (
+                  <View key={idx} style={styles.intervalSummaryRow}>
+                    <View style={[styles.intervalSummaryDot, { backgroundColor: seg.phase === 'run' ? colors.primary : colors.success }]} />
+                    <Text style={styles.intervalSummaryLabel}>
+                      Set {seg.set} {seg.phase === 'run' ? '달리기' : '걷기'}
+                    </Text>
+                    <Text style={styles.intervalSummaryValue}>
+                      {formatDistance(seg.distanceMeters)}
+                      {seg.phase === 'run' && seg.avgPaceSecondsPerKm > 0 ? `, ${formatPace(seg.avgPaceSecondsPerKm)}/km` : ''}
+                      {' · '}{formatDuration(seg.durationSeconds)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
             {/* Controls — during active run */}
             {(phase === 'running' || phase === 'paused') && (
               <View style={styles.runControls}>
@@ -2527,7 +2721,7 @@ export default function WorldScreen() {
                           screen: 'CourseCreate',
                           params: {
                             runRecordId: resultRunRecordId,
-                            routePoints: runRoutePoints,
+                            routePoints: useRunningStore.getState().routePoints,
                             distanceMeters: Math.round(distanceMeters),
                             durationSeconds: Math.round(durationSeconds),
                             elevationGainMeters: Math.round(elevationGainMeters),
@@ -2649,13 +2843,13 @@ export default function WorldScreen() {
       {/* ===== SHEETS (always available) ===== */}
       <RunGoalSheet
         visible={goalSheetVisible}
-        onClose={() => setGoalSheetVisible(false)}
+        onClose={() => { setGoalSheetVisible(false); setFollowUser(true); }}
         goal={runGoal}
         onGoalChange={setRunGoal}
       />
       <RunSettingsSheet
         visible={settingsSheetVisible}
-        onClose={() => setSettingsSheetVisible(false)}
+        onClose={() => { setSettingsSheetVisible(false); setFollowUser(true); }}
         onNavigateWatch={() => navigation.navigate('WatchSettings')}
         onNavigateHeartRate={() => navigation.navigate('HeartRateSettings')}
       />
@@ -3540,7 +3734,7 @@ const createStyles = (c: ThemeColors) => StyleSheet.create({
     bottom: 0,
     right: 0,
     borderRadius: 36,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.25)',
     transformOrigin: 'left',
   },
   stopHintContainer: {

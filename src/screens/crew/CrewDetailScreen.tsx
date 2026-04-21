@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -36,6 +36,7 @@ import { formatRelativeTime } from '../../utils/format';
 import CrewLevelBadge, { getTier } from '../../components/crew/CrewLevelBadge';
 import CrewLevelGuideSheet from '../../components/crew/CrewLevelGuideSheet';
 import { getXpProgress, formatXpDistance } from '../../utils/crewLevelConfig';
+import * as Haptics from 'expo-haptics';
 import { useToastStore } from '../../stores/toastStore';
 
 type Nav = NativeStackNavigationProp<HomeStackParamList, 'CrewDetail'>;
@@ -56,6 +57,8 @@ export default function CrewDetailScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [crew, setCrew] = useState<CrewItem | null>(null);
+  const [coverFailed, setCoverFailed] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
   const [members, setMembers] = useState<CrewMemberItem[]>([]);
   const [membersTotal, setMembersTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -126,21 +129,24 @@ export default function CrewDetailScreen() {
     }
   }, [crewId, t]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  // Reload when returning from edit screen
+  // Load on mount + reload when returning from edit screen
+  const initialLoadDone = useRef(false);
   useFocusEffect(
     useCallback(() => {
-      if (!isLoading) loadData();
+      if (!initialLoadDone.current) {
+        initialLoadDone.current = true;
+        loadData();
+      } else if (!isLoading) {
+        // Returning from another screen — soft reload
+        loadData();
+      }
     }, [loadData, isLoading]),
   );
 
   useEffect(() => {
     if (!crewId) return;
-    crewService.getWeeklyRanking(crewId).then(res => setWeeklyRanking(res.data)).catch((err) => {
-      console.warn('[CrewDetail] 주간 랭킹 조회 실패:', err);
+    crewService.getWeeklyRanking(crewId).then(res => setWeeklyRanking(res.data)).catch(() => {
+      useToastStore.getState().showToast('error', t('common.errorRetry'));
     });
   }, [crewId]);
 
@@ -159,6 +165,7 @@ export default function CrewDetailScreen() {
         // Refresh crew to get updated join_request_status
         const updated = await crewService.getCrew(crewId);
         setCrew(updated);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert(t('crew.requestSent'), t('crew.requestSentMsg'));
       } else {
         const updated = await crewService.joinCrew(crewId);
@@ -166,6 +173,7 @@ export default function CrewDetailScreen() {
         const membersData = await crewService.getMembers(crewId, { per_page: MEMBER_PREVIEW_LIMIT });
         setMembers(membersData.data);
         setMembersTotal(membersData.total_count);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         showToast('success', t('crew.joinedSuccess'));
       }
     } catch {
@@ -270,7 +278,7 @@ export default function CrewDetailScreen() {
       setPostsPage(nextPage);
       setHasMorePosts(postsData.data.length === POSTS_PER_PAGE);
     } catch {
-      // ignore
+      useToastStore.getState().showToast('error', t('common.errorRetry'));
     } finally {
       setIsLoadingMorePosts(false);
     }
@@ -374,8 +382,8 @@ export default function CrewDetailScreen() {
     );
   }
 
-  const hasCover = !!crew.cover_image_url;
-  const hasLogo = !!crew.logo_url;
+  const hasCover = !!crew.cover_image_url && !coverFailed;
+  const hasLogo = !!crew.logo_url && !logoFailed;
 
   return (
     <BlurredBackground>
@@ -453,7 +461,7 @@ export default function CrewDetailScreen() {
         >
           {/* Cover Image */}
           {hasCover ? (
-            <Image source={{ uri: crew.cover_image_url! }} style={styles.coverImage} fadeDuration={0} resizeMethod="resize" />
+            <Image source={{ uri: crew.cover_image_url! }} style={styles.coverImage} fadeDuration={0} resizeMethod="resize" onError={() => setCoverFailed(true)} />
           ) : (
             <View style={[styles.coverPlaceholder, { backgroundColor: (crew.badge_color || colors.primary) + '25' }]}>
               <Ionicons name="image-outline" size={32} color={(crew.badge_color || colors.primary) + '60'} />
@@ -464,7 +472,7 @@ export default function CrewDetailScreen() {
           <View style={styles.logoSection}>
             <View style={styles.logoWrapper}>
               {hasLogo ? (
-                <Image source={{ uri: crew.logo_url! }} style={styles.logoImage} fadeDuration={0} />
+                <Image source={{ uri: crew.logo_url! }} style={styles.logoImage} fadeDuration={0} onError={() => setLogoFailed(true)} />
               ) : (
                 <View style={[styles.logoBadge, { backgroundColor: crew.badge_color || colors.primary }]}>
                   <Ionicons
@@ -812,6 +820,8 @@ const PostItem = React.memo(function PostItem({
   const colors = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const initial = (post.author.nickname ?? '?').charAt(0).toUpperCase();
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
 
   return (
     <TouchableOpacity
@@ -821,8 +831,13 @@ const PostItem = React.memo(function PostItem({
     >
       {/* Author row */}
       <View style={styles.postAuthorRow}>
-        {post.author.avatar_url ? (
-          <Image source={{ uri: post.author.avatar_url }} style={styles.postAvatar} fadeDuration={0} />
+        {post.author.avatar_url && !avatarFailed ? (
+          <Image
+            source={{ uri: post.author.avatar_url }}
+            style={styles.postAvatar}
+            fadeDuration={0}
+            onError={() => setAvatarFailed(true)}
+          />
         ) : (
           <View style={styles.postAvatarPlaceholder}>
             <Text style={styles.postAvatarText}>{initial}</Text>
@@ -836,8 +851,19 @@ const PostItem = React.memo(function PostItem({
       <Text style={styles.postBody} numberOfLines={3}>
         {post.title ? <><Text style={styles.postTitleInline}>{post.title}  </Text>{post.content}</> : post.content}
       </Text>
-      {post.image_url && (
-        <Image source={{ uri: post.image_url }} style={styles.postImagePreview} resizeMode="cover" fadeDuration={0} />
+      {post.image_url && !imgFailed && (
+        <Image
+          source={{ uri: post.image_url }}
+          style={styles.postImagePreview}
+          resizeMode="cover"
+          fadeDuration={0}
+          onError={() => setImgFailed(true)}
+        />
+      )}
+      {post.image_url && imgFailed && (
+        <View style={[styles.postImagePreview, styles.postImageFallback]}>
+          <Ionicons name="image-outline" size={24} color={colors.textTertiary} />
+        </View>
       )}
       <View style={styles.postActions}>
         {post.like_count > 0 && (
@@ -903,6 +929,7 @@ function MemberRow({
   const gradeLevel = member.grade_level ?? (member.role === 'owner' ? 5 : member.role === 'admin' ? 4 : 1);
   const gradeName = getGradeName(gradeLevel, gradeConfig, t);
   const gradeColor = getGradeColor(gradeLevel, colors);
+  const [memberAvatarFailed, setMemberAvatarFailed] = useState(false);
 
   return (
     <TouchableOpacity
@@ -910,8 +937,13 @@ function MemberRow({
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {member.avatar_url ? (
-        <Image source={{ uri: member.avatar_url }} style={styles.memberAvatarImg} fadeDuration={0} />
+      {member.avatar_url && !memberAvatarFailed ? (
+        <Image
+          source={{ uri: member.avatar_url }}
+          style={styles.memberAvatarImg}
+          fadeDuration={0}
+          onError={() => setMemberAvatarFailed(true)}
+        />
       ) : (
         <View style={styles.memberAvatar}>
           <Text style={styles.memberAvatarText}>{initial}</Text>
@@ -1436,6 +1468,10 @@ const createStyles = (c: ThemeColors) =>
       aspectRatio: 16 / 9,
       borderRadius: 10,
       backgroundColor: c.surface,
+    },
+    postImageFallback: {
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     postActions: {
       flexDirection: 'row',

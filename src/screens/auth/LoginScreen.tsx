@@ -68,6 +68,7 @@ export default function LoginScreen() {
       }
     } catch (e: any) {
       if (e.code === 'ERR_REQUEST_CANCELED') return; // user cancelled
+      if (e.message === 'LOGIN_CANCELLED') return; // single-device confirm cancelled
       Alert.alert(t('common.error'), t('auth.login.appleError'));
     } finally {
       setLoadingProvider(null);
@@ -97,6 +98,7 @@ export default function LoginScreen() {
     } catch (e: any) {
       // statusCodes.SIGN_IN_CANCELLED = '12501'
       if (e.code === '12501' || e.code === 'SIGN_IN_CANCELLED') return;
+      if (e.message === 'LOGIN_CANCELLED') return; // single-device confirm cancelled
       console.error('[Login] Google error:', JSON.stringify({ code: e.code, message: e.message, status: e.status }));
       Alert.alert(t('common.error'), `${e.code ?? 'UNKNOWN'}: ${e.message ?? t('auth.login.googleError')}`);
     } finally {
@@ -134,6 +136,8 @@ export default function LoginScreen() {
                 onPress={handleAppleLogin}
                 disabled={disabled}
                 activeOpacity={0.8}
+                accessibilityLabel={t('auth.login.appleButton')}
+                accessibilityRole="button"
               >
                 {loadingProvider === 'apple' ? (
                   <ActivityIndicator color="#FFF" size="small" />
@@ -154,6 +158,8 @@ export default function LoginScreen() {
               onPress={handleGoogleLogin}
               disabled={disabled}
               activeOpacity={0.8}
+              accessibilityLabel={t('auth.login.googleButton')}
+              accessibilityRole="button"
             >
               {loadingProvider === 'google' ? (
                 <ActivityIndicator color="#333" size="small" />

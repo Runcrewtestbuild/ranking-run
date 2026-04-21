@@ -22,6 +22,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import type { AppLanguage, ThemeMode } from '../../stores/settingsStore';
 import { useAuthStore } from '../../stores/authStore';
 import i18n from '../../i18n';
+import Constants from 'expo-constants';
 import { useTheme } from '../../hooks/useTheme';
 import BlurredBackground from '../../components/common/BlurredBackground';
 import ScreenHeader from '../../components/common/ScreenHeader';
@@ -287,7 +288,7 @@ export default function SettingsScreen() {
 
           {/* App Info */}
           <View style={styles.appInfoSection}>
-            <Text style={styles.appInfoText}>RUNVS v1.0.0</Text>
+            <Text style={styles.appInfoText}>{t('settings.appVersion', { version: Constants.expoConfig?.version ?? '1.0.0' })}</Text>
           </View>
         </ScrollView>
       </SafeAreaView>

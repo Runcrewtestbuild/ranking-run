@@ -10,6 +10,7 @@ import {
   Platform,
   StatusBar,
   Image,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, CommonActions, useIsFocused } from '@react-navigation/native';
@@ -28,12 +29,14 @@ import {
   formatDistance,
   formatDuration,
   formatPace,
+  formatRunGoalTag,
   metersToKm,
   formatDate,
 } from '../../utils/format';
 import { FONT_SIZES, SPACING, BORDER_RADIUS } from '../../utils/constants';
 import type { ThemeColors } from '../../utils/constants';
-import { MAPBOX_ACCESS_TOKEN } from '../../config/env';
+import { MAPBOX_ACCESS_TOKEN, MAPBOX_DARK_STYLE, MAPBOX_LIGHT_STYLE } from '../../config/env';
+import { useToastStore } from '../../stores/toastStore';
 
 type DetailRoute = RouteProp<MyPageStackParamList, 'RunDetail'>;
 
@@ -66,7 +69,7 @@ function buildDetailStaticMapUrl(
   const geojson = JSON.stringify({
     type: 'Feature',
     properties: {
-      stroke: '#FFC800',
+      stroke: '#FFD600',
       'stroke-width': 4,
       'stroke-opacity': 1,
     },
@@ -132,6 +135,7 @@ export default function RunDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [mapExpanded, setMapExpanded] = useState(true);
+  const [fullScreenMap, setFullScreenMap] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -141,6 +145,7 @@ export default function RunDetailScreen() {
       } catch (e) {
         console.warn('[RunDetail] API error:', e);
         setError(true);
+        useToastStore.getState().showToast('error', '러닝 기록을 불러올 수 없습니다');
       } finally {
         setLoading(false);
       }
@@ -195,9 +200,7 @@ export default function RunDetailScreen() {
       return null;
     }
     const isDark = colors.statusBar === 'light-content';
-    const styleId = isDark
-      ? 'mapbox/dark-v11'
-      : 'mapbox/light-v11';
+    const styleId = isDark ? 'mapbox/dark-v11' : 'mapbox/light-v11';
 
     const mapW = Math.round(SCREEN_WIDTH - SPACING.xxl * 2);
     const pixelW = Math.min(mapW, 640);
@@ -349,6 +352,28 @@ export default function RunDetailScreen() {
             </GlassCard>
           </View>
 
+          {/* Goal achievement tag */}
+          {(() => {
+            const tag = formatRunGoalTag(detail.goal_data, {
+              distance_meters: detail.distance_meters,
+              duration_seconds: detail.duration_seconds,
+              avg_pace_seconds_per_km: detail.avg_pace_seconds_per_km,
+              completedSets: (detail.goal_data as any)?.completedSets,
+            });
+            if (tag.achieved === null) return null;
+            return (
+              <View style={styles.goalTagContainer}>
+                <Text style={[
+                  styles.goalTagText,
+                  tag.achieved === true && { color: colors.success },
+                  tag.achieved === false && { color: colors.textTertiary },
+                ]}>
+                  {tag.label}
+                </Text>
+              </View>
+            );
+          })()}
+
           {/* Course completion info */}
           {detail.course_completion && (
             <View style={styles.courseCompletionCard}>
@@ -393,8 +418,34 @@ export default function RunDetailScreen() {
                   resizeMode="cover"
                 />
               ) : null}
+              <TouchableOpacity
+                style={styles.mapExpandBtn}
+                onPress={() => setFullScreenMap(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="expand" size={18} color={colors.white} />
+              </TouchableOpacity>
             </View>
           )}
+
+          {/* Full-screen map modal */}
+          <Modal visible={fullScreenMap} animationType="slide" statusBarTranslucent>
+            <View style={{ flex: 1, backgroundColor: colors.background }}>
+              <RouteMapView
+                routePoints={routePoints}
+                splitMarkers={splitMapMarkers.length > 0 ? splitMapMarkers : undefined}
+                interactive
+                style={{ flex: 1 }}
+              />
+              <TouchableOpacity
+                style={styles.mapCloseBtn}
+                onPress={() => setFullScreenMap(false)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={24} color={colors.white} />
+              </TouchableOpacity>
+            </View>
+          </Modal>
 
           {/* Route Correction for existing course */}
           {detail.course && routePoints.length >= 2 && (
@@ -662,6 +713,18 @@ const createStyles = (c: ThemeColors) =>
       marginHorizontal: SPACING.lg,
     },
 
+    // Goal achievement tag
+    goalTagContainer: {
+      marginHorizontal: SPACING.xxl,
+      marginBottom: SPACING.lg,
+      alignItems: 'center',
+    },
+    goalTagText: {
+      fontSize: FONT_SIZES.sm,
+      fontWeight: '700',
+      color: c.textTertiary,
+    },
+
     // Course Completion
     courseCompletionCard: {
       marginHorizontal: SPACING.xxl,
@@ -714,6 +777,28 @@ const createStyles = (c: ThemeColors) =>
       height: SCREEN_WIDTH - SPACING.xxl * 2,
       width: '100%',
       backgroundColor: '#1C1C1E',
+    },
+    mapExpandBtn: {
+      position: 'absolute',
+      top: SPACING.sm,
+      right: SPACING.sm,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    mapCloseBtn: {
+      position: 'absolute',
+      top: Platform.OS === 'ios' ? 56 : (StatusBar.currentHeight ?? 40) + SPACING.sm,
+      right: SPACING.lg,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
     },
 
 

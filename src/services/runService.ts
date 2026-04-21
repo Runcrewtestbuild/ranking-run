@@ -102,4 +102,38 @@ export const runService = {
   async discardSession(sessionId: string): Promise<void> {
     await api.delete(`/runs/sessions/${sessionId}`);
   },
+
+  /**
+   * Upload a route snapshot image to the server.
+   * Returns the public URL of the uploaded image.
+   */
+  async uploadRouteSnapshot(fileUri: string): Promise<string> {
+    const formData = new FormData();
+    const filename = fileUri.split('/').pop() ?? 'route_snapshot.jpg';
+    const match = /\.(\w+)$/.exec(filename);
+    const ext = match ? match[1].toLowerCase() : 'jpeg';
+    const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+    const type = mimeMap[ext] ?? 'image/jpeg';
+
+    formData.append('file', {
+      uri: fileUri,
+      name: filename,
+      type,
+    } as unknown as Blob);
+
+    const result = await api.post<{ url: string }>('/uploads/image', formData);
+    return result.url;
+  },
+
+  /**
+   * Update the route thumbnail URL for a completed run record.
+   * Called after the snapshot has been uploaded to the server.
+   */
+  async updateRouteThumbnail(runId: string, url: string): Promise<void> {
+    await api.patch(`/runs/${runId}/thumbnail`, { url });
+  },
+
+  async generateRouteThumbnail(runId: string): Promise<void> {
+    await api.post(`/runs/${runId}/generate-thumbnail`);
+  },
 };

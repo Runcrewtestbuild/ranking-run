@@ -1,10 +1,24 @@
 import './src/i18n';
+import { enableScreens } from 'react-native-screens';
+enableScreens();
+
 import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View, StyleSheet } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Notifications from 'expo-notifications';
 import Mapbox from '@rnmapbox/maps';
+
+// Configure how foreground notifications are displayed
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
 import RootNavigator from './src/navigation/RootNavigator';
 import { MAPBOX_ACCESS_TOKEN } from './src/config/env';
 import { useSettingsStore } from './src/stores/settingsStore';
@@ -29,23 +43,17 @@ function App() {
   }, [language]);
 
   useEffect(() => {
-    const timer = setTimeout(async () => {
-      try {
-        await SplashScreen.hideAsync();
-      } catch {
-        // ignore — splash may already be hidden
-      }
-    }, 1000);
-    return () => clearTimeout(timer);
+    // Hide splash as soon as component mounts (app is ready)
+    SplashScreen.hideAsync().catch(() => {});
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <View style={styles.root}>
+    <GestureHandlerRootView style={styles.root}>
+      <SafeAreaProvider>
         <StatusBar style="light" />
         <RootNavigator />
-      </View>
-    </SafeAreaProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 

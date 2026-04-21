@@ -158,60 +158,6 @@ export default function CourseCreateScreen() {
           </View>
         </View>
 
-        {/* Course Type (shown when loop detected) */}
-        {isLoop && (
-          <View style={styles.courseTypeSection}>
-            <Text style={styles.inputLabel}>{t('course.create.courseType')}</Text>
-            <View style={styles.courseTypeRow}>
-              <TouchableOpacity
-                style={[
-                  styles.courseTypeBtn,
-                  courseType === 'normal' && styles.courseTypeBtnActive,
-                ]}
-                onPress={() => setCourseType('normal')}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="arrow-forward" size={16} color={courseType === 'normal' ? COLORS.white : colors.textSecondary} />
-                <Text style={[styles.courseTypeBtnText, courseType === 'normal' && styles.courseTypeBtnTextActive]}>{t('course.create.oneWay')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.courseTypeBtn,
-                  courseType === 'loop' && styles.courseTypeBtnActive,
-                ]}
-                onPress={() => setCourseType('loop')}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="repeat" size={16} color={courseType === 'loop' ? COLORS.white : colors.textSecondary} />
-                <Text style={[styles.courseTypeBtnText, courseType === 'loop' && styles.courseTypeBtnTextActive]}>{t('course.create.roundTrip')}</Text>
-              </TouchableOpacity>
-            </View>
-
-            {courseType === 'loop' && (
-              <View style={styles.lapCountRow}>
-                <Text style={styles.lapCountLabel}>{t('course.create.lapCount')}</Text>
-                <View style={styles.lapCountControls}>
-                  <TouchableOpacity
-                    style={[styles.lapCountBtn, lapCount <= 1 && styles.lapCountBtnDisabled]}
-                    onPress={() => setLapCount(Math.max(1, lapCount - 1))}
-                    disabled={lapCount <= 1}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="remove" size={18} color={lapCount <= 1 ? colors.textTertiary : colors.text} />
-                  </TouchableOpacity>
-                  <Text style={styles.lapCountValue}>{lapCount}</Text>
-                  <TouchableOpacity
-                    style={styles.lapCountBtn}
-                    onPress={() => setLapCount(Math.min(10, lapCount + 1))}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="add" size={18} color={colors.text} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-          </View>
-        )}
 
         {/* Title Input -- bottom border style */}
         <View style={styles.inputGroup}>

@@ -5,6 +5,7 @@ from uuid import UUID
 
 from dependency_injector.wiring import inject, Provide
 from fastapi import APIRouter, BackgroundTasks, Depends, status
+from pydantic import BaseModel
 from geoalchemy2.functions import ST_AsGeoJSON
 from sqlalchemy import select
 
@@ -255,6 +256,7 @@ async def complete_run_session(
         points_earned=points_earned,
         course_streak=course_streak_value,
         map_matching_confidence=run_record.map_matching_confidence,
+        route_thumbnail_url=run_record.route_thumbnail_url,
     )
 
 
@@ -396,5 +398,33 @@ async def get_run_record_detail(
         finished_at=record.finished_at,
         course=course_info,
         course_completion=course_completion,
+        route_thumbnail_url=record.route_thumbnail_url,
         goal_data=record.goal_data,
     )
+
+
+class UpdateThumbnailRequest(BaseModel):
+    url: str
+
+
+@router.patch("/{run_id}/thumbnail")
+async def update_run_thumbnail(
+    run_id: UUID,
+    body: UpdateThumbnailRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+) -> dict:
+    """Update the route thumbnail URL for a run record (called after client-side snapshot upload)."""
+    result = await db.execute(
+        select(RunRecord).where(
+            RunRecord.id == run_id,
+            RunRecord.user_id == current_user.id,
+        )
+    )
+    record = result.scalar_one_or_none()
+    if record is None:
+        raise NotFoundError(code="NOT_FOUND", message="Run record not found")
+
+    record.route_thumbnail_url = body.url
+    await db.commit()
+    return {"status": "ok"}

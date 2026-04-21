@@ -1,8 +1,8 @@
 import React from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { StyleSheet, View, Text, InteractionManager } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { CommonActions } from '@react-navigation/native';
+import { CommonActions, StackActions } from '@react-navigation/native';
 import { Ionicons } from '../lib/icons';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
@@ -89,7 +89,9 @@ export default function TabNavigator() {
       screenListeners={{
         tabPress: () => {
           if (useSettingsStore.getState().hapticFeedback) {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            InteractionManager.runAfterInteractions(() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            });
           }
         },
       }}
@@ -111,11 +113,10 @@ export default function TabNavigator() {
         }}
         listeners={({ navigation, route }) => ({
           tabPress: (e) => {
-            const state = navigation.getState();
-            const tabRoute = state.routes.find((r: any) => r.key === route.key);
-            if (tabRoute?.state && (tabRoute.state.index ?? 0) > 0) {
-              e.preventDefault();
-              navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: route.name }] }));
+            const isFocused = navigation.isFocused();
+            if (isFocused) {
+              // Already on this tab — pop to root screen
+              navigation.dispatch(StackActions.popToTop());
             }
           },
         })}
@@ -137,11 +138,10 @@ export default function TabNavigator() {
         }}
         listeners={({ navigation, route }) => ({
           tabPress: (e) => {
-            const state = navigation.getState();
-            const tabRoute = state.routes.find((r: any) => r.key === route.key);
-            if (tabRoute?.state && (tabRoute.state.index ?? 0) > 0) {
-              e.preventDefault();
-              navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: route.name }] }));
+            const isFocused = navigation.isFocused();
+            if (isFocused) {
+              // Already on this tab — pop to root screen
+              navigation.dispatch(StackActions.popToTop());
             }
           },
         })}
@@ -179,11 +179,10 @@ export default function TabNavigator() {
         }}
         listeners={({ navigation, route }) => ({
           tabPress: (e) => {
-            const state = navigation.getState();
-            const tabRoute = state.routes.find((r: any) => r.key === route.key);
-            if (tabRoute?.state && (tabRoute.state.index ?? 0) > 0) {
-              e.preventDefault();
-              navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: route.name }] }));
+            const isFocused = navigation.isFocused();
+            if (isFocused) {
+              // Already on this tab — pop to root screen
+              navigation.dispatch(StackActions.popToTop());
             }
           },
         })}
@@ -205,11 +204,10 @@ export default function TabNavigator() {
         }}
         listeners={({ navigation, route }) => ({
           tabPress: (e) => {
-            const state = navigation.getState();
-            const tabRoute = state.routes.find((r: any) => r.key === route.key);
-            if (tabRoute?.state && (tabRoute.state.index ?? 0) > 0) {
-              e.preventDefault();
-              navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: route.name }] }));
+            const isFocused = navigation.isFocused();
+            if (isFocused) {
+              // Already on this tab — pop to root screen
+              navigation.dispatch(StackActions.popToTop());
             }
           },
         })}

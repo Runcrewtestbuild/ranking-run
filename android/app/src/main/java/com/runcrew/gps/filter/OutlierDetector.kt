@@ -82,7 +82,7 @@ class OutlierDetector {
             // GPS may report stale/cell-tower positions. Cap distance to prevent
             // straight-line jumps. Raised from 30m to 50m to avoid rejecting valid
             // GPS updates after brief signal gaps (matched with iOS).
-            if (dtSec > 5.0 && dist > 50.0) {
+            if (dtSec > 5.0 && dist > 100.0) {
                 return OutlierResult.Rejected(
                     "Background jump: %.0fm in %.1fs".format(dist, dtSec)
                 )

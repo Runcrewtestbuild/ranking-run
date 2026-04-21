@@ -28,6 +28,7 @@ import type { MyPageStackParamList } from '../../types/navigation';
 import { useTheme } from '../../hooks/useTheme';
 import BlurredBackground from '../../components/common/BlurredBackground';
 import WeeklyGoalBar from '../../components/charts/WeeklyGoalBar';
+import ProgressRingChart from '../../components/charts/ProgressRingChart';
 import type {
   UserStats,
   StatsPeriod,
@@ -43,6 +44,7 @@ import {
   metersToKm,
 } from '../../utils/format';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useToastStore } from '../../stores/toastStore';
 import { FONT_SIZES, SPACING, BORDER_RADIUS } from '../../utils/constants';
 import type { ThemeColors } from '../../utils/constants';
 import RunnerLevelBadge from '../../components/runner/RunnerLevelBadge';
@@ -69,6 +71,14 @@ let _cachedAnalytics: AnalyticsData | null = null;
 let _cachedSocial = { following: 0, followers: 0, likes: 0 };
 let _diskCacheLoaded = false;
 
+/** Reset module-level caches (called on logout to prevent stale data for next user) */
+export function clearMyPageCache() {
+  _cachedStats = null;
+  _cachedAnalytics = null;
+  _cachedSocial = { following: 0, followers: 0, likes: 0 };
+  _diskCacheLoaded = false;
+}
+
 export default function MyPageScreen() {
   const navigation = useNavigation<Nav>();
   const { t } = useTranslation();
@@ -88,6 +98,7 @@ export default function MyPageScreen() {
   const [customGoalInput, setCustomGoalInput] = useState('');
   const [isSavingGoal, setIsSavingGoal] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(_cachedStats === null);
+  const [avatarFailed, setAvatarFailed] = useState(false);
 
   // Runner level info — compute from actual distance so the gauge stays accurate
   // even when the server-stored runner_level is stale / not yet synced.
@@ -106,7 +117,7 @@ export default function MyPageScreen() {
     Animated.timing(xpAnim, {
       toValue: runnerXp.ratio,
       duration: 800,
-      useNativeDriver: false,
+      useNativeDriver: true,
     }).start();
   }, [runnerXp.ratio]);
 
@@ -161,7 +172,7 @@ export default function MyPageScreen() {
         Alert.alert(t('mypage.checkinSuccess'), t('mypage.checkinPoints', { points: res.points_earned }));
       }
     } catch {
-      // silent fail
+      useToastStore.getState().showToast('error', '출석 체크에 실패했습니다');
     } finally {
       setIsCheckingIn(false);
     }
@@ -362,8 +373,12 @@ export default function MyPageScreen() {
         <View style={styles.playerCard}>
           <View style={styles.playerCardTop}>
             <View style={styles.avatarWrapper}>
-              {user?.avatar_url ? (
-                <Image source={{ uri: user.avatar_url }} style={styles.avatarImage} />
+              {user?.avatar_url && !avatarFailed ? (
+                <Image
+                  source={{ uri: user.avatar_url }}
+                  style={styles.avatarImage}
+                  onError={() => setAvatarFailed(true)}
+                />
               ) : (
                 <View style={styles.avatarCircle}>
                   <Ionicons name="person" size={24} color={colors.textTertiary} />
@@ -439,8 +454,10 @@ export default function MyPageScreen() {
             <View style={styles.xpBarRow}>
               <View style={[styles.xpBarTrack, { backgroundColor: runnerTier.color + '30' }]}>
                 <Animated.View style={[styles.xpBarFill, {
-                  width: xpAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+                  width: '100%',
                   backgroundColor: runnerTier.color,
+                  transform: [{ scaleX: xpAnim }],
+                  transformOrigin: 'left center',
                 }]} />
               </View>
               <Text style={[styles.xpBarLabel, { color: tierText }]}>
@@ -666,17 +683,27 @@ export default function MyPageScreen() {
               </View>
               <View style={styles.recordsRow}>
                 <View style={[styles.recordTile, { backgroundColor: colors.success + '18' }]}>
-                  <View style={[styles.recordIconBadge, { backgroundColor: colors.success + '22' }]}>
-                    <Ionicons name="flame" size={18} color={colors.success} />
-                  </View>
-                  <Text style={styles.recordTileValue}>{stats.best_streak_days}{t('mypage.daysUnit')}</Text>
+                  <ProgressRingChart
+                    progress={1}
+                    size={64}
+                    strokeWidth={6}
+                    color={colors.success}
+                    trackColor={colors.success + '30'}
+                    value={`${stats.best_streak_days}`}
+                    subtitle="최고 기록"
+                  />
                   <Text style={styles.recordTileLabel}>{t('mypage.longestStreak')}</Text>
                 </View>
                 <View style={[styles.recordTile, { backgroundColor: colors.secondary + '1A' }]}>
-                  <View style={[styles.recordIconBadge, { backgroundColor: colors.secondary + '22' }]}>
-                    <Ionicons name="calendar" size={16} color={colors.secondary} />
-                  </View>
-                  <Text style={styles.recordTileValue}>{stats.current_streak_days}{t('mypage.daysUnit')}</Text>
+                  <ProgressRingChart
+                    progress={stats.best_streak_days > 0 ? stats.current_streak_days / stats.best_streak_days : 1}
+                    size={64}
+                    strokeWidth={6}
+                    color={colors.secondary}
+                    trackColor={colors.secondary + '30'}
+                    value={`${stats.current_streak_days}`}
+                    subtitle="일 연속"
+                  />
                   <Text style={styles.recordTileLabel}>{t('mypage.currentStreak')}</Text>
                 </View>
               </View>

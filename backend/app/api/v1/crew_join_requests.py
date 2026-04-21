@@ -128,6 +128,9 @@ async def approve_join_request(
     service: CrewJoinRequestService = Depends(
         Provide[Container.crew_join_request_service]
     ),
+    notification_service: NotificationService = Depends(
+        Provide[Container.notification_service]
+    ),
 ) -> JoinRequestResponse:
     result = await service.approve_request(
         db=db,
@@ -135,6 +138,44 @@ async def approve_join_request(
         request_id=request_id,
         reviewer_id=current_user.id,
     )
+
+    # Notify all crew members about the new member
+    try:
+        crew_result = await db.execute(
+            select(Crew.name).where(Crew.id == crew_id)
+        )
+        crew_name = crew_result.scalar_one_or_none() or ""
+
+        # Get the approved user's info from the result dict
+        user_info = result.get("user", {})
+        approved_user_id = UUID(user_info["id"]) if user_info.get("id") else None
+        approved_nickname = user_info.get("nickname") or ""
+
+        # Get all crew members
+        members_result = await db.execute(
+            select(CrewMember.user_id).where(CrewMember.crew_id == crew_id)
+        )
+        member_ids = [row[0] for row in members_result.all()]
+
+        for member_id in member_ids:
+            if member_id == approved_user_id:
+                continue
+            try:
+                await notification_service.create_and_send(
+                    db=db,
+                    user_id=member_id,
+                    notification_type="crew_member_joined",
+                    actor_id=approved_user_id or current_user.id,
+                    title=crew_name,
+                    body=f"{approved_nickname}님이 크루에 가입했습니다.",
+                    target_id=str(crew_id),
+                    target_type="crew",
+                )
+            except Exception:
+                logger.warning("Failed to send crew_member_joined notification to user %s", member_id)
+    except Exception:
+        logger.warning("Failed to send crew_member_joined notifications for crew %s", crew_id)
+
     return JoinRequestResponse(**result)
 
 

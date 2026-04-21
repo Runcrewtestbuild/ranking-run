@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  Pressable,
   Alert,
   Platform,
   StatusBar,
@@ -67,13 +68,12 @@ export default function RunningScreen() {
     gpsStatus,
     gpsAccuracy,
     distanceSource,
-    routePoints,
+
     calories,
     heartRate,
     cadence,
     elevationGainMeters,
     watchConnected,
-    currentLocation,
     isApproachingStart,
     isNearStart,
     loopDetected,
@@ -93,13 +93,11 @@ export default function RunningScreen() {
     gpsStatus: s.gpsStatus,
     gpsAccuracy: s.gpsAccuracy,
     distanceSource: s.distanceSource,
-    routePoints: s.routePoints,
     calories: s.calories,
     heartRate: s.heartRate,
     cadence: s.cadence,
     elevationGainMeters: s.elevationGainMeters,
     watchConnected: s.watchConnected,
-    currentLocation: s.currentLocation,
     isApproachingStart: s.isApproachingStart,
     isNearStart: s.isNearStart,
     loopDetected: s.loopDetected,
@@ -110,6 +108,10 @@ export default function RunningScreen() {
     splits: s.splits,
     snappedRoutePoints: s.snappedRoutePoints,
   })));
+
+  // currentLocation is a new object every GPS tick — subscribe separately
+  // so it doesn't trigger useShallow re-evaluation of 20+ other fields.
+  const currentLocation = useRunningStore((s) => s.currentLocation);
 
   // Actions — stable references, subscribe individually
   const startSession = useRunningStore((s) => s.startSession);
@@ -184,21 +186,9 @@ export default function RunningScreen() {
     };
   })();
 
-  // Metronome auto-start/stop
-  const [metronomeMuted, setMetronomeMuted] = useState(false);
-  const MetronomeModule = NativeModules.MetronomeModule;
-
-  useEffect(() => {
-    if (!MetronomeModule) return;
-    const bpm = runGoal?.type === 'program' ? (runGoal.cadenceBPM ?? 0) : 0;
-
-    if (phase === 'running' && bpm > 0 && !metronomeMuted) {
-      MetronomeModule.start(bpm);
-    } else {
-      MetronomeModule.stop();
-    }
-    return () => { MetronomeModule.stop(); };
-  }, [phase, runGoal?.type, runGoal?.cadenceBPM, metronomeMuted]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Metronome is controlled solely by WorldScreen (which stays mounted
+  // while RunningScreen is pushed). Duplicate controller here caused
+  // race conditions — removed.
 
   const [countdown, setCountdown] = useState<number | null>(null);
   const [loopHapticFired, setLoopHapticFired] = useState(false);
@@ -335,10 +325,13 @@ export default function RunningScreen() {
     });
   }, [courseId]);
 
-  // Course navigation hook
-  const navLocation = currentLocation
-    ? { latitude: currentLocation.latitude, longitude: currentLocation.longitude }
-    : null;
+  // Course navigation hook — memoize location to prevent new object reference every render
+  const navLocation = useMemo(
+    () => currentLocation
+      ? { latitude: currentLocation.latitude, longitude: currentLocation.longitude }
+      : null,
+    [currentLocation?.latitude, currentLocation?.longitude],
+  );
   const courseNavigation = useCourseNavigation(
     courseRoute,
     navLocation,
@@ -364,11 +357,12 @@ export default function RunningScreen() {
   }, [currentLocation, phase, courseId, cpUpdateLocation]);
 
   // Log deviation for result screen visualization
+  const routePointsLen = useRunningStore((s) => s.routePoints.length);
   useEffect(() => {
     if (courseNavigation && courseId && phase === 'running') {
-      addDeviationPoint(routePoints.length - 1, courseNavigation.deviationMeters);
+      addDeviationPoint(routePointsLen - 1, courseNavigation.deviationMeters);
     }
-  }, [courseNavigation, routePoints.length, courseId, phase, addDeviationPoint]);
+  }, [courseNavigation, routePointsLen, courseId, phase, addDeviationPoint]);
 
   // Collect snapped route points during course running
   useEffect(() => {
@@ -693,9 +687,11 @@ export default function RunningScreen() {
     return myLocation ?? persistedLocation ?? undefined;
   }, [courseId, courseNavigation?.snappedPosition, myLocation, persistedLocation]);
 
+  // For course running, use snapped route; for free running, RouteMapView
+  // subscribes directly to the store via subscribeToRunningRoute prop.
   const mapRoutePoints = useMemo(() => {
-    return courseId && snappedRoutePoints.length > 0 ? snappedRoutePoints : routePoints;
-  }, [courseId, snappedRoutePoints, routePoints]);
+    return courseId && snappedRoutePoints.length > 0 ? snappedRoutePoints : undefined;
+  }, [courseId, snappedRoutePoints]);
 
   const mapCheckpoints = useMemo(() => {
     return cpMarkerData.length > 0 ? cpMarkerData : undefined;
@@ -747,25 +743,7 @@ export default function RunningScreen() {
               <Ionicons name="watch-outline" size={12} color={colors.success} />
             </View>
           )}
-          {runGoal?.type === 'program' && (runGoal.cadenceBPM ?? 0) > 0 && (
-            <TouchableOpacity
-              style={styles.metronomeChip}
-              onPress={() => setMetronomeMuted(!metronomeMuted)}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name={metronomeMuted ? 'musical-note' : 'musical-notes'}
-                size={12}
-                color={metronomeMuted ? colors.textTertiary : colors.primary}
-              />
-              <Text style={[
-                styles.metronomeChipText,
-                !metronomeMuted && { color: colors.primary },
-              ]}>
-                {runGoal.cadenceBPM}
-              </Text>
-            </TouchableOpacity>
-          )}
+          {/* Metronome mute toggle is in WorldScreen */}
           {(courseId || runGoal?.type === 'program' || runGoal?.type === 'interval') && (
             <TouchableOpacity
               style={styles.voiceChip}
@@ -813,7 +791,8 @@ export default function RunningScreen() {
         <View style={styles.miniMapContainer}>
           <RouteMapView
             ref={mapRef}
-            routePoints={mapRoutePoints}
+            routePoints={mapRoutePoints ?? []}
+            subscribeToRunningRoute={!courseId || snappedRoutePoints.length === 0}
             hideRouteMarkers
             previewPolyline={courseRoute ?? undefined}
             checkpoints={mapCheckpoints}
@@ -1030,49 +1009,45 @@ export default function RunningScreen() {
         <View style={styles.controls}>
           {phase === 'paused' ? (
             <>
-              <TouchableOpacity
-                style={styles.resumeButton}
+              <Pressable
+                style={({ pressed }) => [styles.resumeButton, pressed && { opacity: 0.7 }]}
                 onPress={handleResume}
-                activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel={t('running.controls.resume')}
               >
                 <Ionicons name="play" size={28} color={colors.white} />
                 <Text style={styles.resumeLabel}>{t('running.controls.resume')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.stopButton}
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.stopButton, pressed && { opacity: 0.7 }]}
                 onPress={handleStop}
-                activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel={t('running.controls.stop')}
               >
                 <Ionicons name="stop" size={28} color={colors.white} />
                 <Text style={styles.stopLabel}>{t('running.controls.stop')}</Text>
-              </TouchableOpacity>
+              </Pressable>
             </>
           ) : (
             <>
-              <TouchableOpacity
-                style={styles.pauseButton}
+              <Pressable
+                style={({ pressed }) => [styles.pauseButton, pressed && { opacity: 0.7 }]}
                 onPress={handlePause}
-                activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel={t('running.controls.pause')}
               >
                 <Ionicons name="pause" size={28} color={colors.text} />
                 <Text style={styles.pauseLabel}>{t('running.controls.pause')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.stopButton}
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.stopButton, pressed && { opacity: 0.7 }]}
                 onPress={handleStop}
-                activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel={t('running.controls.stop')}
               >
                 <Ionicons name="stop" size={28} color={colors.white} />
                 <Text style={styles.stopLabel}>{t('running.controls.stop')}</Text>
-              </TouchableOpacity>
+              </Pressable>
             </>
           )}
         </View>
@@ -1711,22 +1686,6 @@ const createStyles = (c: ThemeColors) => StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // Metronome chip
-  metronomeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    padding: SPACING.xs + 2,
-    paddingHorizontal: SPACING.sm,
-    borderRadius: BORDER_RADIUS.full,
-    backgroundColor: c.surface,
-  },
-  metronomeChipText: {
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '700',
-    color: c.textSecondary,
-    fontVariant: ['tabular-nums'] as const,
-  },
 
   // Checkpoint pass banner
   checkpointBanner: {

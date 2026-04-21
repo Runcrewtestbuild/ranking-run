@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react'
 import {
   View,
   Text,
-  Pressable,
   StyleSheet,
   Animated,
   Modal,
@@ -14,7 +13,9 @@ import {
   ScrollView,
   Switch,
   BackHandler,
+  InputAccessoryView,
 } from 'react-native';
+import { Pressable } from '../../lib/touchables';
 import { Ionicons } from '../../lib/icons';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
@@ -22,6 +23,8 @@ import type { TFunction } from 'i18next';
 import { useTheme } from '../../hooks/useTheme';
 import type { ThemeColors } from '../../utils/constants';
 import { FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '../../utils/constants';
+import { useAuthStore } from '../../stores/authStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 
 // ---- Types ----
 
@@ -30,6 +33,7 @@ export interface RunGoal {
   value: number | null; // meters for distance, seconds for time, seconds/km for pace, meters for program, total seconds for interval
   targetTime?: number | null; // program: target time in seconds
   cadenceBPM?: number | null; // program: metronome BPM (null/0 = off)
+  adaptiveMetronome?: boolean; // program: auto-adjust BPM based on pace status
   intervalRunSeconds?: number; // interval: run phase duration
   intervalWalkSeconds?: number; // interval: walk phase duration
   intervalSets?: number; // interval: number of sets
@@ -116,12 +120,52 @@ function formatTimeInputI18n(totalSeconds: number, t: TFunction): string {
   return parts.length > 0 ? parts.join(' ') : t('goal.timeFormatZero');
 }
 
-/** Compute recommended BPM from pace (sec/km). Clamped 140-200. */
-function computeRecommendedBPM(paceSecPerKm: number): number {
-  // Empirical mapping: faster pace → higher cadence
-  // ~150 BPM at 8:00/km, ~165 at 6:00/km, ~180 at 4:00/km
-  const raw = Math.round(210 - paceSecPerKm / 8);
-  return Math.max(140, Math.min(200, raw));
+/**
+ * Get effective stride length in meters.
+ * Priority: custom setting > height-based estimate > default.
+ *
+ * Running stride ≈ height × 0.52
+ * Based on aggregated research data:
+ *   - Walking stride: height × 0.415
+ *   - Running stride: height × 0.52
+ *   - Optimal range: 40~50% of height (scientific consensus)
+ *   - Sub-3hr marathoners: ~130cm, 4hr+: ~100cm
+ * Sources: Marathon Handbook, ScienceInsights, Omnicalculator
+ */
+function getStrideLengthM(customStrideCm: number | null | undefined, heightCm: number | null | undefined): number {
+  if (customStrideCm && customStrideCm >= 40 && customStrideCm <= 200) {
+    return customStrideCm / 100;
+  }
+  if (heightCm && heightCm >= 100 && heightCm <= 230) {
+    return (heightCm * 0.52) / 100;
+  }
+  return 0.88; // default ~170cm × 0.52
+}
+
+/**
+ * Compute recommended BPM from pace (sec/km) and base stride length.
+ *
+ * Stride length increases with speed — faster pace = longer stride.
+ * Base stride (from height) is calibrated at ~7:00/km (easy jog).
+ * Adjustment: ±8% per min/km deviation from 7:00 baseline.
+ *
+ * Examples (170cm, base stride 88cm):
+ *   7:00/km → 88cm → 162 BPM
+ *   6:00/km → 95cm → 175 BPM
+ *   5:00/km → 102cm → 196 BPM  (still under 200)
+ *   4:00/km → 109cm → 153 BPM? no — 183 BPM
+ *
+ * Formula: adjustedStride = baseStride × (1 + (420 - pace) × 0.0013)
+ *   where 420 = 7:00/km in seconds, 0.0013 ≈ 8% per 60s
+ */
+function computeRecommendedBPM(paceSecPerKm: number, baseStrideM: number): number {
+  // Adjust stride for pace (baseline = 420s/km = 7:00/km)
+  // 0.002 per second = ~12% per min/km. Faster pace → longer stride.
+  const paceAdjustment = 1 + (420 - paceSecPerKm) * 0.002;
+  const adjustedStride = baseStrideM * Math.max(0.85, Math.min(1.45, paceAdjustment));
+  const stepsPerKm = 1000 / adjustedStride;
+  const raw = Math.round((stepsPerKm / paceSecPerKm) * 60);
+  return Math.max(100, Math.min(210, raw));
 }
 
 // ---- Wheel Picker ----
@@ -336,6 +380,8 @@ export default function RunGoalSheet({
 
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const isClosingRef = useRef(false);
+  const sheetScrollRef = useRef<ScrollView>(null);
+  const strideInputRef = useRef<TextInput>(null);
 
   // Derive overlay opacity from sheet position — synced so no "extra layer" flash
   const overlayOpacity = useMemo(
@@ -385,6 +431,9 @@ export default function RunGoalSheet({
     goal.type === 'program' ? (goal.cadenceBPM ?? 0) : 0,
   );
   const [manualBpmInput, setManualBpmInput] = useState('');
+  const [adaptiveMetronome, setAdaptiveMetronome] = useState(
+    goal.type === 'program' ? (goal.adaptiveMetronome ?? false) : false,
+  );
 
   // Sync local state when goal prop changes
   useEffect(() => {
@@ -409,8 +458,9 @@ export default function RunGoalSheet({
       setProgramTimeSeconds(t > 0 ? t % 60 : 0);
       setSelectedCadence(goal.cadenceBPM ?? 0);
       setManualBpmInput(goal.cadenceBPM && goal.cadenceBPM > 0 ? String(goal.cadenceBPM) : '');
+      setAdaptiveMetronome(goal.adaptiveMetronome ?? false);
     }
-  }, [goal.type, goal.value, goal.targetTime, goal.cadenceBPM]);
+  }, [goal.type, goal.value, goal.targetTime, goal.cadenceBPM, goal.adaptiveMetronome]);
 
   // Animate in / reset on close
   useEffect(() => {
@@ -507,6 +557,7 @@ export default function RunGoalSheet({
     setProgramTimeSeconds(0);
     setSelectedCadence(0);
     setManualBpmInput('');
+    setAdaptiveMetronome(false);
     setIsAutoCadence(true);
     setIntervalRunSec(180);
     setIntervalWalkSec(60);
@@ -533,6 +584,7 @@ export default function RunGoalSheet({
         value: programDistance,
         targetTime: totalSecs > 0 ? totalSecs : null,
         cadenceBPM: selectedCadence > 0 ? selectedCadence : null,
+        adaptiveMetronome: selectedCadence > 0 ? adaptiveMetronome : undefined,
       });
     } else {
       onGoalChange({
@@ -577,8 +629,16 @@ export default function RunGoalSheet({
 
   const isProgramComplete = selectedType === 'program' && programDistance && programDistance > 0 && programTargetTime > 0;
 
-  // Auto-set BPM from computed pace when distance+time are both set
-  const recommendedBPM = computedPace ? computeRecommendedBPM(computedPace) : null;
+  // Auto-set BPM from computed pace + user's stride length.
+  // Use local state for stride so BPM updates instantly on every keystroke,
+  // then persist to settingsStore on valid input.
+  const userHeight = useAuthStore((s) => s.user?.height_cm);
+  const savedStride = useSettingsStore((s) => s.strideLengthCm);
+  const persistStride = useSettingsStore((s) => s.setStrideLengthCm);
+  const [localStrideCm, setLocalStrideCm] = useState<number | null>(savedStride);
+  const [strideInput, setStrideInput] = useState(savedStride ? String(savedStride) : '');
+  const effectiveStride = getStrideLengthM(localStrideCm, userHeight);
+  const recommendedBPM = computedPace ? computeRecommendedBPM(computedPace, effectiveStride) : null;
   const [isAutoCadence, setIsAutoCadence] = useState(true);
 
   useEffect(() => {
@@ -650,6 +710,7 @@ export default function RunGoalSheet({
           </View>
 
           <ScrollView
+            ref={sheetScrollRef}
             style={styles.scrollContent}
             showsVerticalScrollIndicator={false}
             bounces={false}
@@ -831,6 +892,88 @@ export default function RunGoalSheet({
                   )}
                 </View>
 
+                {/* Stride length customization */}
+                {computedPace && (
+                  <View style={styles.pgSection}>
+                    <View style={styles.pgHeader}>
+                      <Ionicons name="footsteps-outline" size={16} color={colors.primary} />
+                      <Text style={styles.pgHeaderText}>{t('goal.strideSetting')}</Text>
+                      <View style={{ flex: 1 }} />
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 90, justifyContent: 'flex-end' }}>
+                        <View style={{
+                          paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, width: 46, alignItems: 'center',
+                          backgroundColor: localStrideCm ? colors.primary + '18' : colors.textTertiary + '18',
+                        }}>
+                          <Text style={{
+                            fontSize: 11, fontWeight: '700',
+                            color: localStrideCm ? colors.primary : colors.textTertiary,
+                          }}>
+                            {localStrideCm ? t('goal.strideCustom') : t('goal.auto')}
+                          </Text>
+                        </View>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text, minWidth: 38, textAlign: 'right' }}>
+                          {Math.round(effectiveStride * 100)}cm
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, height: 44 }}>
+                      <TextInput
+                        ref={strideInputRef}
+                        style={[styles.pgBpmInput, { flex: 1 , maxWidth: 200 }]}
+                        placeholder={t('goal.stridePlaceholder')}
+                        placeholderTextColor={colors.textTertiary}
+                        keyboardType="number-pad"
+                        inputAccessoryViewID="stride-done"
+                        value={strideInput}
+                        onChangeText={(v) => {
+                          setStrideInput(v);
+                          const num = parseInt(v, 10);
+                          if (v === '') {
+                            setLocalStrideCm(null);
+                            persistStride(null);
+                            if (computedPace) {
+                              const stride = getStrideLengthM(null, userHeight);
+                              setSelectedCadence(computeRecommendedBPM(computedPace, stride));
+                            }
+                          } else if (!isNaN(num) && num >= 30 && num <= 180) {
+                            setLocalStrideCm(num);
+                            persistStride(num);
+                            if (computedPace) {
+                              const bpm = computeRecommendedBPM(computedPace, num / 100);
+                              setSelectedCadence(bpm);
+                              if (!isAutoCadence) setIsAutoCadence(true);
+                            }
+                          }
+                        }}
+                        selectTextOnFocus
+                      />
+                      <Text style={[styles.pgBpmInputUnit, { width: 28 }]}>cm</Text>
+                      <Pressable
+                        style={{ width: 40 }}
+                        onPress={() => {
+                          if (!localStrideCm) return;
+                          setStrideInput('');
+                          setLocalStrideCm(null);
+                          persistStride(null);
+                          if (computedPace) {
+                            const stride = getStrideLengthM(null, userHeight);
+                            setSelectedCadence(computeRecommendedBPM(computedPace, stride));
+                          }
+                        }}
+                      >
+                        <Text style={{ color: localStrideCm ? colors.primary : 'transparent', fontSize: 13, fontWeight: '600' }}>{t('goal.reset')}</Text>
+                      </Pressable>
+                    </View>
+                    <Text style={[styles.pgMetronomeHint, { marginTop: 4 }]}>
+                      {localStrideCm
+                        ? t('goal.strideHintCustom', { value: localStrideCm })
+                        : userHeight
+                          ? t('goal.strideHintHeight', { height: userHeight })
+                          : t('goal.strideHintNoHeight')}
+                    </Text>
+                  </View>
+                )}
+
                 {/* ③ Cadence metronome */}
                 <View style={styles.pgSection}>
                   <View style={styles.pgHeader}>
@@ -838,7 +981,7 @@ export default function RunGoalSheet({
                     <Ionicons name="musical-notes-outline" size={16} color={colors.primary} />
                     <Text style={styles.pgHeaderText}>{t('goal.metronome')}</Text>
                     {isAutoCadence && recommendedBPM ? (
-                      <Text style={styles.pgAutoTag}>{t('goal.auto')}</Text>
+                      <Text style={styles.pgAutoTag}>{localStrideCm ? t('goal.strideBased') : t('goal.auto')}</Text>
                     ) : null}
                     <View style={{ flex: 1 }} />
                     <Switch
@@ -867,7 +1010,7 @@ export default function RunGoalSheet({
                     <View style={styles.pgBpmDisplay}>
                       <Text style={styles.pgBpmBig}>{selectedCadence}</Text>
                       <Text style={styles.pgBpmUnit}>BPM</Text>
-                      <Text style={styles.pgBpmSub}>{t('goal.recommendedCadenceAuto')}</Text>
+                      <Text style={styles.pgBpmSub}>{localStrideCm ? `보폭 ${localStrideCm}cm 기반 케이던스` : t('goal.recommendedCadenceAuto')}</Text>
                     </View>
                   )}
                   {selectedCadence > 0 && !isAutoCadence && (
@@ -877,6 +1020,7 @@ export default function RunGoalSheet({
                         placeholder="100 ~ 220"
                         placeholderTextColor={colors.textTertiary}
                         keyboardType="number-pad"
+                        inputAccessoryViewID="stride-done"
                         value={manualBpmInput}
                         onChangeText={(v) => {
                           setManualBpmInput(v);
@@ -894,6 +1038,20 @@ export default function RunGoalSheet({
                   )}
                   {selectedCadence === 0 && (
                     <Text style={styles.pgMetronomeHint}>{t('goal.metronomeHint')}</Text>
+                  )}
+                  {selectedCadence > 0 && (
+                    <View style={styles.pgAdaptiveRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.pgAdaptiveLabel}>가변 메트로놈</Text>
+                        <Text style={styles.pgAdaptiveDesc}>목표 페이스에 맞춰 실시간으로 박자를 조절합니다. 페이스가 떨어지면 템포를 높여주고, 오버페이스 시 템포를 낮춰 체력 소모를 줄여줍니다.</Text>
+                      </View>
+                      <Switch
+                        value={adaptiveMetronome}
+                        onValueChange={setAdaptiveMetronome}
+                        trackColor={{ false: '#D1D5DB', true: '#FF7A33' }}
+                        thumbColor="#FFFFFF"
+                      />
+                    </View>
                   )}
                 </View>
 
@@ -959,7 +1117,7 @@ export default function RunGoalSheet({
                           android_ripple={{ color: colors.surfaceLight, foreground: true }}
                           onPress={() => setIntervalWalkSec(preset.value)}
                         >
-                          <Text style={[styles.pgChipText, isActive && styles.pgChipTextActive]}>
+                          <Text style={[styles.pgChipText, isActive && styles.pgChipTextActive]} numberOfLines={1}>
                             {preset.label}
                           </Text>
                         </Pressable>
@@ -1058,8 +1216,8 @@ export default function RunGoalSheet({
     </KeyboardAvoidingView>
   );
 
-  // Android: absolute overlay (no Dialog = no touch desync)
-  // iOS: native Modal (proper UIViewController)
+  // Android: absolute overlay (keeps touch system consistent with lib/touchables)
+  // iOS: native Modal with fade animation
   if (IS_ANDROID) {
     if (!androidShowSheet) return null;
     return (
@@ -1070,9 +1228,21 @@ export default function RunGoalSheet({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="none" statusBarTranslucent onRequestClose={animateClose}>
-      {sheetInner}
-    </Modal>
+    <>
+      <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={animateClose}>
+        {sheetInner}
+      </Modal>
+      {Platform.OS === 'ios' && (
+        <InputAccessoryView nativeID="stride-done">
+          <View style={styles.keyboardDoneBar}>
+            <View style={{ flex: 1 }} />
+            <Pressable onPress={() => Keyboard.dismiss()} hitSlop={8}>
+              <Text style={styles.keyboardDoneText}>완료</Text>
+            </Pressable>
+          </View>
+        </InputAccessoryView>
+      )}
+    </>
   );
 }
 
@@ -1225,7 +1395,8 @@ const createStyles = (c: ThemeColors) =>
     pgChip: {
       flex: 1,
       alignItems: 'center',
-      paddingHorizontal: SPACING.sm,
+      justifyContent: 'center',
+      paddingHorizontal: 4,
       paddingVertical: SPACING.sm + 2,
       borderRadius: BORDER_RADIUS.full,
       backgroundColor: c.card,
@@ -1237,7 +1408,7 @@ const createStyles = (c: ThemeColors) =>
       borderColor: c.primary,
     },
     pgChipText: {
-      fontSize: FONT_SIZES.sm,
+      fontSize: 12,
       fontWeight: '600',
       color: c.text,
     },
@@ -1460,6 +1631,24 @@ const createStyles = (c: ThemeColors) =>
       color: c.textTertiary,
       textAlign: 'center',
     },
+    pgAdaptiveRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: SPACING.sm,
+      paddingTop: SPACING.sm,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.border,
+    },
+    pgAdaptiveLabel: {
+      fontSize: FONT_SIZES.sm,
+      fontWeight: '600',
+      color: c.text,
+    },
+    pgAdaptiveDesc: {
+      fontSize: FONT_SIZES.xs,
+      color: c.textSecondary,
+      marginTop: 2,
+    },
     // Summary
     pgSummary: {
       backgroundColor: c.primary + '10',
@@ -1579,5 +1768,19 @@ const createStyles = (c: ThemeColors) =>
       fontSize: FONT_SIZES.md,
       fontWeight: '800',
       color: c.white,
+    },
+    keyboardDoneBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      backgroundColor: c.card,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.border,
+    },
+    keyboardDoneText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: c.primary,
     },
   });

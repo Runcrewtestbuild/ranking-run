@@ -186,9 +186,8 @@ export default function CrewNotificationsScreen() {
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
-                <Ionicons name="checkmark-circle-outline" size={48} color={colors.textTertiary} />
-                <Text style={styles.emptyTitle}>{t('crew.noNotifications')}</Text>
-                <Text style={styles.emptyDesc}>{t('crew.noNotificationsDesc')}</Text>
+                <Ionicons name="notifications-off-outline" size={48} color={colors.textTertiary} />
+                <Text style={styles.emptyText}>알림이 없습니다</Text>
               </View>
             }
             removeClippedSubviews={true}
@@ -330,16 +329,9 @@ const createStyles = (c: ThemeColors) =>
       paddingTop: 100,
       gap: SPACING.md,
     },
-    emptyTitle: {
+    emptyText: {
       fontSize: FONT_SIZES.md,
-      fontWeight: '700',
-      color: c.textSecondary,
-    },
-    emptyDesc: {
-      fontSize: FONT_SIZES.sm,
-      fontWeight: '500',
+      fontWeight: '600',
       color: c.textTertiary,
-      textAlign: 'center',
-      paddingHorizontal: SPACING.xxl,
     },
   });

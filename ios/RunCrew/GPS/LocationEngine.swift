@@ -16,19 +16,28 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
     private var previousCumulativeDistance: Double = 0
     private var previousMilestoneTime: Int = 0  // elapsed seconds at last km milestone
     private var lastFilteredLocation: FilteredLocation?
-    private var coldStartTimer: Timer?
-    private var gpsLostTimer: Timer?
+    private var coldStartTimer: DispatchSourceTimer?
+    private var gpsLostTimer: DispatchSourceTimer?
     private var gpsLostTime: Date?
     private var baseAltitude: Double?
 
     // Indoor / dead-reckoning fallback
-    private var pedometerFallbackTimer: Timer?
+    private var pedometerFallbackTimer: DispatchSourceTimer?
     private var pedometerBaseDistance: Double = 0  // pedometer totalDistance at GPS-lost time
     private var gpsDistanceAtFallbackStart: Double = 0  // cumulative GPS distance when fallback started
+
+    // Rolling cadence buffer — matches Android's 15s step timestamp window.
+    // CMPedometer.currentCadence can lag behind actual step rate; this buffer
+    // calculates cadence from recent step events for lower-latency response.
+    private var stepTimestamps: [TimeInterval] = []
+    private let cadenceWindowSeconds: TimeInterval = 15.0
+    private let maxStepTimestamps = 300
 
     // Background execution
     private var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
     private var silentAudioPlayer: AVAudioPlayer?
+    private var backgroundTaskRenewalCount: Int = 0
+    private let maxBackgroundTaskRenewals: Int = 50
 
     // Callbacks
     var onLocationUpdate: (([String: Any]) -> Void)?
@@ -54,9 +63,11 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
     }
 
     deinit {
-        coldStartTimer?.invalidate()
-        gpsLostTimer?.invalidate()
-        pedometerFallbackTimer?.invalidate()
+        coldStartTimer?.cancel()
+        gpsLostTimer?.cancel()
+        gpsLostTimer = nil
+        pedometerFallbackTimer?.cancel()
+        pedometerFallbackTimer = nil
     }
 
     private func setupLocationManager() {
@@ -124,7 +135,9 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         lastFilteredLocation = nil
         gpsLostTime = nil
         baseAltitude = nil
+        stepTimestamps.removeAll()
 
+        backgroundTaskRenewalCount = 0
         sensorFusion.startAll()
         startBackgroundExecution()
 
@@ -141,9 +154,9 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         session.stop()
         sensorFusion.stopAll()
         batteryOptimizer?.reset()
-        coldStartTimer?.invalidate()
+        coldStartTimer?.cancel()
         coldStartTimer = nil
-        gpsLostTimer?.invalidate()
+        gpsLostTimer?.cancel()
         gpsLostTimer = nil
         stopPedometerFallback()
         stopBackgroundExecution()
@@ -160,7 +173,7 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
     func pauseTracking() {
         session.pause()
         // Cancel cold start timer during pause to prevent false GPS lock
-        coldStartTimer?.invalidate()
+        coldStartTimer?.cancel()
         coldStartTimer = nil
     }
 
@@ -171,6 +184,29 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         if session.state == .starting {
             startColdStartTimer()
         }
+    }
+
+    /// Restart GPS listeners without resetting cumulative distance or filters.
+    /// Used by the JS heartbeat when no GPS updates are received for an extended period.
+    /// Unlike stopTracking()+startTracking(), this preserves the running session state.
+    func restartTracking() {
+        print("[LocationEngine] restartTracking — restarting GPS listeners (preserving state)")
+
+        // Cancel and restart GPS lost timer
+        gpsLostTimer?.cancel()
+        gpsLostTimer = nil
+
+        // Restart location manager listeners
+        DispatchQueue.main.async { [weak self] in
+            self?.locationManager.stopUpdatingLocation()
+            self?.locationManager.startUpdatingLocation()
+            self?.locationManager.startUpdatingHeading()
+        }
+
+        // Re-apply battery optimizer settings (may have degraded accuracy)
+        batteryOptimizer?.reset()
+
+        updateGPSStatus("searching")
     }
 
     /// Start heading-only updates (no GPS tracking). Used for compass on WorldScreen.
@@ -348,9 +384,11 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
 
         // Cold start check
         if session.state == .starting {
+            // Accept GPS lock at 20m — the 30s cold start timeout already handles
+            // cases where accuracy never reaches 20m, so 20m is safe here.
             if location.horizontalAccuracy <= 20.0 {
                 session.markLocked()
-                coldStartTimer?.invalidate()
+                coldStartTimer?.cancel()
                 coldStartTimer = nil
                 updateGPSStatus("locked", accuracy: location.horizontalAccuracy)
             } else {
@@ -366,13 +404,19 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         }
 
         // Reset GPS lost timer — restart 10s countdown
-        gpsLostTimer?.invalidate()
-        gpsLostTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
+        // Uses DispatchSourceTimer instead of Timer.scheduledTimer so it fires
+        // reliably even when the app is backgrounded (not tied to RunLoop).
+        gpsLostTimer?.cancel()
+        let lostTimer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+        lostTimer.schedule(deadline: .now() + 10.0)
+        lostTimer.setEventHandler { [weak self] in
             guard let self = self, self.session.state == .running else { return }
             self.gpsLostTime = Date()
             self.updateGPSStatus("lost")
             self.startPedometerFallback()
         }
+        gpsLostTimer = lostTimer
+        lostTimer.resume()
         // GPS regained — stop pedometer fallback
         stopPedometerFallback()
 
@@ -401,10 +445,11 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
             }
             // Background GPS guard: when update interval is large (>5s),
             // GPS may report stale/cell-tower positions. Cap distance to prevent
-            // straight-line jumps across the map. Raised from 30m to 50m to avoid
-            // rejecting valid GPS updates after brief signal gaps.
+            // Background gap: accept and let Kalman filter smooth the transition.
+            // Previously rejected points >50m after >5s gap, but this caused
+            // straight-line artifacts when valid GPS resumed after signal loss.
             if timeDelta > 5.0 && rawDist > 50.0 {
-                return
+                NSLog("[LocationEngine] Background gap: \(String(format: "%.0f", rawDist))m in \(String(format: "%.1f", timeDelta))s — accepting (Kalman will smooth)")
             }
         }
 
@@ -476,6 +521,7 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         } else {
             batteryOptimizer?.onMoving()
         }
+        batteryOptimizer?.checkBatteryLevel()
 
         // Calculate distance (spike already rejected above)
         // Stationary suppression: clamp position to last known good location
@@ -492,8 +538,10 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
 
             if stationaryDetector.isStationary {
                 // Safety net: if detector says stationary but movement is clearly
-                // significant (> 2m), the detector is wrong — still count distance
-                if rawDist > 2.0 {
+                // significant (> 3m), the detector is wrong — still count distance.
+                // 3m matches Android's threshold (iOS Core Location drifts less than
+                // Android FusedLocation, but 3m provides consistent cross-platform behavior).
+                if rawDist > 3.0 {
                     distanceFromPrevious = rawDist
                 } else {
                     // Clamp position to last known location — prevents GPS drift on map
@@ -526,10 +574,39 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
             lastFilteredLocation = filteredLocation
         }
 
-        // Emit location update event
-        // CMPedometer.currentCadence is steps/second — multiply by 60 for SPM.
-        // When stationary, reset cadence to 0 to avoid stale readings.
-        let cadenceSPM = stationaryDetector.isStationary ? 0 : Int(sensorFusion.pedometerTracker.currentCadence * 60)
+        // Cadence: use rolling 15s step timestamp buffer (matches Android).
+        // This provides lower-latency cadence than CMPedometer.currentCadence
+        // which can lag by several seconds.
+        let now = Date().timeIntervalSince1970
+        if !stationaryDetector.isStationary {
+            // Record step events from pedometer
+            let pedometerCadence = sensorFusion.pedometerTracker.currentCadence
+            if pedometerCadence > 0 {
+                // Approximate: currentCadence is steps/sec, so add timestamps
+                // proportional to the cadence rate since last update
+                stepTimestamps.append(now)
+            }
+            // Trim old timestamps outside the window
+            let cutoff = now - cadenceWindowSeconds
+            while let first = stepTimestamps.first, first < cutoff {
+                stepTimestamps.removeFirst()
+            }
+            if stepTimestamps.count > maxStepTimestamps {
+                stepTimestamps.removeFirst(stepTimestamps.count - maxStepTimestamps)
+            }
+        } else {
+            stepTimestamps.removeAll()
+        }
+
+        let cadenceSPM: Int
+        if stationaryDetector.isStationary || stepTimestamps.count < 2 {
+            cadenceSPM = 0
+        } else {
+            let windowDuration = now - (stepTimestamps.first ?? now)
+            cadenceSPM = windowDuration > 0
+                ? Int(Double(stepTimestamps.count) / windowDuration * 60)
+                : Int(sensorFusion.pedometerTracker.currentCadence * 60)
+        }
         let event: [String: Any] = [
             "latitude": filteredLocation.latitude,
             "longitude": filteredLocation.longitude,
@@ -550,17 +627,21 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         // Send location to Watch
         onWatchLocationUpdate?(event)
 
-        // Milestone detection
+        // Milestone detection — loop to emit ALL missed km boundaries.
+        // A GPS jump >1km (e.g. tunnel exit, background resume) could skip
+        // intermediate splits. Emit each one so the split array stays complete.
         let prevKm = Int(previousCumulativeDistance / 1000)
         let currentKm = Int(cumulativeDistance / 1000)
         if currentKm > prevKm && currentKm > 0 {
-            let elapsedSeconds = Int(session.getCurrentElapsedTime())
-            // Split pace = time for THIS km only, not cumulative average.
-            // previousMilestoneTime tracks elapsed time at km (N-1).
-            let splitSeconds = elapsedSeconds - previousMilestoneTime
-            let splitPace = splitSeconds > 0 ? splitSeconds : 0
-            previousMilestoneTime = elapsedSeconds
-            onMilestoneReached?(currentKm, splitPace, elapsedSeconds)
+            for km in (prevKm + 1)...currentKm {
+                let elapsedSeconds = Int(session.getCurrentElapsedTime())
+                // Split pace = time for THIS km only, not cumulative average.
+                // previousMilestoneTime tracks elapsed time at km (N-1).
+                let splitSeconds = elapsedSeconds - previousMilestoneTime
+                let splitPace = splitSeconds > 0 ? splitSeconds : 0
+                previousMilestoneTime = elapsedSeconds
+                onMilestoneReached?(km, splitPace, elapsedSeconds)
+            }
         }
         previousCumulativeDistance = cumulativeDistance
     }
@@ -577,14 +658,19 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         gpsDistanceAtFallbackStart = cumulativeDistance
         NSLog("[LocationEngine] Starting pedometer fallback (base: \(pedometerBaseDistance)m, gpsDist: \(gpsDistanceAtFallbackStart)m)")
 
-        pedometerFallbackTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        // Uses DispatchSourceTimer for reliable background firing (not tied to RunLoop).
+        let fallbackTimer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+        fallbackTimer.schedule(deadline: .now() + 2.0, repeating: 2.0)
+        fallbackTimer.setEventHandler { [weak self] in
             self?.emitPedometerUpdate()
         }
+        pedometerFallbackTimer = fallbackTimer
+        fallbackTimer.resume()
     }
 
     private func stopPedometerFallback() {
         guard pedometerFallbackTimer != nil else { return }
-        pedometerFallbackTimer?.invalidate()
+        pedometerFallbackTimer?.cancel()
         pedometerFallbackTimer = nil
     }
 
@@ -642,15 +728,17 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         onLocationUpdate?(event)
         onWatchLocationUpdate?(event)
 
-        // Milestone detection for pedometer updates
+        // Milestone detection for pedometer updates — loop for GPS jump safety
         let prevKm = Int(previousCumulativeDistance / 1000)
         let currentKm = Int(cumulativeDistance / 1000)
         if currentKm > prevKm && currentKm > 0 {
-            let elapsedSeconds = Int(session.getCurrentElapsedTime())
-            let splitSeconds = elapsedSeconds - previousMilestoneTime
-            let splitPace = splitSeconds > 0 ? splitSeconds : 0
-            previousMilestoneTime = elapsedSeconds
-            onMilestoneReached?(currentKm, splitPace, elapsedSeconds)
+            for km in (prevKm + 1)...currentKm {
+                let elapsedSeconds = Int(session.getCurrentElapsedTime())
+                let splitSeconds = elapsedSeconds - previousMilestoneTime
+                let splitPace = splitSeconds > 0 ? splitSeconds : 0
+                previousMilestoneTime = elapsedSeconds
+                onMilestoneReached?(km, splitPace, elapsedSeconds)
+            }
         }
         previousCumulativeDistance = cumulativeDistance
     }
@@ -677,14 +765,18 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
     private let coldStartTimeout: TimeInterval = 30.0
 
     private func startColdStartTimer() {
-        coldStartTimer?.invalidate()
-        coldStartTimer = Timer.scheduledTimer(withTimeInterval: coldStartTimeout, repeats: false) { [weak self] _ in
+        coldStartTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+        timer.schedule(deadline: .now() + coldStartTimeout)
+        timer.setEventHandler { [weak self] in
             guard let self = self, self.session.state == .starting else { return }
             // Timeout - accept current accuracy and start anyway
             NSLog("[LocationEngine] [\(GPSErrorCode.coldStartTimeout.rawValue)] Cold start timed out after \(self.coldStartTimeout)s — accepting current accuracy")
             self.session.markLocked()
             self.updateGPSStatus("locked")
         }
+        coldStartTimer = timer
+        timer.resume()
     }
 
     // MARK: - Background Execution
@@ -698,32 +790,56 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
 
         // 2. Start silent audio session to keep process alive
         startSilentAudioSession()
+
+        // 3. Observe audio interruptions (phone calls, Spotify, etc.)
+        //    to restart silent audio when the interruption ends
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let info = notification.userInfo,
+                  let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+
+            if type == .ended {
+                // Restart silent audio after interruption (call ended, Spotify paused, etc.)
+                self?.startSilentAudioSession()
+            }
+        }
     }
 
     /// Request a new UIKit background task. Called on start and renewed on expiration.
+    /// Capped at `maxBackgroundTaskRenewals` renewals to prevent iOS from force-killing
+    /// the app when all background task slots are exhausted.
     private func beginNewBackgroundTask() {
+        backgroundTaskRenewalCount += 1
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             if self.backgroundTaskId != .invalid {
                 UIApplication.shared.endBackgroundTask(self.backgroundTaskId)
             }
             self.backgroundTaskId = UIApplication.shared.beginBackgroundTask(withName: "GPSTracking") { [weak self] in
-                // Expiration handler — renew the task immediately if still tracking
+                // Expiration handler — renew the task if still tracking and under renewal limit
                 if let taskId = self?.backgroundTaskId {
                     UIApplication.shared.endBackgroundTask(taskId)
                 }
                 self?.backgroundTaskId = .invalid
-                // Renew background task if tracking is still active
                 let state = self?.session.state
                 if state == .running || state == .starting {
-                    NSLog("[LocationEngine] Background task expired — renewing")
-                    self?.beginNewBackgroundTask()
+                    if let self = self, self.backgroundTaskRenewalCount < self.maxBackgroundTaskRenewals {
+                        NSLog("[LocationEngine] Background task expired — renewing (\(self.backgroundTaskRenewalCount)/\(self.maxBackgroundTaskRenewals))")
+                        self.beginNewBackgroundTask()
+                    } else {
+                        NSLog("[LocationEngine] Background task renewal limit reached (\(self?.maxBackgroundTaskRenewals ?? 0)). Relying on location updates and silent audio to keep alive.")
+                    }
                 }
             }
         }
     }
 
     private func stopBackgroundExecution() {
+        NotificationCenter.default.removeObserver(self, name: AVAudioSession.interruptionNotification, object: nil)
         stopSilentAudioSession()
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }

@@ -5,8 +5,11 @@ from uuid import UUID
 from dependency_injector.wiring import inject, Provide
 from fastapi import APIRouter, Depends, Query
 
+from sqlalchemy import select
+
 from app.core.container import Container
 from app.core.deps import CurrentUser, DbSession, OptionalCurrentUser
+from app.services.notification_service import NotificationService
 from app.schemas.review import (
     CreatorReplyRequest,
     ReviewAuthorInfo,
@@ -16,6 +19,10 @@ from app.schemas.review import (
     ReviewUpdateRequest,
 )
 from app.services.review_service import ReviewService
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/courses", tags=["reviews"])
 
@@ -47,6 +54,7 @@ async def create_review(
     current_user: CurrentUser,
     db: DbSession,
     review_service: ReviewService = Depends(Provide[Container.review_service]),
+    notification_service: NotificationService = Depends(Provide[Container.notification_service]),
 ) -> ReviewResponse:
     """Create a review for a course. One review per user per course."""
     review = await review_service.create_review(
@@ -56,6 +64,29 @@ async def create_review(
         rating=body.rating,
         content=body.content,
     )
+
+    # Notify the course creator about the new review
+    try:
+        from app.models.course import Course
+
+        course_result = await db.execute(
+            select(Course.creator_id, Course.title).where(Course.id == course_id)
+        )
+        course_row = course_result.first()
+        if course_row and course_row.creator_id and course_row.creator_id != current_user.id:
+            await notification_service.create_and_send(
+                db=db,
+                user_id=course_row.creator_id,
+                notification_type="course_review",
+                actor_id=current_user.id,
+                title="새로운 리뷰",
+                body=f"{current_user.nickname}님이 '{course_row.title}' 코스에 리뷰를 남겼습니다.",
+                target_id=str(course_id),
+                target_type="course",
+            )
+    except Exception:
+        logger.warning("Failed to send course_review notification for course %s", course_id)
+
     return _to_review_response(review)
 
 

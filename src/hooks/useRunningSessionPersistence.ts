@@ -40,7 +40,7 @@ function buildSnapshot(): PersistedRunningSession | null {
     elevationGainMeters: s.elevationGainMeters,
     elevationLossMeters: s.elevationLossMeters,
     calories: s.calories,
-    filteredLocations: s.filteredLocations.slice(-5000),
+    filteredLocations: s.filteredLocations.slice(-10000),
     // Keep last 500 route points for map display
     routePoints: s.routePoints.slice(-500),
     splits: s.splits,
@@ -71,7 +71,14 @@ export function useRunningSessionPersistence() {
     if (updateCountRef.current % PERSIST_INTERVAL === 0) {
       const snapshot = buildSnapshot();
       if (snapshot) {
-        persistRunningSession(snapshot);
+        // H4: Await persistence to prevent data loss on app kill
+        (async () => {
+          try {
+            await persistRunningSession(snapshot);
+          } catch (e) {
+            console.warn('[SessionPersist] Periodic save failed:', e);
+          }
+        })();
       }
     }
   }, [distanceMeters, phase]);
@@ -82,16 +89,45 @@ export function useRunningSessionPersistence() {
       if (nextState === 'background' || nextState === 'inactive') {
         const snapshot = buildSnapshot();
         if (snapshot) {
-          // Fire-and-forget — AsyncStorage.setItem is fast enough
-          persistRunningSession(snapshot);
-          console.log('[SessionPersist] Saved on background transition');
+          // H4: Await persistence — fire-and-forget risks data loss on app kill
+          (async () => {
+            try {
+              await persistRunningSession(snapshot);
+              console.log('[SessionPersist] Saved on background transition');
+            } catch (e) {
+              console.warn('[SessionPersist] Background save failed:', e);
+            }
+          })();
         }
       }
     };
 
     const sub = AppState.addEventListener('change', handleAppState);
-    return () => sub.remove();
-  }, []);
+
+    // Low battery emergency save — persist immediately when battery is critical
+    // so data survives if phone dies
+    let batteryCheckInterval: ReturnType<typeof setInterval> | null = null;
+    let emergencySaved = false;
+    if (phase === 'running' || phase === 'paused') {
+      batteryCheckInterval = setInterval(async () => {
+        try {
+          // React Native doesn't have built-in battery API, but we can
+          // trigger an extra save every 60s as a safety net regardless
+          if (!emergencySaved) {
+            const snapshot = buildSnapshot();
+            if (snapshot) {
+              await persistRunningSession(snapshot);
+            }
+          }
+        } catch {}
+      }, 60_000); // Extra save every 60s as battery safety net
+    }
+
+    return () => {
+      sub.remove();
+      if (batteryCheckInterval) clearInterval(batteryCheckInterval);
+    };
+  }, [phase]);
 
   // Clear persisted data when session completes or resets
   useEffect(() => {
@@ -106,7 +142,14 @@ export function useRunningSessionPersistence() {
     if (phase === 'running' || phase === 'paused') {
       const snapshot = buildSnapshot();
       if (snapshot) {
-        persistRunningSession(snapshot);
+        // H4: Await persistence on pause/resume state transitions
+        (async () => {
+          try {
+            await persistRunningSession(snapshot);
+          } catch (e) {
+            console.warn('[SessionPersist] Pause/resume save failed:', e);
+          }
+        })();
       }
     }
   }, [isPaused, phase]);

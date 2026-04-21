@@ -5,6 +5,7 @@ import ActivityKit
 class LiveActivityModule: NSObject {
 
     private var activityId: String?
+    private let activityQueue = DispatchQueue(label: "com.runcrew.liveactivity")
 
     // MARK: - Start
 
@@ -25,34 +26,36 @@ class LiveActivityModule: NSObject {
         let isCourseRun = data["isCourseRun"] as? Bool ?? false
         let durationSeconds = data["durationSeconds"] as? Int ?? 0
 
-        let attributes = RunningActivityAttributes(
-            courseName: courseName,
-            isCourseRun: isCourseRun
-        )
-        let initialState = RunningActivityAttributes.ContentState(
-            distanceMeters: 0,
-            durationSeconds: durationSeconds,
-            currentPace: 0,
-            avgPace: 0,
-            calories: 0,
-            heartRate: 0,
-            cadence: 0,
-            isPaused: false,
-            timerStartDate: Date().addingTimeInterval(-Double(durationSeconds))
-        )
-
-        do {
-            let activity = try Activity.request(
-                attributes: attributes,
-                content: .init(state: initialState, staleDate: nil),
-                pushType: nil
+        activityQueue.async { [weak self] in
+            let attributes = RunningActivityAttributes(
+                courseName: courseName,
+                isCourseRun: isCourseRun
             )
-            activityId = activity.id
-            print("[LiveActivity] Started: \(activity.id)")
-            resolve(activity.id)
-        } catch {
-            print("[LiveActivity] Start failed: \(error)")
-            reject("START_FAILED", error.localizedDescription, error)
+            let initialState = RunningActivityAttributes.ContentState(
+                distanceMeters: 0,
+                durationSeconds: durationSeconds,
+                currentPace: 0,
+                avgPace: 0,
+                calories: 0,
+                heartRate: 0,
+                cadence: 0,
+                isPaused: false,
+                timerStartDate: Date().addingTimeInterval(-Double(durationSeconds))
+            )
+
+            do {
+                let activity = try Activity.request(
+                    attributes: attributes,
+                    content: .init(state: initialState, staleDate: Date().addingTimeInterval(300)),
+                    pushType: nil
+                )
+                self?.activityId = activity.id
+                print("[LiveActivity] Started: \(activity.id)")
+                DispatchQueue.main.async { resolve(activity.id) }
+            } catch {
+                print("[LiveActivity] Start failed: \(error)")
+                DispatchQueue.main.async { reject("START_FAILED", error.localizedDescription, error) }
+            }
         }
     }
 
@@ -76,37 +79,43 @@ class LiveActivityModule: NSObject {
         let cadence = data["cadence"] as? Int ?? 0
         let isPaused = data["isPaused"] as? Bool ?? false
 
-        let state = RunningActivityAttributes.ContentState(
-            distanceMeters: distanceMeters,
-            durationSeconds: durationSeconds,
-            currentPace: currentPace,
-            avgPace: avgPace,
-            calories: calories,
-            heartRate: heartRate,
-            cadence: cadence,
-            isPaused: isPaused,
-            timerStartDate: Date().addingTimeInterval(-Double(durationSeconds))
-        )
+        activityQueue.async { [weak self] in
+            let state = RunningActivityAttributes.ContentState(
+                distanceMeters: distanceMeters,
+                durationSeconds: durationSeconds,
+                currentPace: currentPace,
+                avgPace: avgPace,
+                calories: calories,
+                heartRate: heartRate,
+                cadence: cadence,
+                isPaused: isPaused,
+                timerStartDate: Date().addingTimeInterval(-Double(durationSeconds))
+            )
 
-        Task {
-            guard let activity = Activity<RunningActivityAttributes>.activities.first(where: { $0.id == activityId }) else {
-                guard let fallback = Activity<RunningActivityAttributes>.activities.first else {
-                    resolve(false)
+            Task { [weak self] in
+                guard let self = self else {
+                    DispatchQueue.main.async { resolve(false) }
                     return
                 }
-                self.activityId = fallback.id
-                await fallback.update(
-                    .init(state: state, staleDate: nil),
+                guard let activity = Activity<RunningActivityAttributes>.activities.first(where: { $0.id == self.activityId }) else {
+                    guard let fallback = Activity<RunningActivityAttributes>.activities.first else {
+                        DispatchQueue.main.async { resolve(false) }
+                        return
+                    }
+                    self.activityId = fallback.id
+                    await fallback.update(
+                        .init(state: state, staleDate: Date().addingTimeInterval(300)),
+                        alertConfiguration: nil
+                    )
+                    DispatchQueue.main.async { resolve(true) }
+                    return
+                }
+                await activity.update(
+                    .init(state: state, staleDate: Date().addingTimeInterval(300)),
                     alertConfiguration: nil
                 )
-                resolve(true)
-                return
+                DispatchQueue.main.async { resolve(true) }
             }
-            await activity.update(
-                .init(state: state, staleDate: nil),
-                alertConfiguration: nil
-            )
-            resolve(true)
         }
     }
 
@@ -129,28 +138,30 @@ class LiveActivityModule: NSObject {
         let heartRate = data["heartRate"] as? Int ?? 0
         let cadence = data["cadence"] as? Int ?? 0
 
-        let finalState = RunningActivityAttributes.ContentState(
-            distanceMeters: distanceMeters,
-            durationSeconds: durationSeconds,
-            currentPace: currentPace,
-            avgPace: avgPace,
-            calories: calories,
-            heartRate: heartRate,
-            cadence: cadence,
-            isPaused: true,
-            timerStartDate: Date().addingTimeInterval(-Double(durationSeconds))
-        )
+        activityQueue.async { [weak self] in
+            let finalState = RunningActivityAttributes.ContentState(
+                distanceMeters: distanceMeters,
+                durationSeconds: durationSeconds,
+                currentPace: currentPace,
+                avgPace: avgPace,
+                calories: calories,
+                heartRate: heartRate,
+                cadence: cadence,
+                isPaused: true,
+                timerStartDate: Date().addingTimeInterval(-Double(durationSeconds))
+            )
 
-        Task {
-            for activity in Activity<RunningActivityAttributes>.activities {
-                await activity.end(
-                    .init(state: finalState, staleDate: nil),
-                    dismissalPolicy: .immediate
-                )
+            Task { [weak self] in
+                for activity in Activity<RunningActivityAttributes>.activities {
+                    await activity.end(
+                        .init(state: finalState, staleDate: Date().addingTimeInterval(300)),
+                        dismissalPolicy: .immediate
+                    )
+                }
+                self?.activityId = nil
+                print("[LiveActivity] Ended")
+                DispatchQueue.main.async { resolve(true) }
             }
-            activityId = nil
-            print("[LiveActivity] Ended")
-            resolve(true)
         }
     }
 
@@ -163,6 +174,21 @@ class LiveActivityModule: NSObject {
             resolve(ActivityAuthorizationInfo().areActivitiesEnabled)
         } else {
             resolve(false)
+        }
+    }
+
+    // MARK: - Native cleanup (called from AppDelegate on terminate/force-quit)
+
+    /// End all running Live Activities without going through JS bridge.
+    /// Safe to call from any thread; no-op on iOS < 16.2.
+    @objc
+    static func endAllActivities() {
+        guard #available(iOS 16.2, *) else { return }
+        Task {
+            for activity in Activity<RunningActivityAttributes>.activities {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            }
+            print("[LiveActivity] endAllActivities: dismissed all")
         }
     }
 

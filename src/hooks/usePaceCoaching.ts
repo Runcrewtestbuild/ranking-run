@@ -16,7 +16,7 @@ import { getCachedVoiceId } from './useVoiceGuidance';
 import i18n from '../i18n';
 
 /** Minimum distance before pace coaching activates (initial GPS is unstable) */
-const MIN_ACTIVE_DISTANCE_M = 200;
+const MIN_ACTIVE_DISTANCE_M = 500;
 
 /** Deadband: within ±30s of target = "on_pace" */
 const ON_PACE_BAND_S = 30;
@@ -61,16 +61,25 @@ function classifyStatus(timeDelta: number): PaceStatus {
   return 'critical';
 }
 
+function formatDeltaForTTS(totalSeconds: number): string {
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  if (mins > 0 && secs > 0) return `${mins}분 ${secs}초`;
+  if (mins > 0) return `${mins}분`;
+  return `${secs}초`;
+}
+
 function getCoachingMessage(status: PaceStatus, timeDelta: number): string {
   const t = i18n.t.bind(i18n);
   const absDelta = Math.abs(Math.round(timeDelta));
+  const deltaStr = formatDeltaForTTS(absDelta);
   switch (status) {
     case 'ahead':
-      return t('voice.paceAhead', { seconds: absDelta });
+      return t('voice.paceAhead', { seconds: deltaStr });
     case 'on_pace':
       return t('voice.paceOnTrack');
     case 'behind':
-      return t('voice.paceBehind', { seconds: absDelta });
+      return t('voice.paceBehind', { seconds: deltaStr });
     case 'critical':
       return t('voice.paceCritical');
   }
@@ -141,12 +150,39 @@ export function usePaceCoaching({
     && (phase === 'running' || phase === 'paused')
     && currentDistance >= MIN_ACTIVE_DISTANCE_M;
 
-  // Core calculations (always compute to keep hooks stable)
-  const requiredPace = targetDistance > 0 ? targetTime / (targetDistance / 1000) : 0;
-  const projectedFinish = currentDistance > 0
-    ? (targetDistance / currentDistance) * elapsedTime
+  // Core calculations — "remaining distance based required pace" method.
+  // Instead of projecting finish time from current average (unstable early on),
+  // calculate how fast you need to run the REMAINING distance to hit goal.
+  // This is what Nike Run Club and Pace App use.
+  //
+  // requiredPace = remainingTime / remainingDistanceKm
+  // timeDelta = remainingTime - (remainingDistanceKm × currentPace)
+  //   positive = 여유 있음 (현재 페이스 유지하면 목표보다 빨리 도착)
+  //   negative = 빨라야 함 (현재 페이스로는 목표 초과)
+
+  const targetPace = targetDistance > 0 ? targetTime / (targetDistance / 1000) : 0;
+  const remainingDistance = Math.max(0, targetDistance - currentDistance);
+  const remainingDistanceKm = remainingDistance / 1000;
+  const remainingTime = Math.max(0, targetTime - elapsedTime);
+
+  // Required pace for remaining distance to hit goal exactly
+  const requiredPace = remainingDistanceKm > 0 ? remainingTime / remainingDistanceKm : 0;
+
+  // Time delta: how much time buffer you have
+  // = remainingTime - (time needed at current pace for remaining distance)
+  // positive = ahead of target, negative = behind
+  const timeNeededAtCurrentPace = avgPace > 0 ? remainingDistanceKm * avgPace : Infinity;
+  const rawTimeDelta = remainingTime - timeNeededAtCurrentPace;
+  // Guard against -Infinity (when avgPace=0 → timeNeeded=Infinity → delta=-Infinity)
+  // and NaN. Fall back to remainingTime (assume stationary → all remaining time is buffer).
+  const timeDelta = isFinite(rawTimeDelta) ? rawTimeDelta : (remainingTime > 0 ? remainingTime : 0);
+
+  // Projected finish = elapsed + time needed at current pace
+  const rawProjectedFinish = avgPace > 0
+    ? elapsedTime + (remainingDistanceKm * avgPace)
     : Infinity;
-  const timeDelta = targetTime - projectedFinish;
+  const projectedFinish = isFinite(rawProjectedFinish) ? rawProjectedFinish : 0;
+
   const status = isActive ? classifyStatus(timeDelta) : 'on_pace';
 
   const state: PaceCoachingState | null = useMemo(() => {

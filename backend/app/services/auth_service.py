@@ -13,7 +13,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.core.exceptions import AuthenticationError
+from app.core.exceptions import AuthenticationError, ConflictError
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -193,6 +193,37 @@ class AuthService:
         return user, True
 
     # -----------------------------------------------------------------------
+    # Session management (single-device login)
+    # -----------------------------------------------------------------------
+
+    async def has_active_sessions(self, db: AsyncSession, user_id: UUID) -> bool:
+        """Check if a user has any active (non-revoked, non-expired) refresh tokens."""
+        now = datetime.now(timezone.utc)
+        result = await db.execute(
+            select(RefreshToken.id)
+            .where(
+                RefreshToken.user_id == user_id,
+                RefreshToken.is_revoked == False,  # noqa: E712
+                RefreshToken.expires_at > now,
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def revoke_all_user_tokens(self, db: AsyncSession, user_id: UUID) -> None:
+        """Revoke all active refresh tokens for a user (single-device enforcement)."""
+        now = datetime.now(timezone.utc)
+        await db.execute(
+            update(RefreshToken)
+            .where(
+                RefreshToken.user_id == user_id,
+                RefreshToken.is_revoked == False,  # noqa: E712
+            )
+            .values(is_revoked=True, revoked_at=now)
+        )
+        await db.flush()
+
+    # -----------------------------------------------------------------------
     # Token management
     # -----------------------------------------------------------------------
 
@@ -285,9 +316,12 @@ class AuthService:
                     await self.store_refresh_token(db, user.id, new_refresh_token)
                     return user, new_access_token, new_refresh_token
 
+            # Distinguish "kicked by another device" from generic reuse:
+            # If the token was revoked but no valid successor exists for this
+            # client, another device likely did a force-login.
             raise AuthenticationError(
-                code="AUTH_EXPIRED",
-                message="Refresh token reuse detected",
+                code="SESSION_REVOKED",
+                message="Session has been revoked by login on another device",
             )
 
         if matched_token.expires_at < datetime.now(timezone.utc):
@@ -353,8 +387,14 @@ class AuthService:
         provider: str,
         token: str,
         nonce: str | None = None,
+        force: bool = False,
     ) -> dict:
-        """Execute the full social login flow."""
+        """Execute the full social login flow.
+
+        If force=False and the user already has active sessions, raises
+        ConflictError with code ALREADY_LOGGED_IN so the client can ask
+        for confirmation before proceeding.
+        """
         if provider == "apple":
             social_info = await self.verify_apple_token(token, nonce)
         elif provider == "google":
@@ -369,6 +409,18 @@ class AuthService:
             email=social_info.get("email"),
             nickname=social_info.get("nickname"),
         )
+
+        # Single-device login enforcement
+        if not is_new_user and not force:
+            if await self.has_active_sessions(db, user.id):
+                raise ConflictError(
+                    code="ALREADY_LOGGED_IN",
+                    message="User is already logged in on another device",
+                )
+
+        # If force=True or new user, revoke all existing sessions first
+        if force and not is_new_user:
+            await self.revoke_all_user_tokens(db, user.id)
 
         access_token = create_access_token(subject=str(user.id))
         refresh_token = create_refresh_token()

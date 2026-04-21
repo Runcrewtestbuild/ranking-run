@@ -97,6 +97,10 @@
     }
   },
   "running": {
+    "crashRecoveryTitle": "Recover Previous Run",
+    "crashRecoveryMsg": "An incomplete run record was found.\n\nDistance: {{distance}}\nTime: {{duration}}\n\nWould you like to recover it?",
+    "crashRecoveryDiscard": "Discard",
+    "crashRecoveryRestore": "Recover",
     "lowPowerTitle": "Low Power Mode Enabled",
     "lowPowerMessage": "GPS accuracy is significantly reduced in Low Power Mode, causing inaccurate distance and pace measurements. Please disable Low Power Mode in Settings and try again.",
     "metrics": {
@@ -578,7 +582,8 @@
     "languageDesc": "Change the app display language",
     "langKo": "한국어",
     "langEn": "English",
-    "langJa": "日本語"
+    "langJa": "日本語",
+    "appVersion": "RUNVS v{{version}}"
   },
   "profile": {
     "totalDistance": "Total Distance",
@@ -636,7 +641,9 @@
     "deletePost": "Delete Post",
     "deletePostMsg": "Are you sure you want to delete this post?",
     "deleteFailed": "Failed to delete post.",
-    "updateFailed": "Failed to update post."
+    "updateFailed": "Failed to update post.",
+    "likeFailed": "Failed to process like",
+    "commentCreateFailed": "Failed to create comment"
   },
   "crew": {
     "crew": "Crew",
@@ -870,7 +877,14 @@
     "timeFormatM": "{{m}}min",
     "timeFormatS": "{{s}}sec",
     "timeFormatZero": "0min",
-    "minuteUnit": "min"
+    "minuteUnit": "min",
+    "strideSetting": "Stride Setting",
+    "strideCustom": "Custom",
+    "stridePlaceholder": "Enter stride",
+    "strideHintCustom": "Custom {{value}}cm applied - auto estimation disabled",
+    "strideHintHeight": "Auto-estimated from profile height ({{height}}cm)",
+    "strideHintNoHeight": "Enter height in profile for auto estimation",
+    "strideBased": "Stride-based"
   },
   "runSettings": {
     "indoor": "Indoor",

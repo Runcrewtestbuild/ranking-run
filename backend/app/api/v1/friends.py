@@ -16,6 +16,11 @@ from app.schemas.friend_request import (
     FriendshipStatusResponse,
 )
 from app.services.friend_request_service import FriendRequestService
+from app.services.notification_service import NotificationService
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["friends"])
 
@@ -61,9 +66,26 @@ async def send_friend_request(
     current_user: CurrentUser,
     db: DbSession,
     service: FriendRequestService = Depends(Provide[Container.friend_request_service]),
+    notification_service: NotificationService = Depends(Provide[Container.notification_service]),
 ) -> FriendRequestResponse:
     """Send a friend request to a user."""
     req = await service.send_request(db=db, requester_id=current_user.id, recipient_id=user_id)
+
+    # Send notification to the recipient
+    try:
+        await notification_service.create_and_send(
+            db=db,
+            user_id=user_id,
+            notification_type="friend_request",
+            actor_id=current_user.id,
+            title="친구 요청",
+            body=f"{current_user.nickname}님이 친구 요청을 보냈습니다.",
+            target_id=str(current_user.id),
+            target_type="user",
+        )
+    except Exception:
+        logger.warning("Failed to send friend_request notification to user %s", user_id)
+
     return _to_request_response(req)
 
 
@@ -76,9 +98,26 @@ async def accept_friend_request(
     current_user: CurrentUser,
     db: DbSession,
     service: FriendRequestService = Depends(Provide[Container.friend_request_service]),
+    notification_service: NotificationService = Depends(Provide[Container.notification_service]),
 ) -> FriendRequestResponse:
     """Accept a pending friend request."""
     req = await service.accept_request(db=db, request_id=request_id, current_user_id=current_user.id)
+
+    # Notify the original requester that their request was accepted
+    try:
+        await notification_service.create_and_send(
+            db=db,
+            user_id=req.requester_id,
+            notification_type="friend_request_accepted",
+            actor_id=current_user.id,
+            title="친구 요청 수락",
+            body=f"{current_user.nickname}님이 친구 요청을 수락했습니다.",
+            target_id=str(current_user.id),
+            target_type="user",
+        )
+    except Exception:
+        logger.warning("Failed to send friend_request_accepted notification to user %s", req.requester_id)
+
     return _to_request_response(req)
 
 

@@ -9,6 +9,7 @@ import {
   Modal,
   TextInput,
   ActivityIndicator,
+  RefreshControl,
   Platform,
   KeyboardAvoidingView,
   ScrollView,
@@ -64,6 +65,7 @@ export default function GearManageScreen() {
   const [modelName, setModelName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showBrandPicker, setShowBrandPicker] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const loadGear = useCallback(async () => {
     setIsLoading(true);
@@ -80,6 +82,18 @@ export default function GearManageScreen() {
   useEffect(() => {
     loadGear();
   }, [loadGear]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const data = await gearService.getMyGear();
+      setGearList(data);
+    } catch {
+      // Silent failure
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
 
   const resetForm = useCallback(() => {
     setSelectedBrand(null);
@@ -258,11 +272,8 @@ export default function GearManageScreen() {
   const renderEmpty = useCallback(
     () => (
       <View style={styles.emptyContainer}>
-        <Ionicons name="footsteps-outline" size={48} color={colors.textTertiary} />
-        <Text style={styles.emptyTitle}>{t('gear.emptyTitle')}</Text>
-        <Text style={styles.emptyDescription}>
-          {t('gear.emptyDesc')}
-        </Text>
+        <Ionicons name="fitness-outline" size={48} color={colors.textTertiary} />
+        <Text style={styles.emptyText}>등록된 장비가 없습니다</Text>
       </View>
     ),
     [styles, colors],
@@ -297,6 +308,13 @@ export default function GearManageScreen() {
           maxToRenderPerBatch={10}
           initialNumToRender={10}
           windowSize={10}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+            />
+          }
         />
       )}
 
@@ -522,22 +540,14 @@ const createStyles = (c: ThemeColors) =>
 
     // -- Empty State --
     emptyContainer: {
-      flex: 1,
       alignItems: 'center',
-      justifyContent: 'center',
-      paddingTop: SPACING.xxxl * 2,
+      paddingTop: 100,
       gap: SPACING.md,
     },
-    emptyTitle: {
-      fontSize: FONT_SIZES.lg,
-      fontWeight: '700',
-      color: c.text,
-    },
-    emptyDescription: {
+    emptyText: {
       fontSize: FONT_SIZES.md,
+      fontWeight: '600',
       color: c.textTertiary,
-      textAlign: 'center',
-      lineHeight: 22,
     },
 
     // -- Android Modal Root --

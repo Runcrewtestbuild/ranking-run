@@ -44,6 +44,10 @@ interface SettingsState {
   showHeartRate: boolean;
   showLevelColor: boolean;
 
+  // Stride (for metronome BPM calculation, persisted)
+  // null = auto (estimated from profile height), number = user custom (cm)
+  strideLengthCm: number | null;
+
   // Actions
   setLanguage: (lang: AppLanguage) => void;
   setDistanceUnit: (unit: DistanceUnit) => void;
@@ -65,6 +69,7 @@ interface SettingsState {
   setShowHeartRate: (show: boolean) => void;
   setShowLevelColor: (show: boolean) => void;
   setLastKnownLocation: (loc: { latitude: number; longitude: number }) => void;
+  setStrideLengthCm: (cm: number | null) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -95,6 +100,7 @@ export const useSettingsStore = create<SettingsState>()(
       screenOrientation: 'portrait',
       showHeartRate: true,
       showLevelColor: true,
+      strideLengthCm: null,
 
       setLanguage: (lang) => set({ language: lang }),
       setDistanceUnit: (unit) => set({ distanceUnit: unit }),
@@ -120,10 +126,21 @@ export const useSettingsStore = create<SettingsState>()(
       setShowHeartRate: (show) => set({ showHeartRate: show }),
       setShowLevelColor: (show) => set({ showLevelColor: show }),
       setLastKnownLocation: (loc) => set({ lastKnownLocation: loc }),
+      setStrideLengthCm: (cm) => set({ strideLengthCm: cm }),
     }),
     {
       name: 'settings-storage',
       storage: createJSONStorage(() => AsyncStorage),
+      version: 1,
+      migrate: (persisted: any, version: number) => {
+        if (version === 0 || version === undefined) {
+          // Migrate darkMode → themeMode for users on v0 (pre-themeMode)
+          if (persisted.darkMode !== undefined && (!persisted.themeMode || persisted.themeMode === 'auto')) {
+            persisted.themeMode = persisted.darkMode ? 'dark' : 'light';
+          }
+        }
+        return persisted;
+      },
       partialize: (state) => ({
         language: state.language,
         distanceUnit: state.distanceUnit,
@@ -145,6 +162,7 @@ export const useSettingsStore = create<SettingsState>()(
         showHeartRate: state.showHeartRate,
         showLevelColor: state.showLevelColor,
         lastKnownLocation: state.lastKnownLocation,
+        strideLengthCm: state.strideLengthCm,
       }),
     },
   ),

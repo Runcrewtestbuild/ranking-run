@@ -228,6 +228,290 @@ class CrewRankingService:
         }
 
     # ------------------------------------------------------------------
+    # Crew vs Crew weekly ranking (by total distance)
+    # ------------------------------------------------------------------
+
+    async def get_crew_weekly_ranking(
+        self,
+        db: AsyncSession,
+        page: int = 0,
+        per_page: int = 20,
+        requesting_user_id: UUID | None = None,
+    ) -> dict:
+        """Rank all crews by aggregate member distance this week."""
+        from datetime import timedelta
+
+        from sqlalchemy import and_, desc
+
+        from app.models.run_record import RunRecord
+
+        now = datetime.now(timezone.utc)
+        monday = (now - timedelta(days=now.weekday())).replace(
+            hour=0, minute=0, second=0, microsecond=0,
+        )
+
+        # Subquery: each crew's weekly stats
+        crew_stats = (
+            select(
+                CrewMember.crew_id,
+                func.coalesce(func.sum(RunRecord.distance_meters), 0).label(
+                    "total_distance"
+                ),
+                func.count(func.distinct(RunRecord.user_id)).label(
+                    "active_runners"
+                ),
+            )
+            .select_from(CrewMember)
+            .join(
+                RunRecord,
+                and_(
+                    RunRecord.user_id == CrewMember.user_id,
+                    RunRecord.finished_at >= monday,
+                ),
+            )
+            .group_by(CrewMember.crew_id)
+            .having(func.sum(RunRecord.distance_meters) > 0)
+            .subquery()
+        )
+
+        # Total count of crews with activity
+        count_result = await db.execute(
+            select(func.count()).select_from(crew_stats)
+        )
+        total_count = count_result.scalar_one()
+
+        # Paginated ranking
+        result = await db.execute(
+            select(
+                Crew.id,
+                Crew.name,
+                Crew.logo_url,
+                Crew.badge_color,
+                Crew.member_count,
+                crew_stats.c.total_distance,
+                crew_stats.c.active_runners,
+            )
+            .join(crew_stats, crew_stats.c.crew_id == Crew.id)
+            .order_by(desc(crew_stats.c.total_distance))
+            .offset(page * per_page)
+            .limit(per_page)
+        )
+        rows = result.all()
+
+        data = []
+        for i, row in enumerate(rows):
+            data.append({
+                "rank": page * per_page + i + 1,
+                "crew_id": str(row.id),
+                "crew_name": row.name,
+                "crew_logo_url": row.logo_url,
+                "crew_badge_color": row.badge_color,
+                "member_count": row.member_count,
+                "total_distance_meters": row.total_distance,
+                "active_runners": row.active_runners,
+                "avg_pace_seconds_per_km": None,
+            })
+
+        # Find requesting user's crew ranking if not in page
+        my_crew_entry = None
+        if requesting_user_id:
+            my_crew_entry = await self._get_my_crew_weekly_rank(
+                db, requesting_user_id, monday, data
+            )
+
+        return {
+            "data": data,
+            "total_count": total_count,
+            "my_crew": my_crew_entry,
+        }
+
+    async def _get_my_crew_weekly_rank(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        monday: datetime,
+        already_in_data: list[dict],
+    ) -> dict | None:
+        """Find the user's primary crew weekly ranking."""
+        from sqlalchemy import and_, desc
+
+        from app.models.run_record import RunRecord
+        from app.models.user import User
+
+        # Find user's primary crew
+        user_result = await db.execute(
+            select(User.crew_name).where(User.id == user_id)
+        )
+        crew_name = user_result.scalar_one_or_none()
+        if not crew_name:
+            return None
+
+        # Find crew by name
+        crew_result = await db.execute(
+            select(Crew).where(Crew.name == crew_name).limit(1)
+        )
+        crew = crew_result.scalar_one_or_none()
+        if crew is None:
+            return None
+
+        # Check if already in paginated data
+        for entry in already_in_data:
+            if entry["crew_id"] == str(crew.id):
+                return None
+
+        # Calculate this crew's weekly stats
+        stats_result = await db.execute(
+            select(
+                func.coalesce(func.sum(RunRecord.distance_meters), 0).label(
+                    "total_distance"
+                ),
+                func.count(func.distinct(RunRecord.user_id)).label(
+                    "active_runners"
+                ),
+            )
+            .select_from(CrewMember)
+            .join(
+                RunRecord,
+                and_(
+                    RunRecord.user_id == CrewMember.user_id,
+                    RunRecord.finished_at >= monday,
+                ),
+            )
+            .where(CrewMember.crew_id == crew.id)
+        )
+        stats = stats_result.one()
+
+        if stats.total_distance == 0:
+            return None
+
+        # Calculate rank (how many crews have more distance)
+        rank_result = await db.execute(
+            select(func.count())
+            .select_from(
+                select(CrewMember.crew_id)
+                .join(
+                    RunRecord,
+                    and_(
+                        RunRecord.user_id == CrewMember.user_id,
+                        RunRecord.finished_at >= monday,
+                    ),
+                )
+                .group_by(CrewMember.crew_id)
+                .having(
+                    func.sum(RunRecord.distance_meters) > stats.total_distance
+                )
+                .subquery()
+            )
+        )
+        crews_ahead = rank_result.scalar_one()
+
+        return {
+            "rank": crews_ahead + 1,
+            "crew_id": str(crew.id),
+            "crew_name": crew.name,
+            "crew_logo_url": crew.logo_url,
+            "crew_badge_color": crew.badge_color,
+            "member_count": crew.member_count,
+            "total_distance_meters": stats.total_distance,
+            "active_runners": stats.active_runners,
+            "avg_pace_seconds_per_km": None,
+        }
+
+    async def get_crew_detail_stats(
+        self,
+        db: AsyncSession,
+        crew_id: UUID,
+    ) -> dict:
+        """Detailed crew stats: all-time + this week."""
+        from datetime import timedelta
+
+        from sqlalchemy import and_
+
+        from app.models.run_record import RunRecord
+
+        crew = await db.get(Crew, crew_id)
+        if crew is None:
+            from app.core.exceptions import NotFoundError
+
+            raise NotFoundError(
+                code="CREW_NOT_FOUND", message="크루를 찾을 수 없습니다"
+            )
+
+        now = datetime.now(timezone.utc)
+        monday = (now - timedelta(days=now.weekday())).replace(
+            hour=0, minute=0, second=0, microsecond=0,
+        )
+
+        # All-time stats
+        alltime_result = await db.execute(
+            select(
+                func.coalesce(func.sum(RunRecord.distance_meters), 0).label(
+                    "total_distance"
+                ),
+                func.count(func.distinct(RunRecord.user_id)).label(
+                    "active_runners"
+                ),
+                func.count(RunRecord.id).label("total_runs"),
+            )
+            .select_from(CrewMember)
+            .join(
+                RunRecord,
+                RunRecord.user_id == CrewMember.user_id,
+            )
+            .where(CrewMember.crew_id == crew_id)
+        )
+        alltime = alltime_result.one()
+
+        # This week's stats
+        weekly_result = await db.execute(
+            select(
+                func.coalesce(func.sum(RunRecord.distance_meters), 0).label(
+                    "weekly_distance"
+                ),
+                func.count(RunRecord.id).label("weekly_runs"),
+            )
+            .select_from(CrewMember)
+            .join(
+                RunRecord,
+                and_(
+                    RunRecord.user_id == CrewMember.user_id,
+                    RunRecord.finished_at >= monday,
+                ),
+            )
+            .where(CrewMember.crew_id == crew_id)
+        )
+        weekly = weekly_result.one()
+
+        # Avg pace (all-time, only records with pace data)
+        pace_result = await db.execute(
+            select(
+                func.avg(RunRecord.pace_seconds_per_km).label("avg_pace"),
+            )
+            .select_from(CrewMember)
+            .join(
+                RunRecord,
+                and_(
+                    RunRecord.user_id == CrewMember.user_id,
+                    RunRecord.pace_seconds_per_km.is_not(None),
+                ),
+            )
+            .where(CrewMember.crew_id == crew_id)
+        )
+        avg_pace_raw = pace_result.scalar_one_or_none()
+        avg_pace = int(avg_pace_raw) if avg_pace_raw else None
+
+        return {
+            "crew_id": str(crew.id),
+            "crew_name": crew.name,
+            "total_distance_meters": alltime.total_distance,
+            "active_runners": alltime.active_runners,
+            "total_runs": alltime.total_runs,
+            "avg_pace_seconds_per_km": avg_pace,
+            "weekly_distance_meters": weekly.weekly_distance,
+            "weekly_runs": weekly.weekly_runs,
+        }
+
+    # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 

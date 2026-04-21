@@ -5,6 +5,7 @@ import {
   StyleSheet,
   FlatList,
   ActivityIndicator,
+  RefreshControl,
   TouchableOpacity,
   Platform,
   StatusBar,
@@ -36,6 +37,7 @@ export default function PointHistoryScreen() {
   const [page, setPage] = useState(0);
   const [hasNext, setHasNext] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchPage = useCallback(async (p: number) => {
     try {
@@ -55,6 +57,13 @@ export default function PointHistoryScreen() {
 
   useEffect(() => {
     fetchPage(0);
+  }, [fetchPage]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setPage(0);
+    await fetchPage(0);
+    setRefreshing(false);
   }, [fetchPage]);
 
   const loadMore = () => {
@@ -108,10 +117,18 @@ export default function PointHistoryScreen() {
           keyExtractor={item => item.id}
           onEndReached={loadMore}
           onEndReachedThreshold={0.3}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+            />
+          }
           ListEmptyComponent={
-            <Text style={[styles.empty, { color: colors.textTertiary }]}>
-              {t('points.history')}
-            </Text>
+            <View style={styles.emptyContainer}>
+              <Ionicons name="wallet-outline" size={48} color={colors.textTertiary} />
+              <Text style={styles.emptyText}>포인트 내역이 없습니다</Text>
+            </View>
           }
           ListFooterComponent={
             hasNext && data.length > 0 ? (
@@ -175,9 +192,14 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '700',
   },
-  empty: {
-    textAlign: 'center',
-    marginTop: 40,
+  emptyContainer: {
+    alignItems: 'center',
+    paddingTop: 100,
+    gap: SPACING.md,
+  },
+  emptyText: {
     fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: '#8E8E93',
   },
 });

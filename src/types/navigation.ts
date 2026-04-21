@@ -112,6 +112,8 @@ export type CommunityStackParamList = {
   Friends: undefined;
   UnifiedSearch: undefined;
   CrewMemberSettings: { crewId: string; crewName: string };
+  VersusDetail: { battleId: string };
+  VersusCreate: undefined;
 };
 
 export type MyPageStackParamList = {

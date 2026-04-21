@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
 import {
   View,
   Text,
@@ -35,18 +35,22 @@ interface CourseCommentSectionProps {
   scrollViewRef?: React.RefObject<ScrollView | null>;
 }
 
+export interface CourseCommentSectionHandle {
+  renderInputBar: () => React.ReactNode;
+}
+
 type InputMode =
   | { type: 'new' }
   | { type: 'reply'; parentId: string; parentAuthor: string }
   | { type: 'edit'; commentId: string; parentId?: string };
 
-export default function CourseCommentSection({ courseId, scrollViewRef }: CourseCommentSectionProps) {
+const CourseCommentSection = forwardRef<CourseCommentSectionHandle, CourseCommentSectionProps>(
+  function CourseCommentSection({ courseId, scrollViewRef }, ref) {
   const navigation = useNavigation<any>();
   const colors = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const currentUser = useAuthStore((s) => s.user);
   const inputRef = useRef<TextInput>(null);
-  const inputContainerRef = useRef<View>(null);
 
   const [comments, setComments] = useState<CourseCommentItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -64,6 +68,10 @@ export default function CourseCommentSection({ courseId, scrollViewRef }: Course
 
   // Expanded replies
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
+
+  // Force re-render for imperative handle consumers
+  const [, setInputTick] = useState(0);
+  const bumpInputTick = useCallback(() => setInputTick((t) => t + 1), []);
 
   const PER_PAGE = 20;
 
@@ -86,10 +94,6 @@ export default function CourseCommentSection({ courseId, scrollViewRef }: Course
 
   useEffect(() => {
     fetchComments(0, true).finally(() => setIsLoading(false));
-  }, [fetchComments]);
-
-  const handleRefresh = useCallback(async () => {
-    await fetchComments(0, true);
   }, [fetchComments]);
 
   const handleLoadMore = useCallback(async () => {
@@ -116,12 +120,14 @@ export default function CourseCommentSection({ courseId, scrollViewRef }: Course
         ...prev,
         ...result.assets.map((a) => a.uri),
       ].slice(0, 3));
+      bumpInputTick();
     }
-  }, [selectedImages.length]);
+  }, [selectedImages.length, bumpInputTick]);
 
   const handleRemoveImage = useCallback((index: number) => {
     setSelectedImages((prev) => prev.filter((_, i) => i !== index));
-  }, []);
+    bumpInputTick();
+  }, [bumpInputTick]);
 
   // Upload image helper
   const uploadImage = async (uri: string): Promise<string> => {
@@ -142,12 +148,8 @@ export default function CourseCommentSection({ courseId, scrollViewRef }: Course
     setSelectedImages([]);
     setInputMode({ type: 'new' });
     Keyboard.dismiss();
-  }, []);
-
-  // Done button handler
-  const handleDone = useCallback(() => {
-    Keyboard.dismiss();
-  }, []);
+    bumpInputTick();
+  }, [bumpInputTick]);
 
   // Start reply
   const handleReply = useCallback((parentId: string, authorName: string) => {
@@ -155,7 +157,8 @@ export default function CourseCommentSection({ courseId, scrollViewRef }: Course
     setContent('');
     setSelectedImages([]);
     inputRef.current?.focus();
-  }, []);
+    bumpInputTick();
+  }, [bumpInputTick]);
 
   // Start edit
   const handleStartEdit = useCallback((comment: CourseCommentItem) => {
@@ -163,7 +166,8 @@ export default function CourseCommentSection({ courseId, scrollViewRef }: Course
     setContent(comment.content);
     setSelectedImages(comment.image_urls ?? []);
     inputRef.current?.focus();
-  }, []);
+    bumpInputTick();
+  }, [bumpInputTick]);
 
   // Toggle replies visibility
   const toggleReplies = useCallback((commentId: string) => {
@@ -416,6 +420,105 @@ export default function CourseCommentSection({ courseId, scrollViewRef }: Course
     );
   }, [styles, colors, currentUser, handleDelete, handleUserPress, handleStartEdit, handleReply, expandedComments, toggleReplies, renderReply]);
 
+  // Build the input bar JSX (rendered by parent outside ScrollView)
+  const buildInputBar = useCallback(() => {
+    if (!currentUser) return null;
+
+    const hasContent = content.trim().length > 0 || selectedImages.length > 0;
+
+    return (
+      <View style={styles.inputBarContainer}>
+        {/* Reply / Edit indicator */}
+        {inputMode.type !== 'new' && (
+          <View style={styles.inputModeBar}>
+            <Text style={styles.inputModeText}>
+              {inputMode.type === 'reply'
+                ? `${inputMode.parentAuthor}에게 답글 작성 중`
+                : '댓글 수정 중'}
+            </Text>
+            <TouchableOpacity onPress={resetInput} activeOpacity={0.6}>
+              <Ionicons name="close" size={18} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        )}
+        {/* Selected images preview */}
+        {selectedImages.length > 0 && (
+          <View style={styles.selectedImageRow}>
+            {selectedImages.map((uri, i) => (
+              <View key={i} style={styles.selectedImageWrapper}>
+                <Image source={{ uri }} style={styles.selectedImage} />
+                <TouchableOpacity
+                  style={styles.removeImageBtn}
+                  onPress={() => handleRemoveImage(i)}
+                >
+                  <Ionicons name="close-circle" size={20} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+        <View style={styles.inputRow}>
+          {isInputFocused && (
+            <TouchableOpacity onPress={handlePickImage} activeOpacity={0.6}>
+              <Ionicons name="camera-outline" size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+          <TextInput
+            ref={inputRef}
+            style={styles.textInput}
+            placeholder={
+              inputMode.type === 'reply'
+                ? '답글을 입력하세요...'
+                : inputMode.type === 'edit'
+                ? '수정할 내용을 입력하세요...'
+                : '댓글을 입력하세요...'
+            }
+            placeholderTextColor={colors.textSecondary}
+            value={content}
+            onChangeText={(text) => { setContent(text); bumpInputTick(); }}
+            onFocus={() => {
+              setIsInputFocused(true);
+              bumpInputTick();
+              setTimeout(() => {
+                scrollViewRef?.current?.scrollToEnd({ animated: true });
+              }, 300);
+            }}
+            onBlur={() => { setIsInputFocused(false); bumpInputTick(); }}
+            multiline
+            maxLength={1000}
+          />
+          {isInputFocused ? (
+            <TouchableOpacity
+              onPress={handleSubmit}
+              disabled={isSending || !hasContent}
+              activeOpacity={0.6}
+            >
+              {isSending ? (
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              ) : (
+                <Text style={[
+                  styles.doneBtn,
+                  !hasContent && { color: colors.textSecondary },
+                ]}>
+                  {inputMode.type === 'edit' ? '수정' : '완료'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
+    );
+  }, [
+    currentUser, content, selectedImages, inputMode, isInputFocused, isSending,
+    colors, styles, handlePickImage, handleRemoveImage, handleSubmit, resetInput,
+    scrollViewRef, bumpInputTick,
+  ]);
+
+  // Expose the input bar builder via imperative handle
+  useImperativeHandle(ref, () => ({
+    renderInputBar: buildInputBar,
+  }), [buildInputBar]);
+
   if (isLoading) {
     return (
       <View style={styles.section}>
@@ -458,96 +561,13 @@ export default function CourseCommentSection({ courseId, scrollViewRef }: Course
         </TouchableOpacity>
       )}
 
-      {/* Input area */}
-      {currentUser && (
-        <View ref={inputContainerRef} style={styles.inputContainer}>
-          {/* Reply / Edit indicator */}
-          {inputMode.type !== 'new' && (
-            <View style={styles.inputModeBar}>
-              <Text style={styles.inputModeText}>
-                {inputMode.type === 'reply'
-                  ? `${inputMode.parentAuthor}에게 답글 작성 중`
-                  : '댓글 수정 중'}
-              </Text>
-              <TouchableOpacity onPress={resetInput} activeOpacity={0.6}>
-                <Ionicons name="close" size={18} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-          )}
-          {/* Selected images preview */}
-          {selectedImages.length > 0 && (
-            <View style={styles.selectedImageRow}>
-              {selectedImages.map((uri, i) => (
-                <View key={i} style={styles.selectedImageWrapper}>
-                  <Image source={{ uri }} style={styles.selectedImage} />
-                  <TouchableOpacity
-                    style={styles.removeImageBtn}
-                    onPress={() => handleRemoveImage(i)}
-                  >
-                    <Ionicons name="close-circle" size={20} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
-          <View style={styles.inputRow}>
-            <TouchableOpacity onPress={handlePickImage} activeOpacity={0.6}>
-              <Ionicons name="camera-outline" size={24} color={colors.textSecondary} />
-            </TouchableOpacity>
-            <TextInput
-              ref={inputRef}
-              style={styles.textInput}
-              placeholder={
-                inputMode.type === 'reply'
-                  ? '답글을 입력하세요...'
-                  : inputMode.type === 'edit'
-                  ? '수정할 내용을 입력하세요...'
-                  : '댓글을 입력하세요...'
-              }
-              placeholderTextColor={colors.textSecondary}
-              value={content}
-              onChangeText={setContent}
-              onFocus={() => {
-                setIsInputFocused(true);
-                // Scroll parent ScrollView to show input area above keyboard
-                setTimeout(() => {
-                  scrollViewRef?.current?.scrollToEnd({ animated: true });
-                }, 300);
-              }}
-              onBlur={() => setIsInputFocused(false)}
-              multiline
-              maxLength={1000}
-            />
-            {isInputFocused ? (
-              <TouchableOpacity onPress={handleDone} activeOpacity={0.6}>
-                <Text style={styles.doneBtn}>완료</Text>
-              </TouchableOpacity>
-            ) : null}
-            <TouchableOpacity
-              onPress={handleSubmit}
-              disabled={isSending || (!content.trim() && selectedImages.length === 0)}
-              activeOpacity={0.6}
-            >
-              {isSending ? (
-                <ActivityIndicator size="small" color={COLORS.primary} />
-              ) : (
-                <Ionicons
-                  name={inputMode.type === 'edit' ? 'checkmark' : 'send'}
-                  size={22}
-                  color={
-                    content.trim() || selectedImages.length > 0
-                      ? COLORS.primary
-                      : colors.textSecondary
-                  }
-                />
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
+      {/* Input bar */}
+      {buildInputBar()}
     </View>
   );
-}
+});
+
+export default CourseCommentSection;
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
@@ -722,12 +742,14 @@ function createStyles(colors: ThemeColors) {
       fontWeight: '600',
     },
 
-    // Input area
-    inputContainer: {
-      marginTop: SPACING.md,
+    // Input bar (rendered outside ScrollView by parent)
+    inputBarContainer: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
+      backgroundColor: colors.background,
+      paddingHorizontal: SPACING.md,
       paddingTop: SPACING.sm,
+      paddingBottom: SPACING.xs,
     },
     inputModeBar: {
       flexDirection: 'row',
@@ -774,9 +796,10 @@ function createStyles(colors: ThemeColors) {
       maxHeight: 100,
     },
     doneBtn: {
-      fontSize: FONT_SIZES.sm,
+      fontSize: FONT_SIZES.md,
       color: COLORS.primary,
-      fontWeight: '600',
+      fontWeight: '700',
+      paddingHorizontal: SPACING.xs,
     },
   });
 }

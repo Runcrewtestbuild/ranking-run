@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { NavigationContainer, useNavigationContainerRef, type LinkingOptions } from '@react-navigation/native';
 import type { RootStackParamList } from '../types/navigation';
@@ -7,17 +7,21 @@ import AuthStack from './AuthStack';
 import TabNavigator from './TabNavigator';
 import OnboardingScreen from '../screens/auth/OnboardingScreen';
 import { useTheme } from '../hooks/useTheme';
-import { Alert, View, StatusBar } from 'react-native';
+import { ActivityIndicator, Alert, Linking, View, StatusBar } from 'react-native';
 import ToastContainer from '../components/common/ToastContainer';
 import {
   loadPersistedSession,
   clearPersistedSession,
+  hasRecoverableSession,
 } from '../services/runningSessionPersistence';
 import { useRunningStore, type RunningPhase } from '../stores/runningStore';
 import { runService } from '../services/runService';
 import { formatDistance, formatDuration } from '../utils/format';
 import { useNetworkStore } from '../stores/networkStore';
 import OfflineBanner from '../components/common/OfflineBanner';
+import { useNotifications } from '../hooks/useNotifications';
+import RouteSnapshotGenerator from '../components/map/RouteSnapshotGenerator';
+import { useTranslation } from 'react-i18next';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -27,6 +31,11 @@ const linking: LinkingOptions<RootStackParamList> = {
     screens: {
       Main: {
         screens: {
+          WorldTab: {
+            screens: {
+              RunningMain: 'running',
+            },
+          },
           CourseTab: {
             screens: {
               CourseDetail: 'course/:courseId',
@@ -48,19 +57,97 @@ const linking: LinkingOptions<RootStackParamList> = {
       },
     },
   },
+  // Custom URL handler: intercept widget deep links and handle them manually
+  // when there's an active running session (prevents duplicate navigation)
+  async getInitialURL() {
+    const url = await Linking.getInitialURL();
+    return url;
+  },
+  subscribe(listener) {
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      // For runcrew://running, check if we're already on the running screen
+      // to prevent duplicate session creation
+      const phase = useRunningStore.getState().phase;
+      if (url.includes('running') && (phase === 'running' || phase === 'paused')) {
+        // Already in an active session — just bring app to foreground (no-op)
+        return;
+      }
+      listener(url);
+    });
+    return () => subscription.remove();
+  },
 };
 
 export default function RootNavigator() {
   const { isAuthenticated, isLoading, isNewUser, loadStoredAuth } =
     useAuthStore();
   const colors = useTheme();
+  const { t } = useTranslation();
   const navRef = useNavigationContainerRef<RootStackParamList>();
   const navReadyRef = useRef(false);
   const recoveryCheckedRef = useRef(false);
 
+  // Defer RouteSnapshotGenerator mount — it creates a hidden Mapbox MapView
+  // which uses GPU memory. Wait 60s after auth so it doesn't compete with
+  // the initial app experience (map load, home screen, navigation).
+  const [snapshotReady, setSnapshotReady] = useState(false);
+  useEffect(() => {
+    if (!isAuthenticated) { setSnapshotReady(false); return; }
+    const timer = setTimeout(() => setSnapshotReady(true), 60_000);
+    return () => clearTimeout(timer);
+  }, [isAuthenticated]);
+
+  // Push notification registration, listeners, and tap handling
+  useNotifications(isAuthenticated, navRef);
+
   useEffect(() => {
     loadStoredAuth();
   }, [loadStoredAuth]);
+
+  // Handle widget deep link: if app opens via runcrew://running with active session,
+  // navigate directly to running screen instead of letting linking config create a new one
+  const widgetHandledRef = useRef(false);
+  useEffect(() => {
+    if (!isAuthenticated || !navReadyRef.current || widgetHandledRef.current) return;
+
+    (async () => {
+      const initialUrl = await Linking.getInitialURL();
+      if (!initialUrl?.includes('running')) return;
+
+      widgetHandledRef.current = true;
+
+      let phase = useRunningStore.getState().phase;
+
+      // If store is idle but a persisted session exists, restore it first
+      if (phase === 'idle') {
+        const persisted = await loadPersistedSession();
+        if (persisted && (persisted.phase === 'running' || persisted.phase === 'paused')) {
+          // Restore session in its original phase (running/paused) so user can continue
+          useRunningStore.getState().restoreSession({
+            ...persisted,
+            phase: persisted.phase as RunningPhase,
+          });
+          phase = persisted.phase as RunningPhase;
+          // Skip normal crash recovery since we handled it here
+          recoveryCheckedRef.current = true;
+        }
+      }
+
+      if (phase === 'running' || phase === 'paused') {
+        // Active session exists — navigate to RunningMain directly
+        setTimeout(() => {
+          try {
+            (navRef.current as any)?.navigate('Main', {
+              screen: 'WorldTab',
+              params: { screen: 'RunningMain' },
+            });
+          } catch (e) {
+            console.warn('[WidgetDeepLink] Navigation failed:', e);
+          }
+        }, 300);
+      }
+    })();
+  }, [isAuthenticated, navRef]);
 
   // Initialize network monitoring + auto-sync on network recovery
   useEffect(() => {
@@ -97,11 +184,11 @@ export default function RootNavigator() {
     const durStr = formatDuration(persisted.durationSeconds);
 
     Alert.alert(
-      '이전 러닝 복구',
-      `비정상 종료된 러닝 기록이 있습니다.\n\n거리: ${distStr}\n시간: ${durStr}\n\n기록을 복구하시겠습니까?`,
+      t('running.crashRecoveryTitle'),
+      t('running.crashRecoveryMsg', { distance: distStr, duration: durStr }),
       [
         {
-          text: '삭제',
+          text: t('running.crashRecoveryDiscard'),
           style: 'destructive',
           onPress: async () => {
             // Try server-side recovery if we have a real session ID
@@ -120,7 +207,7 @@ export default function RootNavigator() {
           },
         },
         {
-          text: '복구하기',
+          text: t('running.crashRecoveryRestore'),
           style: 'default',
           onPress: async () => {
             // Restore session data into the store, then mark as completed
@@ -157,7 +244,7 @@ export default function RootNavigator() {
       ],
       { cancelable: false },
     );
-  }, [navRef]);
+  }, [navRef, t]);
 
   // Run crash recovery after auth loads and navigation is ready
   useEffect(() => {
@@ -195,7 +282,12 @@ export default function RootNavigator() {
   );
 
   if (isLoading) {
-    return null;
+    return (
+      <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
+        <StatusBar barStyle="light-content" />
+        <ActivityIndicator size="large" color="#FF7A33" />
+      </View>
+    );
   }
 
   const showAuth = !isAuthenticated && !isNewUser;
@@ -217,6 +309,7 @@ export default function RootNavigator() {
         </Stack.Navigator>
       </NavigationContainer>
       <ToastContainer />
+      {isAuthenticated && snapshotReady && <RouteSnapshotGenerator />}
     </View>
   );
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
+import { InteractionManager } from 'react-native';
 import {
   View,
   Text,
@@ -36,6 +37,7 @@ import { FONT_SIZES, SPACING, BORDER_RADIUS } from '../../utils/constants';
 import CrewLevelBadge from '../../components/crew/CrewLevelBadge';
 import { ListEndIndicator } from '../../components/common/Skeleton';
 import { useAuthStore } from '../../stores/authStore';
+import { useToastStore } from '../../stores/toastStore';
 
 type Nav = NativeStackNavigationProp<CommunityStackParamList, 'CommunityFeed'>;
 
@@ -371,7 +373,7 @@ export default function CommunityFeedScreen() {
       setExplorePage(page);
       setExploreHasMore(res.data.length >= 20);
     } catch {
-      // ignore
+      useToastStore.getState().showToast('error', '크루 목록을 불러올 수 없습니다');
     } finally {
       setExploreLoading(false);
       setExploreRefreshing(false);
@@ -386,7 +388,7 @@ export default function CommunityFeedScreen() {
       const res = await crewService.getMyCrews();
       setMyCrews(res); _cachedMyCrews = res;
     } catch {
-      // ignore
+      useToastStore.getState().showToast('error', '내 크루 정보를 불러올 수 없습니다');
     } finally {
       setMyCrewsLoading(false);
       setMyCrewsRefreshing(false);
@@ -405,7 +407,7 @@ export default function CommunityFeedScreen() {
       setWeeklyRunners(res.data);
       setMyRanking(res.my_ranking ?? null);
     } catch {
-      // silent
+      useToastStore.getState().showToast('error', '랭킹 정보를 불러올 수 없습니다');
     } finally {
       setRankingLoading(false);
       setRankingRefreshing(false);
@@ -425,13 +427,13 @@ export default function CommunityFeedScreen() {
         })),
       );
     } catch {
-      // silent
+      useToastStore.getState().showToast('error', '친구 목록을 불러올 수 없습니다');
     }
     try {
       const runningRes = await userService.getFriendsRunning();
       setFriendsRunning(runningRes);
     } catch {
-      // running status is non-critical
+      // running status is non-critical — OK to skip
     }
     setFriendsLoading(false);
   }, []);
@@ -443,12 +445,18 @@ export default function CommunityFeedScreen() {
   }, [exploreCrews, myCrewsOnly]);
 
   useEffect(() => {
-    loadExplore(0, false, regionFilter);
-    loadMyCrews();
+    const task = InteractionManager.runAfterInteractions(() => {
+      loadExplore(0, false, regionFilter);
+      loadMyCrews();
+    });
+    return () => task.cancel();
   }, [loadExplore, loadMyCrews, regionFilter]);
 
   useEffect(() => {
-    loadWeeklyRunners(regionFilter, countryFilter);
+    const task = InteractionManager.runAfterInteractions(() => {
+      loadWeeklyRunners(regionFilter, countryFilter);
+    });
+    return () => task.cancel();
   }, [loadWeeklyRunners, regionFilter, countryFilter]);
 
   const handleExploreEndReached = useCallback(() => {

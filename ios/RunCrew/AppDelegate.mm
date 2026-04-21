@@ -91,4 +91,25 @@
   return [super application:application didReceiveRemoteNotification:userInfo fetchCompletionHandler:completionHandler];
 }
 
+// End Live Activities on app termination (force-quit) so Dynamic Island doesn't persist.
+// Uses runtime messaging to avoid importing RunCrew-Swift.h (same pattern as WatchSessionManager above).
+- (void)applicationWillTerminate:(UIApplication *)application
+{
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+  Class liveActivityClass = NSClassFromString(@"LiveActivityModule");
+  if (!liveActivityClass) {
+    liveActivityClass = NSClassFromString(@"RunCrew.LiveActivityModule");
+  }
+  if (!liveActivityClass) {
+    liveActivityClass = NSClassFromString(@"RUNVS.LiveActivityModule");
+  }
+  SEL endAllSel = NSSelectorFromString(@"endAllActivities");
+  if (liveActivityClass && [liveActivityClass respondsToSelector:endAllSel]) {
+    [liveActivityClass performSelector:endAllSel];
+    NSLog(@"[AppDelegate] LiveActivity endAllActivities called on terminate");
+  }
+#pragma clang diagnostic pop
+}
+
 @end

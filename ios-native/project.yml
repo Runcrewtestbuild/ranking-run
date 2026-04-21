@@ -1,0 +1,51 @@
+name: RunVS
+options:
+  bundleIdPrefix: com.runcrew
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "16.0"
+
+packages:
+  MapboxMaps:
+    url: https://github.com/mapbox/mapbox-maps-ios
+    from: "11.0.0"
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: "8.0.0"
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: 6Q5TZCGM35
+
+targets:
+  RunVS:
+    type: application
+    platform: iOS
+    sources:
+      - path: RunVS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.runcrew.runvs.dev
+        INFOPLIST_FILE: RunVS/Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: false
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: 1
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: 1
+    dependencies:
+      - package: MapboxMaps
+        product: MapboxMaps
+      - package: GoogleSignIn
+        product: GoogleSignIn
+      - sdk: HealthKit.framework
+      - sdk: WatchConnectivity.framework
+      - sdk: CoreLocation.framework
+      - sdk: AVFoundation.framework
+      - sdk: UserNotifications.framework
+    entitlements:
+      path: RunVS/Resources/RunVS.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access:
+          - health-records
+        aps-environment: development

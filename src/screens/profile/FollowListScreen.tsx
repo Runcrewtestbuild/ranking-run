@@ -7,6 +7,7 @@ import {
   FlatList,
   ActivityIndicator,
   Image,
+  RefreshControl,
   Platform,
   StatusBar,
 } from 'react-native';
@@ -48,6 +49,7 @@ export default function FollowListScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
   const [togglingFollow, setTogglingFollow] = useState<Set<string>>(new Set());
+  const [refreshing, setRefreshing] = useState(false);
 
   const loadPage = useCallback(async (pageNum: number, reset: boolean) => {
     try {
@@ -84,6 +86,13 @@ export default function FollowListScreen() {
       setLoading(false);
     })();
   }, [loadPage, currentUser]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setPage(0);
+    await loadPage(0, true);
+    setRefreshing(false);
+  }, [loadPage]);
 
   const handleLoadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
@@ -186,13 +195,6 @@ export default function FollowListScreen() {
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
-        ) : items.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="people-outline" size={40} color={colors.textTertiary} />
-            <Text style={styles.emptyText}>
-              {isFollowersTab ? t('social.noFollowers') : t('social.noFollowing')}
-            </Text>
-          </View>
         ) : (
           <FlatList
             data={items}
@@ -206,6 +208,19 @@ export default function FollowListScreen() {
             maxToRenderPerBatch={10}
             initialNumToRender={10}
             windowSize={10}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Ionicons name="people-outline" size={48} color={colors.textTertiary} />
+                <Text style={styles.emptyText}>아직 없어요</Text>
+              </View>
+            }
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor={colors.primary}
+              />
+            }
             ListFooterComponent={
               loadingMore ? (
                 <View style={styles.footerLoader}>
@@ -246,14 +261,13 @@ const createStyles = (c: ThemeColors) =>
       alignItems: 'center',
     },
     emptyContainer: {
-      flex: 1,
-      justifyContent: 'center',
       alignItems: 'center',
+      paddingTop: 100,
       gap: SPACING.md,
     },
     emptyText: {
       fontSize: FONT_SIZES.md,
-      fontWeight: '500',
+      fontWeight: '600',
       color: c.textTertiary,
     },
 

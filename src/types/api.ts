@@ -25,6 +25,7 @@ export interface LoginRequest {
   provider: AuthProvider;
   token: string;
   nonce?: string;
+  force?: boolean;
 }
 
 export interface AuthResponse {
@@ -715,6 +716,7 @@ export interface RunCompleteResponse {
   points_earned: number;
   course_streak?: number;
   map_matching_confidence?: number;
+  route_thumbnail_url?: string | null;
 }
 
 // ---- Run Records ----
@@ -741,6 +743,7 @@ export interface RecentRun {
     title: string;
   } | null;
   route_preview?: number[][] | null;
+  route_thumbnail_url?: string | null;
   goal_data?: RunGoalData | null;
 }
 
@@ -758,6 +761,7 @@ export interface RunHistoryItem {
   } | null;
   device_model?: string | null;
   route_preview?: number[][] | null;
+  route_thumbnail_url?: string | null;
   goal_data?: RunGoalData | null;
 }
 
@@ -792,6 +796,7 @@ export interface RunRecordDetail {
     route_match_percent: number;
     ranking_at_time: number | null;
   };
+  route_thumbnail_url?: string | null;
   goal_data?: RunGoalData | null;
 }
 
@@ -845,6 +850,8 @@ export interface FavoriteCourseItem {
   distance_meters: number;
   estimated_duration_seconds: number;
   creator_nickname: string;
+  difficulty?: CourseDifficulty;
+  total_runs?: number;
   favorited_at: string;
 }
 

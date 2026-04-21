@@ -59,8 +59,15 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str = ""
     CDN_BASE_URL: str = ""  # e.g. https://cdn.runcrew.app
 
-    # Firebase Cloud Messaging
+    # Firebase Cloud Messaging (Android)
     FCM_SERVICE_ACCOUNT_PATH: str = ""  # Path to Firebase service account JSON
+
+    # APNs (iOS)
+    APNS_KEY_PATH: str = ""  # Path to .p8 key file
+    APNS_KEY_ID: str = ""  # Key ID from Apple Developer
+    APNS_TEAM_ID: str = ""  # Team ID from Apple Developer
+    APNS_BUNDLE_ID: str = "app.runcrew"
+    APNS_USE_SANDBOX: bool = False  # True for development builds
 
     # Sentry
     SENTRY_DSN: str = ""

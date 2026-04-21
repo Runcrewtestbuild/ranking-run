@@ -29,7 +29,14 @@ from app.services.challenge_service import ChallengeService
 from app.services.crew_challenge_service import CrewChallengeService
 from app.services.crew_ranking_service import CrewRankingService
 from app.services.live_group_run_service import LiveGroupRunService
+from app.services.feed_service import FeedService
+from app.services.reaction_service import ReactionService
+from app.services.leaderboard_service import LeaderboardService
+from app.services.season_service import SeasonService
 from app.services.strava_service import StravaService
+from app.services.crew_feed_service import CrewFeedService
+from app.services.scheduled_run_service import ScheduledRunService
+from app.services.versus_service import VersusService
 
 
 class Container(containers.DeclarativeContainer):
@@ -67,6 +74,11 @@ class Container(containers.DeclarativeContainer):
             "app.api.v1.leaderboard",
             "app.api.v1.live_group_runs",
             "app.api.v1.users",
+            "app.api.v1.feed",
+            "app.api.v1.versus",
+            "app.api.v1.seasons",
+            "app.api.v1.crew_feed",
+            "app.api.v1.scheduled_runs",
         ],
     )
 
@@ -83,6 +95,7 @@ class Container(containers.DeclarativeContainer):
     crew_chat_service = providers.Factory(CrewChatService)
     crew_join_request_service = providers.Factory(CrewJoinRequestService)
     crew_service = providers.Factory(CrewService)
+    feed_service = providers.Factory(FeedService)
     event_service = providers.Factory(EventService)
     follow_service = providers.Factory(FollowService)
     friend_request_service = providers.Factory(FriendRequestService)
@@ -97,7 +110,13 @@ class Container(containers.DeclarativeContainer):
     map_matching_service = providers.Singleton(MapMatchingService)
     run_service = providers.Factory(RunService)
     ranking_service = providers.Factory(RankingService)
+    reaction_service = providers.Factory(ReactionService)
     review_service = providers.Factory(ReviewService)
     stats_service = providers.Factory(StatsService)
     notification_service = providers.Factory(NotificationService, settings=settings)
+    leaderboard_service = providers.Factory(LeaderboardService)
+    season_service = providers.Factory(SeasonService)
     strava_service = providers.Factory(StravaService, settings=settings)
+    crew_feed_service = providers.Factory(CrewFeedService)
+    scheduled_run_service = providers.Factory(ScheduledRunService)
+    versus_service = providers.Factory(VersusService)

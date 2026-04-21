@@ -115,13 +115,22 @@ export function useCourseNavigation(
     return computeCumulativeDistances(courseRoute);
   }, [courseRoute]);
 
+  // Store currentBearing in a ref so it doesn't trigger recomputation.
+  // Bearing changes continuously but navigation only needs recalculation
+  // when position actually moves — bearing is read on-demand below.
+  const bearingRef = useRef(currentBearing);
+  bearingRef.current = currentBearing;
+
   return useMemo(() => {
     if (!courseRoute || courseRoute.length < 2 || !currentLocation) return null;
 
-    // Skip re-computation if position moved less than 1m
+    // Skip re-computation if position moved less than 3m.
+    // GPS noise is ±3m; recomputing on sub-3m movement wastes CPU
+    // and causes identical results. The bearing-based direction
+    // classification reads from bearingRef (always fresh).
     if (lastLocationRef.current && lastResultRef.current) {
       const moved = haversineDistance(currentLocation, lastLocationRef.current);
-      if (moved < 1) return lastResultRef.current;
+      if (moved < 3) return lastResultRef.current;
     }
     lastLocationRef.current = currentLocation;
 
@@ -214,7 +223,7 @@ export function useCourseNavigation(
     const bearingToNext = bearing(currentLocation, courseRoute[lookAheadIdx]);
 
     // Direction classification based on difference between current bearing and target
-    let bearingDiff = bearingToNext - currentBearing;
+    let bearingDiff = bearingToNext - bearingRef.current;
     if (bearingDiff > 180) bearingDiff -= 360;
     if (bearingDiff < -180) bearingDiff += 360;
 
@@ -276,5 +285,5 @@ export function useCourseNavigation(
     };
     lastResultRef.current = result;
     return result;
-  }, [courseRoute, currentLocation, currentBearing, turnPoints, cumulativeDistances, gpsAccuracy]);
+  }, [courseRoute, currentLocation, turnPoints, cumulativeDistances, gpsAccuracy]);
 }

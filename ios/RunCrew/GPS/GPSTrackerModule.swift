@@ -180,21 +180,29 @@ class GPSTrackerModule: RCTEventEmitter {
         return true
     }
 
+    /// Events that should only keep the latest value when buffered (deduplicated).
+    /// Prevents state jitter when JS bridge resumes and processes a burst of stale events.
+    private static let deduplicatedEvents: Set<String> = [
+        "GPSTracker_onLocationUpdate",
+        "GPSTracker_onGPSStatusChange",
+        "GPSTracker_onRunningStateChange",
+        "GPSTracker_onHeadingUpdate",
+    ]
+
     private func sendEventIfListening(_ name: String, body: Any?) {
         if hasListeners {
             sendEvent(withName: name, body: body)
         } else if isTrackingActive {
             // Tracking is active but JS bridge is suspended — buffer event
-            // Only buffer the latest location update (don't let buffer grow unbounded)
             eventLock.lock()
-            if name == "GPSTracker_onLocationUpdate" {
-                // Replace previous buffered location with latest
-                pendingEvents.removeAll { $0.name == "GPSTracker_onLocationUpdate" }
+            // For deduplicated events, keep only the latest value
+            if Self.deduplicatedEvents.contains(name) {
+                pendingEvents.removeAll { $0.name == name }
             }
             pendingEvents.append((name: name, body: body))
             // Cap buffer size
-            if pendingEvents.count > 50 {
-                pendingEvents.removeFirst(pendingEvents.count - 50)
+            if pendingEvents.count > 100 {
+                pendingEvents.removeFirst(pendingEvents.count - 100)
             }
             eventLock.unlock()
         }
@@ -327,6 +335,15 @@ class GPSTrackerModule: RCTEventEmitter {
     }
 
     @objc
+    func restartTracking(_ resolve: @escaping RCTPromiseResolveBlock,
+                          rejecter reject: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.main.async { [weak self] in
+            self?.locationEngine?.restartTracking()
+            resolve(nil)
+        }
+    }
+
+    @objc
     func getRawGPSPoints(_ resolve: @escaping RCTPromiseResolveBlock,
                           rejecter reject: @escaping RCTPromiseRejectBlock) {
         let points = locationEngine?.getRawGPSPoints() ?? []
@@ -416,7 +433,7 @@ class GPSTrackerModule: RCTEventEmitter {
                                   rejecter reject: @escaping RCTPromiseRejectBlock) {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .duckOthers])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
             resolve(nil)
         } catch {

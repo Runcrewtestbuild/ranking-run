@@ -7,6 +7,12 @@ if [ ! -f "$NODE_BIN" ]; then
   exit 0  # Not Apple Silicon Mac, skip
 fi
 
+# Only run on macOS (Apple Silicon dev machines, not EAS Build servers)
+if [ "$(uname)" != "Darwin" ]; then
+  echo "[patch-node-path-android] Not macOS, skipping"
+  exit 0
+fi
+
 find node_modules -name "*.gradle" -exec grep -l '"node"' {} \; 2>/dev/null | while read f; do
   sed -i '' "s|\"node\"|\"$NODE_BIN\"|g" "$f"
 done

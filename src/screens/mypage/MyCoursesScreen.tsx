@@ -24,7 +24,6 @@ import { useTranslation } from 'react-i18next';
 import { Ionicons } from '../../lib/icons';
 import { useCourseListStore } from '../../stores/courseListStore';
 import { useAuthStore } from '../../stores/authStore';
-import EmptyState from '../../components/common/EmptyState';
 import { useTheme } from '../../hooks/useTheme';
 import type { ThemeColors } from '../../utils/constants';
 import type { MyPageStackParamList } from '../../types/navigation';
@@ -267,12 +266,6 @@ export default function MyCoursesScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      ) : myCourses.length === 0 ? (
-        <EmptyState
-          ionicon="flag-outline"
-          title={t('course.emptyMyCourses')}
-          description={t('course.emptyMyCoursesMsg')}
-        />
       ) : (
         <FlatList
           data={myCourses}
@@ -284,6 +277,12 @@ export default function MyCoursesScreen() {
           maxToRenderPerBatch={10}
           initialNumToRender={10}
           windowSize={10}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="map-outline" size={48} color={colors.textTertiary} />
+              <Text style={styles.emptyText}>참여한 코스가 없습니다</Text>
+            </View>
+          }
         />
       )}
 
@@ -491,6 +490,16 @@ const createStyles = (c: ThemeColors) =>
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
+    },
+    emptyContainer: {
+      alignItems: 'center',
+      paddingTop: 100,
+      gap: SPACING.md,
+    },
+    emptyText: {
+      fontSize: FONT_SIZES.md,
+      fontWeight: '600',
+      color: c.textTertiary,
     },
     listContent: {
       paddingHorizontal: SPACING.xxl,

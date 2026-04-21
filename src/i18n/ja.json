@@ -97,6 +97,10 @@
     }
   },
   "running": {
+    "crashRecoveryTitle": "前回のランニングを復元",
+    "crashRecoveryMsg": "異常終了したランニング記録があります。\n\n距離: {{distance}}\n時間: {{duration}}\n\n記録を復元しますか？",
+    "crashRecoveryDiscard": "削除",
+    "crashRecoveryRestore": "復元する",
     "lowPowerTitle": "低電力モードが有効です",
     "lowPowerMessage": "低電力モードではGPS精度が大幅に低下し、距離・ペースの測定が不正確になります。設定から低電力モードを無効にしてから再試行してください。",
     "metrics": {
@@ -578,7 +582,8 @@
     "languageDesc": "アプリの表示言語を変更します",
     "langKo": "한국어",
     "langEn": "English",
-    "langJa": "日本語"
+    "langJa": "日本語",
+    "appVersion": "RUNVS v{{version}}"
   },
   "profile": {
     "totalDistance": "総距離",
@@ -636,7 +641,9 @@
     "deletePost": "投稿を削除",
     "deletePostMsg": "この投稿を削除しますか？",
     "deleteFailed": "削除に失敗しました。",
-    "updateFailed": "更新に失敗しました。"
+    "updateFailed": "更新に失敗しました。",
+    "likeFailed": "いいねの処理に失敗しました",
+    "commentCreateFailed": "コメントの作成に失敗しました"
   },
   "crew": {
     "crew": "クルー",
@@ -870,7 +877,14 @@
     "timeFormatM": "{{m}}分",
     "timeFormatS": "{{s}}秒",
     "timeFormatZero": "0分",
-    "minuteUnit": "分"
+    "minuteUnit": "分",
+    "strideSetting": "歩幅設定",
+    "strideCustom": "カスタム",
+    "stridePlaceholder": "歩幅を入力",
+    "strideHintCustom": "カスタム {{value}}cm 適用中 · 自動推定無効",
+    "strideHintHeight": "プロフィール身長({{height}}cm)基準で自動推定中",
+    "strideHintNoHeight": "プロフィールに身長を入力すると自動推定されます",
+    "strideBased": "歩幅ベース"
   },
   "runSettings": {
     "indoor": "室内",

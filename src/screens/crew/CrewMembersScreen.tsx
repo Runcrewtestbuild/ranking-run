@@ -334,6 +334,12 @@ export default function CrewMembersScreen() {
             maxToRenderPerBatch={10}
             initialNumToRender={10}
             windowSize={10}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Ionicons name="people-outline" size={48} color={colors.textTertiary} />
+                <Text style={styles.emptyText}>멤버가 없습니다</Text>
+              </View>
+            }
           />
         )}
 
@@ -542,6 +548,16 @@ const createStyles = (c: ThemeColors) =>
       borderRadius: 18,
       justifyContent: 'center',
       alignItems: 'center',
+    },
+    emptyContainer: {
+      alignItems: 'center',
+      paddingTop: 100,
+      gap: SPACING.md,
+    },
+    emptyText: {
+      fontSize: FONT_SIZES.md,
+      fontWeight: '600',
+      color: c.textTertiary,
     },
 
     // Invite modal

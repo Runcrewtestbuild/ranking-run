@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useNavigation, useRoute, RouteProp, CommonActions } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRunningStore } from '../../stores/runningStore';
 import { runService } from '../../services/runService';
 import { savePendingRunRecord, removePendingRunRecord, clearPendingChunksForSession, syncPendingData } from '../../services/pendingSyncService';
@@ -25,6 +26,7 @@ import RouteMapView from '../../components/map/RouteMapView';
 import type { RouteMapViewHandle } from '../../components/map/RouteMapView';
 import BlurredBackground from '../../components/common/BlurredBackground';
 import GlassCard from '../../components/common/GlassCard';
+import TimeSeriesLineChart from '../../components/charts/TimeSeriesLineChart';
 import type { WorldStackParamList } from '../../types/navigation';
 import type { RunCompleteResponse, Split, RawGPSPointAPI } from '../../types/api';
 import { useAuthStore } from '../../stores/authStore';
@@ -65,25 +67,18 @@ export default function RunResultScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const mapRef = useRef<RouteMapViewHandle>(null);
 
-  const distanceMeters = useRunningStore((s) => s.distanceMeters);
-  const durationSeconds = useRunningStore((s) => s.durationSeconds);
-  const avgPaceSecondsPerKm = useRunningStore((s) => s.avgPaceSecondsPerKm);
-  const calories = useRunningStore((s) => s.calories);
-  const routePoints = useRunningStore((s) => s.routePoints);
-  const splits = useRunningStore((s) => s.splits);
-  const elevationGainMeters = useRunningStore((s) => s.elevationGainMeters);
-  const elevationLossMeters = useRunningStore((s) => s.elevationLossMeters);
-  const courseId = useRunningStore((s) => s.courseId);
-  const loopDetected = useRunningStore((s) => s.loopDetected);
-  const stopLocation = useRunningStore((s) => s.stopLocation);
-  const heartRate = useRunningStore((s) => s.heartRate);
-  const cadence = useRunningStore((s) => s.cadence);
-  const checkpointPasses = useRunningStore((s) => s.checkpointPasses);
-  const chunkSequence = useRunningStore((s) => s.chunkSequence);
-  const uploadedChunkSequences = useRunningStore((s) => s.uploadedChunkSequences);
-  const deviationLog = useRunningStore((s) => s.deviationLog);
-  const filteredLocations = useRunningStore((s) => s.filteredLocations);
-  const runGoal = useRunningStore((s) => s.runGoal);
+  // Read all result data in a single snapshot to avoid 20+ individual subscriptions
+  // that each trigger a re-render. Result screen data is static after run completes.
+  const runData = useRef(useRunningStore.getState());
+  const {
+    distanceMeters, durationSeconds, avgPaceSecondsPerKm, calories,
+    routePoints, splits, elevationGainMeters, elevationLossMeters,
+    courseId, loopDetected, lapCount, stopLocation, heartRate, cadence,
+    checkpointPasses, chunkSequence, uploadedChunkSequences, deviationLog,
+    filteredLocations, intervalSegments,
+  } = runData.current;
+  const runGoalRef = useRef(runData.current.runGoal);
+  const runGoal = runGoalRef.current;
   const reset = useRunningStore((s) => s.reset);
 
   // Auto-dismiss result screen when user switches to another tab
@@ -242,25 +237,11 @@ export default function RunResultScreen() {
         }
       }
 
-      // RTS backward smoother: use future data to correct past GPS estimates
+      // Use original GPS route without RTS post-processing
       let finalRouteCoords: [number, number, number][] = routePoints.length >= 2
         ? routePoints.map((p) => [p.longitude, p.latitude, 0])
         : [[127.0, 37.5, 0], [127.0001, 37.5001, 0]];
       let finalDistance = distanceMeters;
-
-      if (Platform.OS === 'ios' && NativeModules.GPSTrackerModule) {
-        try {
-          const smoothed = await NativeModules.GPSTrackerModule.getSmoothedRoute();
-          if (smoothed?.route?.length >= 2) {
-            finalRouteCoords = smoothed.route.map((p: any) => [p.longitude, p.latitude, p.altitude ?? 0]);
-            finalDistance = smoothed.distance > 0 ? smoothed.distance : distanceMeters;
-            setFinalDistanceMeters(finalDistance);
-            if (__DEV__) console.log(`[RunResult] RTS smoothed: ${smoothed.route.length} pts, ${Math.round(finalDistance)}m`);
-          }
-        } catch (e) {
-          console.warn('[RunResult] RTS smoothing failed, using original route:', e);
-        }
-      }
 
       const runPayload = {
         distance_meters: Math.round(finalDistance),
@@ -307,6 +288,7 @@ export default function RunResultScreen() {
               intervalRunSeconds: runGoal.intervalRunSeconds,
               intervalWalkSeconds: runGoal.intervalWalkSeconds,
               intervalSets: runGoal.intervalSets,
+              completedSets: Math.max(...intervalSegments.map(s => s.set), 0),
             } : {}),
             ...(runGoal.type === 'program' ? {
               targetTime: runGoal.targetTime,
@@ -371,6 +353,44 @@ export default function RunResultScreen() {
   // and component state captured in the closure. Only sessionId and alreadyCompleted
   // are true triggers — the rest would cause spurious re-fires.
   }, [sessionId, alreadyCompleted]);
+
+  // Capture a route map snapshot after the run is submitted and the map has rendered.
+  // The snapshot is uploaded to the server and cached locally for use as a thumbnail.
+  const snapshotTakenRef = useRef(false);
+  useEffect(() => {
+    if (snapshotTakenRef.current) return;
+    if (!submitted || !result?.run_record_id) return;
+    if (routePoints.length < 2) return;
+
+    snapshotTakenRef.current = true;
+    const runRecordId = result.run_record_id;
+
+    // Delay to ensure the map has finished rendering the route and camera animation
+    const timer = setTimeout(async () => {
+      try {
+        const fileUri = await mapRef.current?.takeSnapshot(true);
+        if (!fileUri) return;
+
+        // Cache locally: runId -> file URI
+        await AsyncStorage.setItem(`route_thumb:${runRecordId}`, fileUri);
+
+        // Upload to server in background
+        const uploadedUrl = await runService.uploadRouteSnapshot(fileUri);
+
+        // Update the run record on the server with the thumbnail URL
+        await runService.updateRouteThumbnail(runRecordId, uploadedUrl);
+
+        // Also cache the server URL for immediate use
+        await AsyncStorage.setItem(`route_thumb_url:${runRecordId}`, uploadedUrl);
+
+        if (__DEV__) console.log('[RunResult] Route snapshot uploaded:', uploadedUrl);
+      } catch (e) {
+        console.warn('[RunResult] Route snapshot capture/upload failed:', e);
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [submitted, result?.run_record_id, routePoints.length]);
 
   const resetToWorld = () => {
     reset();
@@ -538,6 +558,8 @@ export default function RunResultScreen() {
             splitMarkers={splitMapMarkers.length > 0 ? splitMapMarkers : undefined}
             lastKnownLocation={routePoints.length > 0 ? routePoints[routePoints.length - 1] : undefined}
             animateToRouteOnLoad
+            useGradient={!courseId}
+            lapCount={!courseId ? lapCount : undefined}
             style={styles.mapPreview}
           />
           <TouchableOpacity
@@ -812,6 +834,49 @@ export default function RunResultScreen() {
           </View>
         )}
 
+        {/* Interval Segment Stats */}
+        {runGoal?.type === 'interval' && intervalSegments.length > 0 && (
+          <View style={styles.splitsSection}>
+            <Text style={styles.sectionTitle}>인터벌 구간 통계</Text>
+            <View style={styles.splitsTable}>
+              <View style={styles.splitHeader}>
+                <Text style={[styles.splitHeaderText, { textAlign: 'left' }]}>구간</Text>
+                <Text style={styles.splitHeaderText}>거리</Text>
+                <Text style={styles.splitHeaderText}>페이스</Text>
+                <Text style={[styles.splitHeaderText, { textAlign: 'right' }]}>시간</Text>
+              </View>
+              {intervalSegments.map((seg, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.splitRow,
+                    index % 2 === 0 && styles.splitRowAlt,
+                  ]}
+                >
+                  <View style={styles.splitLapCell}>
+                    <View style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: seg.phase === 'run' ? colors.primary : colors.success,
+                      marginRight: 4,
+                    }} />
+                    <Text style={styles.splitKm}>{seg.set}</Text>
+                    <Text style={styles.splitKmUnit}>{seg.phase === 'run' ? '달리기' : '걷기'}</Text>
+                  </View>
+                  <Text style={styles.splitPace}>{formatDistance(seg.distanceMeters)}</Text>
+                  <Text style={styles.splitPace}>
+                    {seg.phase === 'run' && seg.avgPaceSecondsPerKm > 0
+                      ? formatPace(seg.avgPaceSecondsPerKm)
+                      : '--'}
+                  </Text>
+                  <Text style={styles.splitTime}>{formatDuration(seg.durationSeconds)}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
         {/* Elevation Card */}
         {(elevationGainMeters > 0 || elevationLossMeters > 0) && (
           <View style={styles.elevationCard}>
@@ -839,6 +904,57 @@ export default function RunResultScreen() {
             </View>
           </View>
         )}
+
+        {/* Cadence & Heart Rate Charts */}
+        {(() => {
+          const cadenceData: Array<{ value: number; label?: string }> = [];
+          const hrData: Array<{ value: number; label?: string }> = [];
+          let lastDist = 0;
+          for (const loc of filteredLocations) {
+            if (loc.cumulativeDistance - lastDist >= 200 || cadenceData.length === 0) {
+              const km = (loc.cumulativeDistance / 1000).toFixed(1);
+              const showLabel = cadenceData.length % 5 === 0;
+              cadenceData.push({
+                value: loc.cadence ?? 0,
+                label: showLabel ? `${km}km` : undefined,
+              });
+              hrData.push({
+                value: loc.heartRate ?? 0,
+                label: showLabel ? `${km}km` : undefined,
+              });
+              lastDist = loc.cumulativeDistance;
+            }
+          }
+          const hasCadence = cadenceData.some((d) => d.value > 0);
+          const hasHR = hrData.some((d) => d.value > 0);
+          if (!hasCadence && !hasHR) return null;
+          return (
+            <>
+              {hasCadence && (
+                <View style={styles.splitsSection}>
+                  <TimeSeriesLineChart
+                    data={cadenceData}
+                    title={t('running.metrics.cadence')}
+                    unit="SPM"
+                    lineColor="#06B6D4"
+                    height={140}
+                  />
+                </View>
+              )}
+              {hasHR && (
+                <View style={styles.splitsSection}>
+                  <TimeSeriesLineChart
+                    data={hrData}
+                    title={t('running.metrics.heartRate')}
+                    unit="BPM"
+                    lineColor="#EF4444"
+                    height={140}
+                  />
+                </View>
+              )}
+            </>
+          );
+        })()}
 
         {/* Server submission status */}
         {isSubmitting && (

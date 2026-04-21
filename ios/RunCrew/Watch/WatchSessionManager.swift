@@ -38,6 +38,8 @@ final class WatchSessionManager: NSObject, WCSessionDelegate {
 
     /// Dedup watch commands: same command+timestamp delivered via both sendMessage and transferUserInfo
     private var lastCommandTimestamp: Double = 0
+    /// Serial queue for thread-safe access to lastCommandTimestamp (commands arrive on different threads)
+    private let commandDedupQueue = DispatchQueue(label: "com.runcrew.watchsession.commandDedup")
 
     /// Timestamp of last authoritative phase change (from GPSTrackerModule).
     /// Non-authoritative calls (from useWatchCompanion via WatchBridgeModule) cannot
@@ -64,12 +66,20 @@ final class WatchSessionManager: NSObject, WCSessionDelegate {
         let cmd = message["command"] as? String ?? ""
         let ts = message["timestamp"] as? Double ?? 0
 
-        // Dedup: same command can arrive via sendMessage + transferUserInfo
-        if ts > 0 && ts == lastCommandTimestamp {
+        // Thread-safe dedup: same command can arrive via sendMessage + transferUserInfo
+        // on different WCSession callback threads simultaneously
+        let isDuplicate = commandDedupQueue.sync { () -> Bool in
+            if ts > 0 && ts == lastCommandTimestamp {
+                return true
+            }
+            lastCommandTimestamp = ts
+            return false
+        }
+
+        if isDuplicate {
             NSLog("[WatchSessionMgr] DEDUP command %@ ts=%.0f", cmd, ts)
             return
         }
-        lastCommandTimestamp = ts
 
         NSLog("[WatchSessionMgr] handleWatchCommand: %@", cmd)
 
@@ -307,6 +317,13 @@ final class WatchSessionManager: NSObject, WCSessionDelegate {
             if phase == "countdown" {
                 launchWatchApp()
             }
+
+            // End HKWorkoutSession when run completes or returns to idle
+            if phase == "completed" || phase == "idle" {
+                if #available(iOS 17, *) {
+                    WorkoutMirroringPhone.shared.stopRun()
+                }
+            }
         }
 
         lastRunState = message
@@ -316,13 +333,15 @@ final class WatchSessionManager: NSObject, WCSessionDelegate {
         // When mirroring handles phase (running/paused/completed), WCSession should
         // NOT also send phase — that causes 4x duplicate phase deliveries on the watch.
         // Countdown always goes via WCSession since HKWorkoutSession has no countdown concept.
-        // Use session != nil (not isSessionActive) because after session.end()
-        // the session still exists but state is .stopped — mirroring is still
-        // delivering the phase change to the watch. Cleanup happens after 1s delay.
+        // Only suppress WCSession phase when the mirroring session is actually running or paused.
+        // A .stopped/.ended session no longer delivers phase changes to the watch,
+        // so WCSession must handle it to avoid the watch missing the transition.
         let mirroringHandlesPhase: Bool
         if #available(iOS 17, *) {
+            let mirroringSession = WorkoutMirroringPhone.shared.session
+            let sessionIsLive = mirroringSession?.state == .running || mirroringSession?.state == .paused
             mirroringHandlesPhase = isPhaseChange
-                && WorkoutMirroringPhone.shared.session != nil
+                && sessionIsLive
                 && newPhase != "countdown"
                 && newPhase != "idle"
         } else {

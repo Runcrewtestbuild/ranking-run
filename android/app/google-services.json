@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "163660628594",
+    "project_id": "runvs-1e3c7",
+    "storage_bucket": "runvs-1e3c7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:163660628594:android:8811c73b216af953e8f8eb",
+        "android_client_info": {
+          "package_name": "app.runcrew"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAXX9gNg6ZZkAHDMirrF652_JMUOUpdR6Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

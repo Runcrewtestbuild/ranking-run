@@ -10,12 +10,14 @@ class LoginRequest(BaseModel):
     provider: Literal["apple", "google"]
     token: str = Field(..., min_length=1, description="Apple id_token or Google id_token")
     nonce: str | None = Field(None, description="Apple Sign In nonce (required for Apple)")
+    force: bool = Field(False, description="If true, revoke all existing sessions before login")
 
 
 class DevLoginRequest(BaseModel):
     """Dev bypass login - creates or reuses a test user."""
     nickname: str = Field("dev_user", max_length=12)
     email: str = Field("dev@runcrew.test")
+    force: bool = Field(False, description="If true, revoke all existing sessions before login")
 
 
 class LoginUserInfo(BaseModel):

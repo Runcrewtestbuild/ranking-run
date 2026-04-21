@@ -17,7 +17,7 @@ class OutlierDetector {
     // Adaptive speed thresholds (matched with Android)
     private let walkingSpeedThreshold: Double = 2.0    // m/s (~7.2 km/h) — below this = walking
     private let walkingMaxSpeed: Double = 6.0          // m/s (~21.6 km/h) — generous for walking
-    private let backgroundMaxDistance: Double = 50.0   // meters — cap for stale background GPS
+    private let backgroundMaxDistance: Double = 100.0  // meters — cap for stale background GPS (raised from 50m to reduce valid-point rejection after brief signal gaps)
     private let backgroundMinInterval: TimeInterval = 5.0 // seconds
 
     private var lastTimestamp: TimeInterval = 0
@@ -57,8 +57,13 @@ class OutlierDetector {
             }
 
             // Background GPS guard (matched with Android):
-            // When update interval is large (>5s), GPS may report stale/cell-tower positions
+            // When update interval is large (>5s), GPS may report stale/cell-tower positions.
+            // Two tiers: short gaps (5-10s) allow 100m, longer gaps (>10s) tighten to 150m
+            // to prevent cell-tower position jumps after prolonged background suspension.
             if timeDelta > backgroundMinInterval && distance > backgroundMaxDistance {
+                return nil
+            }
+            if timeDelta > 10.0 && distance > 150.0 {
                 return nil
             }
 
@@ -75,16 +80,6 @@ class OutlierDetector {
             recentSpeeds.append(calculatedSpeed)
             if recentSpeeds.count > maxRecentSpeeds {
                 recentSpeeds.removeFirst()
-            }
-
-            // Mahalanobis-like check: reject if speed is >3 std devs from mean
-            if recentSpeeds.count >= 5 {
-                let mean = recentSpeeds.reduce(0, +) / Double(recentSpeeds.count)
-                let variance = recentSpeeds.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(recentSpeeds.count)
-                let stdDev = sqrt(variance)
-                if stdDev > 0.1 && abs(calculatedSpeed - mean) > 3.0 * stdDev {
-                    return nil
-                }
             }
 
             previousPoints.append((location: location, speed: calculatedSpeed))

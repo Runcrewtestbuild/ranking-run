@@ -6,6 +6,8 @@ import { savePendingChunk } from '../services/pendingSyncService';
 import { performTokenRefresh } from '../services/api';
 import type { RawGPSPointAPI, UploadChunkRequest } from '../types/api';
 
+const UPLOAD_TIMEOUT_MS = 30_000; // 30-second upload timeout
+
 const CHUNK_DISTANCE_THRESHOLD_M = 1000; // Upload every 1 km
 const CHUNK_TIME_THRESHOLD_MS = 5 * 60 * 1000; // Upload every 5 minutes
 
@@ -80,15 +82,16 @@ export function useRunningChunkUpload() {
   const tryUploadChunk = async () => {
     if (uploadingRef.current) return;
 
-    const s = stateRef.current;
-    if (!s.sessionId || s.sessionId.startsWith('local_')) return; // No server session yet
+    // Read state atomically from the store (not from stateRef which may be stale)
+    const s = useRunningStore.getState();
+    if (!s.sessionId || s.sessionId.startsWith('local_')) return;
 
     const newPoints = s.filteredLocations.slice(s.lastChunkPointIndex);
     if (newPoints.length === 0) return;
 
     uploadingRef.current = true;
     const seq = s.chunkSequence;
-    const pointIndex = s.filteredLocations.length;
+    const pointCount = newPoints.length;
 
     // Build raw GPS points for the API
     const rawGPSPoints: RawGPSPointAPI[] = newPoints.map((p) => ({
@@ -135,8 +138,13 @@ export function useRunningChunkUpload() {
     incrementChunkSequence();
 
     try {
-      await runService.uploadChunk(s.sessionId, chunkRequest);
-      markChunkUploaded(seq, pointIndex, s.distanceMeters);
+      // Add timeout to prevent hanging uploads from blocking all future chunks
+      const uploadPromise = runService.uploadChunk(s.sessionId, chunkRequest);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Upload timeout')), UPLOAD_TIMEOUT_MS),
+      );
+      await Promise.race([uploadPromise, timeoutPromise]);
+      markChunkUploaded(seq, pointCount, s.distanceMeters);
       console.log(`[ChunkUpload] Chunk ${seq} uploaded (${rawGPSPoints.length} pts, ${Math.round(chunkDistance)}m)`);
     } catch (error) {
       console.warn(`[ChunkUpload] Chunk ${seq} failed, saving locally:`, error);
@@ -149,8 +157,8 @@ export function useRunningChunkUpload() {
       }).catch((err) => {
         console.warn('[ChunkUpload] 청크 로컬 저장 실패:', err);
       });
-      // Still mark the point index/distance so we don't re-collect the same points
-      markChunkUploaded(seq, pointIndex, s.distanceMeters);
+      // Still mark the point count/distance so we don't re-collect the same points
+      markChunkUploaded(seq, pointCount, s.distanceMeters);
     } finally {
       uploadingRef.current = false;
     }
@@ -193,10 +201,15 @@ export function useRunningChunkUpload() {
 
   // Proactive token refresh during long runs — every 15 minutes
   // Ensures the token never expires even if chunk uploads are sparse
+  // Guard: skip if last refresh was <5 minutes ago to prevent redundant refreshes
+  const lastTokenRefreshRef = useRef<number>(0);
   useEffect(() => {
     if (phase !== 'running') return;
 
     const tokenRefreshInterval = setInterval(() => {
+      const now = Date.now();
+      if (now - lastTokenRefreshRef.current < 5 * 60 * 1000) return;
+      lastTokenRefreshRef.current = now;
       performTokenRefresh().catch(() => {
         // Refresh failed — the 401 interceptor in api.ts will handle it
         // on the next actual API call

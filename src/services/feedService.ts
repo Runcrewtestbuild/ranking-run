@@ -1,0 +1,116 @@
+import api from './api';
+import type { PaginatedResponse } from '../types/api';
+import type { FeedActivity, ReactionSummary, ReactionType } from '../types/feed';
+
+class FeedService {
+  async getFeed(page: number, perPage: number): Promise<{ data: FeedActivity[]; has_next: boolean }> {
+    const sp = new URLSearchParams();
+    sp.set('page', String(page));
+    sp.set('per_page', String(perPage));
+    const res = await api.get<{
+      data: Array<{
+        id: string;
+        user: { id: string; nickname: string | null; avatar_url: string | null };
+        activity_type: string;
+        content: string | null;
+        image_urls: string[];
+        metadata: Record<string, unknown> | null;
+        run_summary: {
+          id: string;
+          distance_meters: number;
+          duration_seconds: number;
+          avg_pace_seconds_per_km: number | null;
+          course_title: string | null;
+          route_thumbnail_url: string | null;
+        } | null;
+        reactions_summary: Record<string, number>;
+        user_reactions: string[];
+        created_at: string;
+      }>;
+      total_count: number;
+      page: number;
+      per_page: number;
+    }>(`/feed?${sp.toString()}`);
+
+    const activities: FeedActivity[] = res.data.map((a) => ({
+      id: a.id,
+      userId: a.user.id,
+      userNickname: a.user.nickname ?? '',
+      userAvatarUrl: a.user.avatar_url,
+      activityType: a.activity_type as FeedActivity['activityType'],
+      content: a.content ?? undefined,
+      imageUrls: a.image_urls,
+      metadata: a.metadata ?? {},
+      runRecord: a.run_summary
+        ? {
+            id: a.run_summary.id,
+            distanceMeters: a.run_summary.distance_meters,
+            durationSeconds: a.run_summary.duration_seconds,
+            avgPaceSecondsPerKm: a.run_summary.avg_pace_seconds_per_km ?? 0,
+            routePreview: [],
+            thumbnailUrl: a.run_summary.route_thumbnail_url,
+          }
+        : undefined,
+      reactions: {
+        clap: a.reactions_summary.clap ?? 0,
+        fire: a.reactions_summary.fire ?? 0,
+        muscle: a.reactions_summary.muscle ?? 0,
+        party: a.reactions_summary.party ?? 0,
+        lightning: a.reactions_summary.lightning ?? 0,
+        total: a.reactions_summary.total ?? 0,
+      },
+      userReactions: a.user_reactions as ReactionType[],
+      createdAt: a.created_at,
+    }));
+
+    const totalFetched = (page) * perPage + activities.length;
+    return { data: activities, has_next: totalFetched < res.total_count };
+  }
+
+  async getUserActivities(
+    userId: string,
+    page: number,
+    perPage = 20,
+  ): Promise<PaginatedResponse<FeedActivity>> {
+    const sp = new URLSearchParams();
+    sp.set('page', String(page));
+    sp.set('per_page', String(perPage));
+    return api.get<PaginatedResponse<FeedActivity>>(
+      `/feed/users/${userId}?${sp.toString()}`,
+    );
+  }
+
+  async createActivity(
+    content: string,
+    imageUris?: string[],
+  ): Promise<FeedActivity> {
+    if (imageUris && imageUris.length > 0) {
+      const formData = new FormData();
+      formData.append('content', content);
+      imageUris.forEach((uri, idx) => {
+        const ext = uri.split('.').pop() ?? 'jpg';
+        formData.append('images', {
+          uri,
+          name: `image_${idx}.${ext}`,
+          type: `image/${ext === 'png' ? 'png' : 'jpeg'}`,
+        } as unknown as Blob);
+      });
+      return api.post<FeedActivity>('/feed', formData);
+    }
+    return api.post<FeedActivity>('/feed', { content });
+  }
+
+  async addReaction(activityId: string, type: ReactionType): Promise<void> {
+    return api.post(`/feed/activities/${activityId}/reactions`, { reaction_type: type });
+  }
+
+  async removeReaction(activityId: string, type: ReactionType): Promise<void> {
+    return api.delete(`/feed/activities/${activityId}/reactions/${type}`);
+  }
+
+  async getReactions(activityId: string): Promise<ReactionSummary> {
+    return api.get<ReactionSummary>(`/feed/activities/${activityId}/reactions`);
+  }
+}
+
+export const feedService = new FeedService();

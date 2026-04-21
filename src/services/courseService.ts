@@ -168,6 +168,7 @@ export const courseService = {
       tags?: string[];
       course_type?: string;
       lap_count?: number;
+      thumbnail_url?: string;
     },
   ): Promise<void> {
     await api.patch(`/courses/${courseId}`, data);

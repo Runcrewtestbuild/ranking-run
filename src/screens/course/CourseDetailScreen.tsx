@@ -37,6 +37,7 @@ import CourseCommentSection from '../../components/course/CourseCommentSection';
 import DifficultyBadge from '../../components/course/DifficultyBadge';
 import RunnerLevelBadge from '../../components/runner/RunnerLevelBadge';
 import ElevationProfileChart from '../../components/charts/ElevationProfileChart';
+import DonutChart from '../../components/charts/DonutChart';
 import PodiumView from '../../components/ranking/PodiumView';
 import FilterChipBar, { type FilterGroup } from '../../components/ranking/FilterChipBar';
 import GpsVerifiedBadge from '../../components/ranking/GpsVerifiedBadge';
@@ -456,8 +457,8 @@ export default function CourseDetailScreen() {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
       <ScrollView
         ref={scrollViewRef}
@@ -612,8 +613,11 @@ export default function CourseDetailScreen() {
                 <Text style={styles.statsRowValue}>{formatNumber(stats.unique_runners)}명</Text>
               </View>
               <View style={styles.statsRowItem}>
-                <Text style={styles.statsRowLabel}>{t('course.detail.completionRate')}</Text>
-                <Text style={styles.statsRowValue}>{Math.round(stats.completion_rate * 100)}%</Text>
+                <DonutChart
+                  percentage={Math.round(stats.completion_rate * 100)}
+                  size={80}
+                  label="완주율"
+                />
               </View>
               <View style={styles.statsRowItem}>
                 <Text style={styles.statsRowLabel}>{t('course.detail.avgPace')}</Text>
@@ -1099,6 +1103,7 @@ const CrewRankingRow = React.memo(function CrewRankingRow({
   const RANK_COLORS = [colors.gold, colors.silver, colors.bronze];
   const isTop3 = entry.rank <= 3;
   const rankColor = isTop3 ? RANK_COLORS[entry.rank - 1] : colors.surfaceLight;
+  const [crewLogoFailed, setCrewLogoFailed] = useState(false);
 
   return (
     <TouchableOpacity
@@ -1112,8 +1117,12 @@ const CrewRankingRow = React.memo(function CrewRankingRow({
 
       {/* Crew logo */}
       <View style={styles.groupAvatarStack}>
-        {entry.crew_logo_url ? (
-          <Image source={{ uri: entry.crew_logo_url }} style={styles.groupAvatarImg} />
+        {entry.crew_logo_url && !crewLogoFailed ? (
+          <Image
+            source={{ uri: entry.crew_logo_url }}
+            style={styles.groupAvatarImg}
+            onError={() => setCrewLogoFailed(true)}
+          />
         ) : (
           <View style={styles.groupAvatarCircle}>
             <Ionicons name="people" size={12} color={colors.textTertiary} />
@@ -1150,6 +1159,7 @@ const RankingRow = React.memo(function RankingRow({ entry, isMe = false }: { ent
   const rankColor = isTop3 ? RANK_COLORS[entry.rank - 1] : colors.surfaceLight;
   const avatarSize = isTop3 ? 40 : 34;
   const avatarRadius = avatarSize / 2;
+  const [rankAvatarFailed, setRankAvatarFailed] = useState(false);
 
   return (
     <TouchableOpacity
@@ -1173,10 +1183,11 @@ const RankingRow = React.memo(function RankingRow({ entry, isMe = false }: { ent
       )}
 
       {/* Avatar with rank ring */}
-      {entry.user.avatar_url ? (
+      {entry.user.avatar_url && !rankAvatarFailed ? (
         <Image
           source={{ uri: entry.user.avatar_url }}
           style={[styles.rankAvatar, { width: avatarSize, height: avatarSize, borderRadius: avatarRadius }, isTop3 && { borderWidth: 2, borderColor: rankColor }]}
+          onError={() => setRankAvatarFailed(true)}
         />
       ) : (
         <View style={[styles.rankAvatar, styles.rankAvatarPlaceholder, { width: avatarSize, height: avatarSize, borderRadius: avatarRadius }, isTop3 && { borderWidth: 2, borderColor: rankColor }]}>
@@ -1270,6 +1281,7 @@ const createStyles = (c: ThemeColors) => StyleSheet.create({
   mapPreview: {
     height: 260,
     borderRadius: BORDER_RADIUS.xl,
+    backgroundColor: '#1C1C1E',
   },
 
   // -- Course title + difficulty --

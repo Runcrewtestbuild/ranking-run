@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Image, StyleSheet } from 'react-native';
 import { useTheme } from '../../hooks/useTheme';
-import { MAPBOX_ACCESS_TOKEN } from '../../config/env';
+import { MAPBOX_ACCESS_TOKEN, MAPBOX_DARK_STYLE, MAPBOX_LIGHT_STYLE } from '../../config/env';
 
 
 interface CourseThumbnailMapProps {
@@ -9,6 +9,8 @@ interface CourseThumbnailMapProps {
   width: number;
   height: number;
   borderRadius?: number;
+  /** Pre-captured route snapshot URL. When provided, displayed instead of the Mapbox Static API image. */
+  thumbnailUrl?: string | null;
 }
 
 /** Downsample points array to at most maxPts, keeping first and last. */
@@ -34,8 +36,8 @@ function buildStaticMapUrl(
   const geojson = encodeURIComponent(JSON.stringify({
     type: 'Feature',
     properties: {
-      stroke: '#FFC800',
-      'stroke-width': 3,
+      stroke: '#FFD600',
+      'stroke-width': 4,
       'stroke-opacity': 1,
     },
     geometry: {
@@ -59,33 +61,40 @@ export default React.memo(function CourseThumbnailMap({
   width,
   height,
   borderRadius = 8,
+  thumbnailUrl,
 }: CourseThumbnailMapProps) {
   const colors = useTheme();
   const isDark = colors.statusBar === 'light-content';
   const bgColor = isDark ? '#1C1C1E' : '#F2F2F7';
 
   const imageUri = useMemo(() => {
+    // When a pre-captured snapshot URL is available, use it directly
+    if (thumbnailUrl) return thumbnailUrl;
+
     if (!routePreview || routePreview.length < 2 || !MAPBOX_ACCESS_TOKEN) return null;
 
-    const styleId = isDark
-      ? 'mapbox/dark-v11'
-      : 'mapbox/light-v11';
+    // Mapbox Static API doesn't support custom GL styles — use built-in styles
+    const styleId = isDark ? 'mapbox/dark-v11' : 'mapbox/light-v11';
 
     const pixelW = Math.min(Math.round(width * 2), 640);
     const pixelH = Math.min(Math.round(height * 2), 640);
 
-    // First attempt: 60 points, 5 decimal places
-    let pts = downsample(routePreview, 60);
+    // First attempt: 100 points, 5 decimal places for better route detail
+    let pts = downsample(routePreview, 100);
     let url = buildStaticMapUrl(pts, styleId, pixelW, pixelH, 5);
 
-    // If URL too long, reduce points and precision
+    // If URL too long, progressively reduce points and precision
+    if (url.length > 8000) {
+      pts = downsample(routePreview, 60);
+      url = buildStaticMapUrl(pts, styleId, pixelW, pixelH, 5);
+    }
     if (url.length > 8000) {
       pts = downsample(routePreview, 30);
       url = buildStaticMapUrl(pts, styleId, pixelW, pixelH, 4);
     }
 
     return url;
-  }, [routePreview, width, height, isDark]);
+  }, [routePreview, width, height, isDark, thumbnailUrl]);
 
   const [failed, setFailed] = useState(false);
 

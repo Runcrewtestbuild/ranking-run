@@ -10,7 +10,7 @@ class SensorFusionManager {
     private var baseGPSAltitude: Double?
     private var lastGPSTime: Date?
     private var lastGPSLocation: CLLocation?
-    private let gpsLostThreshold: TimeInterval = 5.0 // seconds
+    private let gpsLostThreshold: TimeInterval = 10.0 // seconds — matches LocationEngine GPS lost timer
 
     var isGPSLost: Bool {
         guard let lastTime = lastGPSTime else { return true }
@@ -81,7 +81,7 @@ class SensorFusionManager {
                 pedDistance = dist
                 semaphore.signal()
             }
-            if semaphore.wait(timeout: .now() + 0.1) == .success,
+            if semaphore.wait(timeout: .now() + 0.5) == .success,
                let dist = pedDistance, dist > 0 {
                 estimatedDistance = dist
             }

@@ -10,7 +10,9 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -78,6 +80,22 @@ class GPSForegroundService : Service() {
     private var isRunning = false
     private var wakeLock: PowerManager.WakeLock? = null
 
+    // Re-acquire wake lock every 3.5 hours to prevent 4-hour timeout
+    // during marathons and ultra runs.
+    private val wakeLockHandler = Handler(Looper.getMainLooper())
+    private val wakeLockRenewalRunnable = object : Runnable {
+        override fun run() {
+            wakeLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                    it.acquire(4 * 60 * 60 * 1000L)
+                    Log.i(TAG, "Wake lock renewed for another 4 hours")
+                    wakeLockHandler.postDelayed(this, (3.5 * 60 * 60 * 1000).toLong())
+                }
+            }
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder {
         return binder
     }
@@ -118,6 +136,7 @@ class GPSForegroundService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        wakeLockHandler.removeCallbacks(wakeLockRenewalRunnable)
         try {
             wakeLock?.let { if (it.isHeld) it.release() }
             wakeLock = null
@@ -136,6 +155,8 @@ class GPSForegroundService : Service() {
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "RUNVS::GPSTracking").apply {
                 acquire(4 * 60 * 60 * 1000L) // 4 hours max as safety timeout
             }
+            // Schedule renewal before the 4-hour timeout expires
+            wakeLockHandler.postDelayed(wakeLockRenewalRunnable, (3.5 * 60 * 60 * 1000).toLong())
         } catch (e: Exception) {
             Log.w(TAG, "Failed to acquire wake lock", e)
         }
@@ -160,6 +181,8 @@ class GPSForegroundService : Service() {
 
     private fun stopForegroundTracking() {
         isRunning = false
+        // Cancel wake lock renewal
+        wakeLockHandler.removeCallbacks(wakeLockRenewalRunnable)
         // Release wake lock
         try {
             wakeLock?.let {

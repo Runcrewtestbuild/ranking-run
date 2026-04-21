@@ -214,11 +214,6 @@ export default function CrewSearchScreen() {
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
-        ) : crews.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="people-outline" size={48} color={colors.textTertiary} />
-            <Text style={styles.emptyText}>{t('crew.noCrewsFound')}</Text>
-          </View>
         ) : (
           <FlatList
             data={crews}
@@ -233,6 +228,12 @@ export default function CrewSearchScreen() {
             maxToRenderPerBatch={10}
             initialNumToRender={10}
             windowSize={10}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Ionicons name="search-outline" size={48} color={colors.textTertiary} />
+                <Text style={styles.emptyText}>검색 결과가 없습니다</Text>
+              </View>
+            }
           />
         )}
       </SafeAreaView>
@@ -252,14 +253,13 @@ const createStyles = (c: ThemeColors) =>
       alignItems: 'center',
     },
     emptyContainer: {
-      flex: 1,
-      justifyContent: 'center',
       alignItems: 'center',
+      paddingTop: 100,
       gap: SPACING.md,
     },
     emptyText: {
       fontSize: FONT_SIZES.md,
-      fontWeight: '500',
+      fontWeight: '600',
       color: c.textTertiary,
     },
 

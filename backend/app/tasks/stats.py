@@ -5,11 +5,13 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from app.core.config import get_settings
 from app.db.session import async_session_factory
 from app.models.user import User
 from app.models.crew import Crew
 from app.models.crew import CrewMember
 from app.core.runner_level_config import calc_runner_level
+from app.services.notification_service import NotificationService
 from app.services.stats_service import StatsService
 
 logger = logging.getLogger(__name__)
@@ -69,8 +71,49 @@ async def update_stats_after_run(
             if user is not None:
                 new_level = calc_runner_level(user.total_distance_meters)
                 if new_level != user.runner_level:
-                    logger.info("Runner level up: user=%s, %d → %d", user_id, user.runner_level, new_level)
+                    old_level = user.runner_level
+                    logger.info("Runner level up: user=%s, %d → %d", user_id, old_level, new_level)
                     user.runner_level = new_level
+
+                    # Send level up notification
+                    if new_level > old_level:
+                        try:
+                            notification_svc = NotificationService(get_settings())
+                            await notification_svc.create_and_send(
+                                db=db,
+                                user_id=user_id,
+                                notification_type="level_up",
+                                actor_id=user_id,
+                                title="레벨 업!",
+                                body=f"레벨 {new_level}에 도달했습니다!",
+                                target_id=str(user_id),
+                                target_type="user",
+                            )
+                        except Exception:
+                            logger.warning("Failed to send level_up notification for user %s", user_id)
+
+            # Check weekly goal achievement
+            if user is not None:
+                try:
+                    weekly_stats = await stats_service.get_weekly_stats(db, user_id)
+                    weekly_distance_km = weekly_stats["total_distance_meters"] / 1000
+                    weekly_goal_km = user.weekly_goal_km or 20.0
+                    # Check if this run pushed user past the goal
+                    prev_distance_km = (weekly_stats["total_distance_meters"] - distance_meters) / 1000
+                    if weekly_distance_km >= weekly_goal_km > prev_distance_km:
+                        notification_svc = NotificationService(get_settings())
+                        await notification_svc.create_and_send(
+                            db=db,
+                            user_id=user_id,
+                            notification_type="weekly_goal",
+                            actor_id=user_id,
+                            title="주간 목표 달성!",
+                            body="이번 주 목표를 달성했습니다!",
+                            target_id=str(user_id),
+                            target_type="user",
+                        )
+                except Exception:
+                    logger.warning("Failed to check/send weekly_goal notification for user %s", user_id)
 
             # Update crew XP for all crews the user belongs to
             crew_result = await db.execute(

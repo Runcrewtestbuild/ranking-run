@@ -11,10 +11,10 @@ class KalmanFilter {
     private var lastValidResult: (lat: Double, lon: Double, alt: Double, speed: Double, bearing: Double)?
 
     // Process noise base values (higher = more responsive to actual movement)
-    // Previous values (0.5/1.5) were too low — filter was sluggish following transitions
-    // from stopped to running, causing distance under-counting and route lag.
-    private let processNoisePosition: Double = 1.0
-    private let processNoiseVelocity: Double = 3.0
+    // Original (1.0/3.0) over-smoothed curves. 1.5/4.5 was too spiky.
+    // 1.2/3.6 (20% increase) balances curve preservation with smooth lines.
+    private let processNoisePosition: Double = 1.2
+    private let processNoiseVelocity: Double = 3.6
     private var dynamicProcessNoise: Double = 1.0
 
     // Speed-adaptive Q scaling factors.
@@ -23,7 +23,7 @@ class KalmanFilter {
     // Fast running (> 5 m/s): higher Q trusts measurements more (responsive to changes).
     private let walkingSpeedThreshold: Double = 2.0   // m/s
     private let runningSpeedThreshold: Double = 5.0   // m/s
-    private let walkingQScale: Double = 0.35
+    private let walkingQScale: Double = 0.6
     private let joggingQScale: Double = 1.0
     private let sprintingQScale: Double = 1.8
     private var speedAdaptiveQScale: Double = 1.0
@@ -104,9 +104,18 @@ class KalmanFilter {
         }
 
         let dt = (timestamp - lastTimestamp) / 1000.0 // ms to seconds
-        guard dt > 0, dt < 30 else {
-            // Reset if time gap too large
-            initialize(lat: lat, lon: lon, alt: alt, timestamp: timestamp)
+        guard dt > 0 else {
+            return lastValidResult ?? (lat, lon, alt, speed, bearing)
+        }
+        if dt >= 30 {
+            // Large time gap — reset filter state but KEEP the coordinate converter
+            // to prevent coordinate frame corruption in RTS smoother.
+            // Reinitializing the converter shifts the reference origin, causing
+            // points before/after the gap to use different coordinate frames.
+            let pos = converter.toMeters(lat: lat, lon: lon)
+            state = [pos.x, pos.y, alt, 0, 0, 0]
+            covariance = Self.identity(6, scale: 100.0)
+            lastTimestamp = timestamp
             history.append((predicted: state, predictedP: covariance,
                             filtered: state, filteredP: covariance,
                             F: Self.identity(6),
@@ -147,6 +156,11 @@ class KalmanFilter {
         history.append((predicted: predictedState, predictedP: predictedP,
                          filtered: state, filteredP: covariance, F: F,
                          measTimestamp: timestamp, measSpeed: speed, measBearing: bearing))
+        // Trim history to prevent unbounded memory growth on long runs (3hr+)
+        // Keep generous buffer for RTS smoother on long runs
+        if history.count > 10000 {
+            history.removeFirst(history.count - 8000)
+        }
 
         return convertStateToLatLng()
     }

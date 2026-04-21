@@ -16,6 +16,7 @@ from app.models.run_chunk import RunChunk
 from app.models.run_record import RunRecord
 from app.models.run_session import RunSession
 from app.models.user import User
+from app.services.feed_service import FeedService
 from app.services.map_matching_service import MapMatchingService
 from app.services.speed_anomaly_service import analyze_run
 
@@ -231,6 +232,7 @@ class RunService:
             pause_intervals=complete_data.get("pause_intervals"),
             filter_config=complete_data.get("filter_config"),
             goal_data=complete_data.get("goal_data"),
+            route_thumbnail_url=complete_data.get("route_thumbnail_url"),
             started_at=session.started_at,
             finished_at=complete_data["finished_at"],
         )
@@ -316,6 +318,25 @@ class RunService:
             if run_record.raw_route_geometry is not None:
                 flag_modified(run_record, "route_geometry")
                 await db.flush()
+
+        # Auto-create activity feed entry for completed run
+        try:
+            feed_service = FeedService()
+            await feed_service.auto_create_run_activity(
+                db=db,
+                user_id=user_id,
+                run_record_id=run_record.id,
+            )
+
+            # Check for personal records and create PR activities
+            await self._check_and_create_pr_activities(
+                db=db,
+                feed_service=feed_service,
+                user_id=user_id,
+                run_record=run_record,
+            )
+        except Exception as e:
+            logger.warning("[RunService] Failed to create feed activity: %s", e)
 
         total_chunks = complete_data.get("total_chunks", 0)
 
@@ -481,6 +502,80 @@ class RunService:
     # -----------------------------------------------------------------------
     # Private helpers
     # -----------------------------------------------------------------------
+
+    async def _check_and_create_pr_activities(
+        self,
+        db: AsyncSession,
+        feed_service: FeedService,
+        user_id: UUID,
+        run_record: RunRecord,
+    ) -> None:
+        """Check if this run set any personal records and create PR activities.
+
+        Checks for:
+        - Fastest 5K (if distance >= 5000m)
+        - Fastest 10K (if distance >= 10000m)
+        - Longest single run (by distance)
+        """
+        distance = run_record.distance_meters
+        pace = run_record.avg_pace_seconds_per_km
+
+        # Check fastest 5K
+        if distance >= 5000 and pace:
+            prev_best = await db.execute(
+                select(func.min(RunRecord.avg_pace_seconds_per_km)).where(
+                    RunRecord.user_id == user_id,
+                    RunRecord.id != run_record.id,
+                    RunRecord.distance_meters >= 5000,
+                    RunRecord.avg_pace_seconds_per_km.isnot(None),
+                    RunRecord.is_flagged == False,
+                )
+            )
+            prev_min = prev_best.scalar_one_or_none()
+            if prev_min is None or pace < prev_min:
+                await feed_service.auto_create_pr_activity(
+                    db=db,
+                    user_id=user_id,
+                    run_record_id=run_record.id,
+                    pr_type="fastest_5k",
+                )
+
+        # Check fastest 10K
+        if distance >= 10000 and pace:
+            prev_best = await db.execute(
+                select(func.min(RunRecord.avg_pace_seconds_per_km)).where(
+                    RunRecord.user_id == user_id,
+                    RunRecord.id != run_record.id,
+                    RunRecord.distance_meters >= 10000,
+                    RunRecord.avg_pace_seconds_per_km.isnot(None),
+                    RunRecord.is_flagged == False,
+                )
+            )
+            prev_min = prev_best.scalar_one_or_none()
+            if prev_min is None or pace < prev_min:
+                await feed_service.auto_create_pr_activity(
+                    db=db,
+                    user_id=user_id,
+                    run_record_id=run_record.id,
+                    pr_type="fastest_10k",
+                )
+
+        # Check longest run
+        prev_longest = await db.execute(
+            select(func.max(RunRecord.distance_meters)).where(
+                RunRecord.user_id == user_id,
+                RunRecord.id != run_record.id,
+                RunRecord.is_flagged == False,
+            )
+        )
+        prev_max = prev_longest.scalar_one_or_none()
+        if prev_max is None or distance > prev_max:
+            await feed_service.auto_create_pr_activity(
+                db=db,
+                user_id=user_id,
+                run_record_id=run_record.id,
+                pr_type="longest_run",
+            )
 
     async def _get_active_session(
         self,

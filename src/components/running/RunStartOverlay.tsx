@@ -2,11 +2,11 @@ import { useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
   Animated,
   Platform,
 } from 'react-native';
+import { TouchableOpacity } from '../../lib/touchables';
 import { Ionicons } from '../../lib/icons';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../hooks/useTheme';
@@ -61,53 +61,18 @@ export default function RunStartOverlay({
       <Animated.View
         style={[
           styles.innerContainer,
-          {
-            transform: [{ translateY }],
-            opacity,
-          },
+          { transform: [{ translateY }], opacity },
         ]}
       >
-        {/* Goal label chip — shown when a goal is set */}
-        {hasGoal && (
-          <TouchableOpacity style={styles.goalChip} onPress={onGoalPress} activeOpacity={0.7} hitSlop={hitSlop}>
-            <Ionicons name="flag" size={14} color={colors.primary} />
-            <Text style={styles.goalChipText} numberOfLines={1}>{goalLabel}</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Main row: settings / start / goal */}
         <View style={styles.row}>
-          {/* Settings button */}
-          <TouchableOpacity
-            style={styles.sideButton}
-            onPress={onSettingsPress}
-            activeOpacity={0.7}
-            hitSlop={hitSlop}
-          >
+          <TouchableOpacity style={styles.sideButton} onPress={onSettingsPress} activeOpacity={0.7} hitSlop={hitSlop}>
             <Ionicons name="settings-outline" size={24} color={colors.textSecondary} />
           </TouchableOpacity>
-
-          {/* Big start button */}
-          <TouchableOpacity
-            style={styles.startButton}
-            onPress={onStart}
-            activeOpacity={0.85}
-          >
+          <TouchableOpacity style={styles.startButton} onPress={onStart} activeOpacity={0.85}>
             <Text style={styles.startText}>{t('running.controls.start')}</Text>
           </TouchableOpacity>
-
-          {/* Goal button */}
-          <TouchableOpacity
-            style={[styles.sideButton, hasGoal && styles.sideButtonActive]}
-            onPress={onGoalPress}
-            activeOpacity={0.7}
-            hitSlop={hitSlop}
-          >
-            <Ionicons
-              name={hasGoal ? 'flag' : 'flag-outline'}
-              size={24}
-              color={hasGoal ? colors.primary : colors.textSecondary}
-            />
+          <TouchableOpacity style={[styles.sideButton, hasGoal && styles.sideButtonActive]} onPress={onGoalPress} activeOpacity={0.7} hitSlop={hitSlop}>
+            <Ionicons name={hasGoal ? 'flag' : 'flag-outline'} size={24} color={hasGoal ? colors.primary : colors.textSecondary} />
           </TouchableOpacity>
         </View>
       </Animated.View>

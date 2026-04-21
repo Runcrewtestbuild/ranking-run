@@ -68,9 +68,9 @@ async def notify_followers_run_completed(
 
             title = f"{display_name}님이 러닝을 완료했어요!"
             if course_title:
-                body = f"📍 {course_title} · {dist_str} · {dur_str}"
+                body = f"{course_title} · {dist_str} · {dur_str}"
             else:
-                body = f"🏃 {dist_str} · {dur_str}"
+                body = f"{dist_str} · {dur_str}"
 
             settings = get_settings()
             svc = NotificationService(settings)

@@ -4,14 +4,14 @@ from datetime import datetime, timedelta, timezone
 
 from dependency_injector.wiring import inject, Provide
 from fastapi import APIRouter, Depends, Request, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core.rate_limit import limiter
 
 from app.core.config import get_settings
 from app.core.container import Container
 from app.core.deps import CurrentUser, DbSession
-from app.core.exceptions import AppError
+from app.core.exceptions import AppError, ConflictError
 from app.core.security import create_access_token, create_refresh_token, hash_token
 from app.models.user import RefreshToken, User
 from app.schemas.auth import (
@@ -49,6 +49,36 @@ async def dev_login(body: DevLoginRequest, db: DbSession) -> AuthResponse:
         db.add(user)
         await db.flush()
         is_new = True
+
+    # Single-device login enforcement for dev-login
+    if not is_new and not body.force:
+        now = datetime.now(timezone.utc)
+        active_result = await db.execute(
+            select(RefreshToken.id)
+            .where(
+                RefreshToken.user_id == user.id,
+                RefreshToken.is_revoked == False,  # noqa: E712
+                RefreshToken.expires_at > now,
+            )
+            .limit(1)
+        )
+        if active_result.scalar_one_or_none() is not None:
+            raise ConflictError(
+                code="ALREADY_LOGGED_IN",
+                message="User is already logged in on another device",
+            )
+
+    if not is_new and body.force:
+        now = datetime.now(timezone.utc)
+        await db.execute(
+            update(RefreshToken)
+            .where(
+                RefreshToken.user_id == user.id,
+                RefreshToken.is_revoked == False,  # noqa: E712
+            )
+            .values(is_revoked=True, revoked_at=now)
+        )
+        await db.flush()
 
     access_token = create_access_token(subject=str(user.id))
     raw_refresh = create_refresh_token()
@@ -90,6 +120,7 @@ async def login(
         provider=body.provider,
         token=body.token,
         nonce=body.nonce,
+        force=body.force,
     )
 
     return AuthResponse(

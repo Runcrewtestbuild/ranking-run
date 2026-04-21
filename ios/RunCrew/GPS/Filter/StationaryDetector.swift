@@ -25,11 +25,11 @@ class StationaryDetector {
     private let stationarySpeedThreshold: Double = 0.3
 
     /// Speed above which a stationary user is considered moving again (m/s).
-    /// Lowered from 0.5 to 0.35 m/s: with a 5-sample window containing stale zeros,
-    /// the average must exceed this. At 0.5, a walker at 1.0 m/s needs 3+ samples
-    /// above zero before avg > 0.5 — too slow. At 0.35, even 2 samples of 1.0 m/s
-    /// with 3 zeros gives avg = 0.4 > 0.35, enabling faster resume detection.
-    private let movingSpeedThreshold: Double = 0.35
+    /// 0.5 m/s provides sufficient hysteresis above the 0.3 m/s stationary threshold
+    /// to prevent oscillation when speed hovers around the boundary. The resume check
+    /// uses max(instantaneous, average) so a single GPS reading at walking pace (1+ m/s)
+    /// still triggers resume without needing the full window to catch up.
+    private let movingSpeedThreshold: Double = 0.5
 
     /// Accelerometer magnitude threshold to detect movement (g-force).
     /// Walking generates 0.15–0.3g sustained; phone shaking can spike higher but briefly.

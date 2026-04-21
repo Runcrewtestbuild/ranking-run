@@ -105,10 +105,15 @@ class CompanionRunManager {
     }
 
     func handleStateUpdate(_ message: [String: Any]) {
-        // Block ALL state updates during idle cooldown (prevents phantom runs from stale messages)
+        // Block state updates during idle cooldown (prevents phantom runs from stale messages)
+        // Exception: allow "countdown" through — it signals a genuine new run from the phone
         if isInIdleCooldown?() == true {
-            print("[CompanionRunManager] BLOCKED stateUpdate during idle cooldown")
-            return
+            let incomingPhase = message[WatchMessageKeys.phase] as? String
+            if incomingPhase != "countdown" {
+                print("[CompanionRunManager] BLOCKED stateUpdate during idle cooldown (phase=\(incomingPhase ?? "nil"))")
+                return
+            }
+            print("[CompanionRunManager] Allowing countdown through idle cooldown")
         }
 
         // In standalone mode, ignore phone updates UNLESS the phone starts a NEW run.
@@ -393,9 +398,13 @@ class CompanionRunManager {
     /// Handle phase change from HKWorkoutSession mirroring.
     func handleMirroredPhaseChange(from oldPhase: String, to newPhase: String) {
         // Block during idle cooldown (prevents stale mirroring callbacks from creating phantom runs)
+        // Exception: allow "countdown" through — it signals a genuine new run
         if isInIdleCooldown?() == true {
-            print("[CompanionRunManager] MIRRORED BLOCKED during idle cooldown: \(oldPhase)→\(newPhase)")
-            return
+            if newPhase != "countdown" {
+                print("[CompanionRunManager] MIRRORED BLOCKED during idle cooldown: \(oldPhase)→\(newPhase)")
+                return
+            }
+            print("[CompanionRunManager] MIRRORED allowing countdown through idle cooldown")
         }
         guard let state = getState?(), newPhase != state.phase else { return }
 

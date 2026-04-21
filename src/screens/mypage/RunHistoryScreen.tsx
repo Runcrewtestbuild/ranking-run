@@ -24,7 +24,9 @@ import {
   formatDistance,
   formatDuration,
   formatPace,
+  formatRunGoalTag,
 } from '../../utils/format';
+import { useToastStore } from '../../stores/toastStore';
 import { FONT_SIZES, SPACING, BORDER_RADIUS } from '../../utils/constants';
 import type { ThemeColors } from '../../utils/constants';
 import { ListEndIndicator } from '../../components/common/Skeleton';
@@ -92,7 +94,7 @@ export default function RunHistoryScreen() {
       setHasNext(resp.has_next);
       setPage(pageNum);
     } catch {
-      // Silently handle errors
+      useToastStore.getState().showToast('error', t('common.errorRetry'));
     }
   }, []);
 
@@ -145,10 +147,11 @@ export default function RunHistoryScreen() {
       >
         <View style={styles.runCardInner}>
           {/* Route thumbnail or accent bar */}
-          {run.route_preview && run.route_preview.length >= 2 ? (
+          {run.route_thumbnail_url || (run.route_preview && run.route_preview.length >= 2) ? (
             <View style={styles.routeThumb}>
               <CourseThumbnailMap
-                routePreview={run.route_preview}
+                routePreview={run.route_preview ?? []}
+                thumbnailUrl={run.route_thumbnail_url}
                 width={56}
                 height={56}
                 borderRadius={8}
@@ -182,6 +185,23 @@ export default function RunHistoryScreen() {
                 <Text style={styles.runStatLabel}>{t('running.metrics.time')}</Text>
               </View>
             </View>
+            {(() => {
+              const tag = formatRunGoalTag(run.goal_data, {
+                distance_meters: run.distance_meters,
+                duration_seconds: run.duration_seconds,
+                avg_pace_seconds_per_km: run.avg_pace_seconds_per_km,
+                completedSets: (run.goal_data as any)?.completedSets,
+              });
+              return (
+                <Text style={[
+                  styles.runGoalTag,
+                  tag.achieved === true && { color: colors.success },
+                  tag.achieved === false && { color: colors.textTertiary },
+                ]}>
+                  {tag.label}
+                </Text>
+              );
+            })()}
           </View>
           <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
         </View>
@@ -384,6 +404,12 @@ const createStyles = (c: ThemeColors) =>
       width: 1,
       height: 20,
       backgroundColor: c.divider,
+    },
+    runGoalTag: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: c.textTertiary,
+      marginTop: 4,
     },
     footerLoader: {
       paddingVertical: SPACING.xl,

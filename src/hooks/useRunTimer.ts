@@ -15,10 +15,6 @@ import { useRunningStore } from '../stores/runningStore';
 export function useRunTimer() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Subscribe only to the fields that determine isRunning.
-  // Previously subscribed to entire store → every GPS update (distanceMeters,
-  // routePoints, filteredLocations, etc.) triggered a re-render here, which
-  // cascaded to all components mounting this hook.
   const phase = useRunningStore((s) => s.phase);
   const isPaused = useRunningStore((s) => s.isPaused);
   const isAutoPaused = useRunningStore((s) => s.isAutoPaused);
@@ -52,11 +48,17 @@ export function useRunTimer() {
     };
   }, [isRunning]);
 
-  // AppState listener — force recalc when returning from background
+  // AppState listener — force recalc when returning from background.
+  // Small delay to let the JS bridge flush queued native events first,
+  // so the UI updates smoothly instead of showing a stale value then jumping.
   useEffect(() => {
     const handleAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === 'active') {
+        // Immediate recalc for accurate value
         recalcDuration();
+        // Second recalc after 500ms — after queued events are processed,
+        // ensures the displayed value is consistent with GPS state
+        setTimeout(recalcDuration, 500);
       }
     };
 

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+    <key>UILaunchScreen</key>
+    <dict/>
+    <key>UIRequiredDeviceCapabilities</key>
+    <array>
+        <string>armv7</string>
+    </array>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+    <key>UIViewControllerBasedStatusBarAppearance</key>
+    <true/>
+    <key>MBXAccessToken</key>
+    <string>pk.eyJ1IjoicnVuc3ZzIiwiYSI6ImNtbHN6MWcwcjBiaHQzZW5haGZwYmRmMmkifQ.2Tk2JpcrFD0lCOOneMRrpw</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>RunVS needs your location to track running routes and record GPS data during your run.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>RunVS needs your location to show your position on the map and track running routes.</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>RunVS needs background location access to continue tracking your run when the app is in the background.</string>
+    <key>NSHealthShareUsageDescription</key>
+    <string>RunVS uses HealthKit to sync workout data with Apple Watch.</string>
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>RunVS saves workout data to HealthKit for your running sessions.</string>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>audio</string>
+        <string>location</string>
+        <string>remote-notification</string>
+    </array>
+    <key>NSSupportsLiveActivities</key>
+    <true/>
+    <key>GIDClientID</key>
+    <string>61103557165-01ss48am0uc6nk1fuhm3vc28pqr164qn.apps.googleusercontent.com</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>com.googleusercontent.apps.61103557165-01ss48am0uc6nk1fuhm3vc28pqr164qn</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

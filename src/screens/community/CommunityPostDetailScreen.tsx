@@ -77,9 +77,9 @@ export default function CommunityPostDetailScreen() {
       const data = await communityService.getPost(postId);
       setPost(data);
     } catch {
-      // silent
+      useToastStore.getState().showToast('error', t('common.errorRetry'));
     }
-  }, [postId]);
+  }, [postId, t]);
 
   const fetchComments = useCallback(
     async (pageNum: number, reset: boolean) => {
@@ -96,10 +96,10 @@ export default function CommunityPostDetailScreen() {
         setTotalComments(res.total_count);
         setHasMoreComments(res.data.length >= COMMENTS_PAGE_SIZE);
       } catch {
-        // silent
+        useToastStore.getState().showToast('error', t('common.errorRetry'));
       }
     },
-    [postId],
+    [postId, t],
   );
 
   useEffect(() => {
@@ -130,9 +130,9 @@ export default function CommunityPostDetailScreen() {
           : prev,
       );
     } catch {
-      useToastStore.getState().showToast('error', '좋아요 처리에 실패했습니다');
+      useToastStore.getState().showToast('error', t('community.likeFailed'));
     }
-  }, [post, postId]);
+  }, [post, postId, t]);
 
   const handleAddComment = useCallback(async () => {
     const trimmed = commentText.trim();
@@ -148,7 +148,7 @@ export default function CommunityPostDetailScreen() {
       setCommentText('');
       Keyboard.dismiss();
     } catch {
-      useToastStore.getState().showToast('error', '댓글 작성에 실패했습니다');
+      useToastStore.getState().showToast('error', t('community.commentCreateFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -172,7 +172,7 @@ export default function CommunityPostDetailScreen() {
                   : prev,
               );
             } catch {
-              // silent
+              useToastStore.getState().showToast('error', t('common.errorRetry'));
             }
           },
         },
@@ -307,6 +307,8 @@ export default function CommunityPostDetailScreen() {
   }
 
   const authorInitial = (post.author.nickname ?? '?').charAt(0).toUpperCase();
+  const [authorAvatarFailed, setAuthorAvatarFailed] = useState(false);
+  const [postImageFailed, setPostImageFailed] = useState(false);
 
   return (
     <BlurredBackground>
@@ -348,8 +350,12 @@ export default function CommunityPostDetailScreen() {
             <View style={styles.postCard}>
               {/* Author row */}
               <View style={styles.authorRow}>
-                {post.author.avatar_url ? (
-                  <Image source={{ uri: post.author.avatar_url }} style={styles.avatar} />
+                {post.author.avatar_url && !authorAvatarFailed ? (
+                  <Image
+                    source={{ uri: post.author.avatar_url }}
+                    style={styles.avatar}
+                    onError={() => setAuthorAvatarFailed(true)}
+                  />
                 ) : (
                   <View style={styles.avatarPlaceholder}>
                     <Text style={styles.avatarInitial}>{authorInitial}</Text>
@@ -381,12 +387,17 @@ export default function CommunityPostDetailScreen() {
               {/* Images */}
               {(post.image_urls?.length ?? 0) > 1 ? (
                 <PostImageCarousel imageUrls={post.image_urls!} />
-              ) : post.image_url ? (
+              ) : post.image_url && !postImageFailed ? (
                 <Image
                   source={{ uri: post.image_url }}
                   style={styles.postImage}
                   resizeMode="contain"
+                  onError={() => setPostImageFailed(true)}
                 />
+              ) : post.image_url && postImageFailed ? (
+                <View style={[styles.postImage, styles.postImageFallback]}>
+                  <Ionicons name="image-outline" size={32} color={colors.textTertiary} />
+                </View>
               ) : null}
 
               {/* Crew promo card */}
@@ -518,6 +529,29 @@ export default function CommunityPostDetailScreen() {
 
 const DETAIL_IMAGE_WIDTH = Dimensions.get('window').width - SPACING.xl * 2;
 
+function CarouselImage({ url, style }: { url: string; style: any }) {
+  const colors = useTheme();
+  const s = useMemo(() => createStyles(colors), [colors]);
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return (
+      <View style={[style, s.postImageFallback]}>
+        <Ionicons name="image-outline" size={32} color={colors.textTertiary} />
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: url }}
+      style={style}
+      resizeMode="contain"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function PostImageCarousel({ imageUrls }: { imageUrls: string[] }) {
   const colors = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -536,11 +570,10 @@ function PostImageCarousel({ imageUrls }: { imageUrls: string[] }) {
         style={{ width: DETAIL_IMAGE_WIDTH }}
       >
         {imageUrls.map((url, i) => (
-          <Image
+          <CarouselImage
             key={i}
-            source={{ uri: url }}
+            url={url}
             style={[styles.postImage, { width: DETAIL_IMAGE_WIDTH }]}
-            resizeMode="contain"
           />
         ))}
       </ScrollView>
@@ -579,11 +612,16 @@ function CommentRow({
   const { t } = useTranslation();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const initial = (comment.author.nickname ?? '?').charAt(0).toUpperCase();
+  const [avatarFailed, setAvatarFailed] = useState(false);
 
   return (
     <View style={styles.commentRow}>
-      {comment.author.avatar_url ? (
-        <Image source={{ uri: comment.author.avatar_url }} style={styles.commentAvatar} />
+      {comment.author.avatar_url && !avatarFailed ? (
+        <Image
+          source={{ uri: comment.author.avatar_url }}
+          style={styles.commentAvatar}
+          onError={() => setAvatarFailed(true)}
+        />
       ) : (
         <View style={styles.commentAvatarPlaceholder}>
           <Text style={styles.commentAvatarInitial}>{initial}</Text>
@@ -719,6 +757,11 @@ const createStyles = (c: ThemeColors) =>
       width: '100%',
       aspectRatio: 4 / 3,
       borderRadius: 12,
+      backgroundColor: c.surface,
+    },
+    postImageFallback: {
+      justifyContent: 'center',
+      alignItems: 'center',
       backgroundColor: c.surface,
     },
 

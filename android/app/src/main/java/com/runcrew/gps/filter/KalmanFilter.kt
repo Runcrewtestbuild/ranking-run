@@ -33,16 +33,17 @@ class KalmanFilter(
         private const val VELOCITY_UP = 5
 
         // Process noise base values (matched with iOS)
-        // Higher = more responsive to actual movement
-        private const val PROCESS_NOISE_POSITION = 1.0
-        private const val PROCESS_NOISE_VELOCITY = 3.0
+        // Original (1.0/3.0) over-smoothed curves. 1.5/4.5 was too spiky.
+        // 1.2/3.6 (20% increase) balances curve preservation with smooth lines.
+        private const val PROCESS_NOISE_POSITION = 1.2
+        private const val PROCESS_NOISE_VELOCITY = 3.6
 
         // Speed-adaptive Q scaling (matched with iOS)
         // Walking: lower Q trusts prediction more (smoother path)
         // Sprinting: higher Q trusts measurements more (responsive)
         private const val WALKING_SPEED_THRESHOLD = 2.0   // m/s
         private const val RUNNING_SPEED_THRESHOLD = 5.0   // m/s
-        private const val WALKING_Q_SCALE = 0.35
+        private const val WALKING_Q_SCALE = 0.6
         private const val JOGGING_Q_SCALE = 1.0
         private const val SPRINTING_Q_SCALE = 1.8
 
@@ -214,6 +215,10 @@ class KalmanFilter(
             speed = point.speed,
             bearing = point.bearing,
         ))
+        // Trim history to prevent unbounded memory growth on long runs (2hr+)
+        if (history.size > 7200) { // ~2hr at 1Hz
+            history.subList(0, history.size - 5000).clear()
+        }
 
         // Convert back to lat/lng
         val latLng = coordinateConverter.toLatLng(x[POSITION_NORTH], x[POSITION_EAST], x[POSITION_UP])

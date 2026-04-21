@@ -12,6 +12,7 @@ import {
   NativeModules,
   Platform,
   Modal,
+  DeviceEventEmitter,
   BackHandler,
   RefreshControl,
   InteractionManager,
@@ -44,6 +45,7 @@ import {
   formatDistance,
   formatDuration,
   formatPace,
+  formatRunGoalTag,
   metersToKm,
 } from '../../utils/format';
 import {
@@ -53,6 +55,7 @@ import {
   COLORS,
 } from '../../utils/constants';
 import type { ThemeColors } from '../../utils/constants';
+import { inferDifficulty, getDifficultyLabel } from '../../utils/constants';
 import { useTheme } from '../../hooks/useTheme';
 import { useToastStore } from '../../stores/toastStore';
 import CrewLevelBadge from '../../components/crew/CrewLevelBadge';
@@ -74,6 +77,14 @@ let _cachedFriendsRunning: FriendRunning[] = [];
 let _diskCacheLoaded = false;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const IS_ANDROID = Platform.OS === 'android';
+
+const DIFF_COLOR: Record<string, string> = {
+  easy: '#6EE7A0',
+  normal: '#FBBF54',
+  hard: '#F87171',
+  expert: '#F87171',
+  legend: '#A78BFA',
+};
 
 // ---- Onboarding Guide ----
 
@@ -267,14 +278,24 @@ export default function HomeScreen() {
     loadData();
   }, [loadData]);
 
-  // Refetch primary data (courses, runs) when tab regains focus
+  // Refetch primary data when tab regains focus (throttled to avoid redundant calls)
+  const lastFetchRef = useRef(Date.now());
   useFocusEffect(
     useCallback(() => {
-      // Skip the initial mount (already handled above)
       if (loading) return;
+      if (Date.now() - lastFetchRef.current < 30000) return; // skip if <30s old
+      lastFetchRef.current = Date.now();
       loadPrimaryData();
     }, [loading, loadPrimaryData]),
   );
+
+  // Clear unread badge immediately when notifications are marked as read
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('notifications:allRead', () => {
+      setUnreadCount(0);
+    });
+    return () => sub.remove();
+  }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -645,8 +666,13 @@ export default function HomeScreen() {
                     activeOpacity={0.7}
                     onPress={() => navigation.navigate('CourseDetail', { courseId: course.id })}
                   >
-                    {course.route_preview && course.route_preview.length >= 2 ? (
-                      <CourseThumbnailMap routePreview={course.route_preview} width={160} height={90} />
+                    {course.thumbnail_url || (course.route_preview && course.route_preview.length >= 2) ? (
+                      <CourseThumbnailMap
+                        routePreview={course.route_preview ?? []}
+                        thumbnailUrl={course.thumbnail_url}
+                        width={160}
+                        height={90}
+                      />
                     ) : (
                       <View style={[styles.favThumbnail, styles.favThumbnailPlaceholder]}>
                         <Ionicons name="map-outline" size={24} color={colors.textTertiary} />
@@ -655,8 +681,13 @@ export default function HomeScreen() {
                     <View style={styles.favInfo}>
                       <Text style={styles.favName} numberOfLines={1}>{course.title}</Text>
                       <Text style={styles.favMeta}>
-                        {formatDistance(course.distance_meters)} · {course.creator_nickname}
+                        {formatDistance(course.distance_meters)}
+                        <Text style={styles.favMetaSep}>{' · '}</Text>
+                        <Text style={{ color: DIFF_COLOR[inferDifficulty(course.distance_meters, 0)] ?? colors.textSecondary }}>{getDifficultyLabel(inferDifficulty(course.distance_meters, 0))}</Text>
+                        {(course.total_runs ?? 0) > 0 && <Text style={styles.favMetaSep}>{' · '}</Text>}
+                        {(course.total_runs ?? 0) > 0 && `참여 ${course.total_runs}회`}
                       </Text>
+                      <Text style={styles.favCreator} numberOfLines={1}>{course.creator_nickname}</Text>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -877,8 +908,14 @@ export default function HomeScreen() {
                     activeOpacity={0.7}
                   >
                     <View style={styles.recentRunInner}>
-                      {run.route_preview && run.route_preview.length >= 2 ? (
-                        <CourseThumbnailMap routePreview={run.route_preview} width={56} height={56} borderRadius={8} />
+                      {run.route_thumbnail_url || (run.route_preview && run.route_preview.length >= 2) ? (
+                        <CourseThumbnailMap
+                          routePreview={run.route_preview ?? []}
+                          thumbnailUrl={run.route_thumbnail_url}
+                          width={80}
+                          height={80}
+                          borderRadius={10}
+                        />
                       ) : (
                         <View style={styles.recentRunIconPlaceholder}>
                           <Ionicons name="footsteps" size={20} color={colors.textTertiary} />
@@ -907,6 +944,23 @@ export default function HomeScreen() {
                             {formatDuration(run.duration_seconds)}
                           </Text>
                         </View>
+                        {(() => {
+                          const tag = formatRunGoalTag(run.goal_data, {
+                            distance_meters: run.distance_meters,
+                            duration_seconds: run.duration_seconds,
+                            avg_pace_seconds_per_km: run.avg_pace_seconds_per_km,
+                            completedSets: (run.goal_data as any)?.completedSets,
+                          });
+                          return (
+                            <Text style={[
+                              styles.recentRunGoalTag,
+                              tag.achieved === true && { color: colors.success },
+                              tag.achieved === false && { color: colors.textTertiary },
+                            ]}>
+                              {tag.label}
+                            </Text>
+                          );
+                        })()}
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -1547,14 +1601,25 @@ const createStyles = (c: ThemeColors) =>
       gap: 2,
     },
     favName: {
-      fontSize: FONT_SIZES.sm,
+      fontSize: 14,
       fontWeight: '700',
       color: c.text,
     },
+    favCreator: {
+      fontSize: 12,
+      color: c.text,
+      opacity: 0.4,
+      marginTop: 1,
+    },
     favMeta: {
-      fontSize: FONT_SIZES.xs,
+      fontSize: 12,
       fontWeight: '500',
-      color: c.textTertiary,
+      color: c.text,
+      opacity: 0.7,
+      marginTop: 1,
+    },
+    favMetaSep: {
+      opacity: 0.25,
     },
 
     // Crew raid cards
@@ -1609,7 +1674,7 @@ const createStyles = (c: ThemeColors) =>
     recentRunCardBorder: { borderTopWidth: 1, borderTopColor: c.divider },
     recentRunInner: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
     recentRunIconPlaceholder: {
-      width: 56, height: 56, borderRadius: 8,
+      width: 80, height: 80, borderRadius: 10,
       backgroundColor: c.surface,
       justifyContent: 'center', alignItems: 'center',
     },
@@ -1631,6 +1696,12 @@ const createStyles = (c: ThemeColors) =>
       fontVariant: ['tabular-nums'],
     },
     recentRunDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: c.textTertiary },
+    recentRunGoalTag: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: c.textTertiary,
+      marginTop: 2,
+    },
 
     // Empty state
     emptyState: {

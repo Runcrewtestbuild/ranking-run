@@ -20,7 +20,7 @@ class WatchSessionService: NSObject, WCSessionDelegate {
     /// Queue of messages that failed to send. Retried on next successful connection.
     /// Capped to prevent unbounded growth while the watch is disconnected.
     private var pendingMessageQueue: [[String: Any]] = []
-    private let maxPendingMessages = 20
+    private let maxPendingMessages = 100
 
     private override init() {
         super.init()
@@ -101,17 +101,37 @@ class WatchSessionService: NSObject, WCSessionDelegate {
         }
     }
 
+    /// Maximum queued HR samples when phone is unreachable.
+    /// At ~1 sample per 3 seconds, 30 samples covers ~90 seconds of buffer.
+    private let maxPendingHeartRateSamples = 30
+    private var pendingHeartRateSamples: [[String: Any]] = []
+
     func sendHeartRate(_ bpm: Double) {
-        guard WCSession.default.isReachable else {
-            // Heart rate is ephemeral — don't queue, just drop
-            return
-        }
         let message: [String: Any] = [
             WatchMessageKeys.type: WatchMessageType.heartRate.rawValue,
             WatchMessageKeys.bpm: bpm,
             WatchMessageKeys.timestamp: Date().timeIntervalSince1970 * 1000
         ]
-        WCSession.default.sendMessage(message, replyHandler: nil, errorHandler: nil)
+
+        if WCSession.default.isReachable {
+            // Flush any queued HR samples first
+            if !pendingHeartRateSamples.isEmpty {
+                let queued = pendingHeartRateSamples
+                pendingHeartRateSamples.removeAll()
+                for sample in queued {
+                    WCSession.default.transferUserInfo(sample)
+                }
+                print("[WatchSessionSvc] Flushed \(queued.count) queued HR samples")
+            }
+            WCSession.default.sendMessage(message, replyHandler: nil, errorHandler: nil)
+        } else {
+            // Queue via transferUserInfo for guaranteed delivery when reconnected
+            pendingHeartRateSamples.append(message)
+            if pendingHeartRateSamples.count > maxPendingHeartRateSamples {
+                pendingHeartRateSamples.removeFirst(pendingHeartRateSamples.count - maxPendingHeartRateSamples)
+            }
+            WCSession.default.transferUserInfo(message)
+        }
     }
 
     /// Request current run state from phone. Uses reply handler for instant response.

@@ -122,6 +122,9 @@ class RunRecord(Base, UUIDPrimaryKeyMixin):
         nullable=False,
     )
 
+    # Route snapshot thumbnail (uploaded from client after run)
+    route_thumbnail_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     # Relationships
     user: Mapped["User"] = relationship("User", lazy="joined")
     session: Mapped["RunSession"] = relationship("RunSession", lazy="noload")

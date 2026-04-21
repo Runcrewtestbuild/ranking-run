@@ -2,7 +2,6 @@ import { useEffect, useRef, useMemo, useCallback, useState } from 'react';
 import {
   View,
   Text,
-  Pressable,
   StyleSheet,
   Animated,
   Modal,
@@ -11,6 +10,7 @@ import {
   Dimensions,
   BackHandler,
 } from 'react-native';
+import { Pressable } from '../../lib/touchables';
 import { Ionicons } from '../../lib/icons';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
@@ -58,22 +58,20 @@ export default function RunSettingsSheet({ visible, onClose, onNavigateWatch, on
       modalVisibleRef.current = true;
       if (IS_ANDROID) setAndroidShowSheet(true);
       dragOffset.setValue(0);
+      slideAnim.stopAnimation();
+      slideAnim.setValue(SCREEN_HEIGHT);
       Animated.spring(slideAnim, {
         toValue: 0,
         damping: 22,
         stiffness: 180,
         useNativeDriver: true,
       }).start();
-    } else if (modalVisibleRef.current) {
-      Animated.spring(slideAnim, {
-        toValue: SCREEN_HEIGHT,
-        damping: 24,
-        stiffness: 160,
-        useNativeDriver: true,
-      }).start(() => {
-        modalVisibleRef.current = false;
-        if (IS_ANDROID) setAndroidShowSheet(false);
-      });
+    } else {
+      if (!modalVisibleRef.current) return;
+      modalVisibleRef.current = false;
+      if (IS_ANDROID) setAndroidShowSheet(false);
+      slideAnim.setValue(SCREEN_HEIGHT);
+      dragOffset.setValue(0);
     }
   }, [visible, slideAnim, dragOffset]);
 
@@ -274,8 +272,8 @@ export default function RunSettingsSheet({ visible, onClose, onNavigateWatch, on
     </View>
   );
 
-  // Android: render as absolute overlay (no Dialog window = no touch desync)
-  // iOS: use native Modal (proper UIViewController presentation)
+  // Android: absolute overlay (keeps touch system consistent with lib/touchables)
+  // iOS: native Modal with fade animation
   if (IS_ANDROID) {
     if (!androidShowSheet) return null;
     return (
@@ -286,7 +284,7 @@ export default function RunSettingsSheet({ visible, onClose, onNavigateWatch, on
   }
 
   return (
-    <Modal visible={visible} transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
       {sheetContent}
     </Modal>
   );

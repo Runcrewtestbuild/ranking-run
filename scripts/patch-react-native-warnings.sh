@@ -7,6 +7,15 @@
 
 set -e
 
+# Cross-platform sed in-place: macOS uses -i '', GNU/Linux uses -i
+sedi() {
+  if sed --version 2>/dev/null | grep -q GNU; then
+    sed -i "$@"
+  else
+    sed -i '' "$@"
+  fi
+}
+
 # Resolve project root (script is at <root>/scripts/patch-react-native-warnings.sh)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -27,7 +36,7 @@ PATCHED=0
 BRIDGE_MM="$RN_DIR/React/Base/RCTBridge.mm"
 if [ -f "$BRIDGE_MM" ]; then
   if grep -q '\[bridge_ reload\]' "$BRIDGE_MM" 2>/dev/null; then
-    sed -i '' 's/\[bridge_ reload\]/RCTTriggerReloadCommandListeners(@"Inspector requested reload")/' "$BRIDGE_MM"
+    sedi 's/\[bridge_ reload\]/RCTTriggerReloadCommandListeners(@"Inspector requested reload")/' "$BRIDGE_MM"
     echo "[patch-rn-warnings] RCTBridge.mm: replaced [bridge_ reload] with RCTTriggerReloadCommandListeners"
     PATCHED=$((PATCHED + 1))
   else
@@ -45,7 +54,7 @@ fi
 BRIDGE_PROXY_MM="$RN_DIR/React/Base/RCTBridgeProxy.mm"
 if [ -f "$BRIDGE_PROXY_MM" ]; then
   if grep -q 'self = \[super self\]' "$BRIDGE_PROXY_MM" 2>/dev/null; then
-    sed -i '' 's/  self = \[super self\]; if (self)/  if (self)/' "$BRIDGE_PROXY_MM"
+    sedi 's/  self = \[super self\]; if (self)/  if (self)/' "$BRIDGE_PROXY_MM"
     echo "[patch-rn-warnings] RCTBridgeProxy.mm: removed [super self] calls"
     PATCHED=$((PATCHED + 1))
   else
@@ -107,7 +116,7 @@ fi
 MODULE_DATA_MM="$RN_DIR/React/Base/RCTModuleData.mm"
 if [ -f "$MODULE_DATA_MM" ]; then
   if grep -q '    id instance = self\.instance;' "$MODULE_DATA_MM" 2>/dev/null; then
-    sed -i '' 's/    id instance = self\.instance;/    __unused id instance = self.instance;/' "$MODULE_DATA_MM"
+    sedi 's/    id instance = self\.instance;/    __unused id instance = self.instance;/' "$MODULE_DATA_MM"
     echo "[patch-rn-warnings] RCTModuleData.mm: added __unused to instance variable in methodQueue"
     PATCHED=$((PATCHED + 1))
   else
@@ -180,10 +189,10 @@ MULTIPART_M="$RN_DIR/React/Base/RCTMultipartStreamReader.m"
 if [ -f "$MULTIPART_M" ]; then
   if grep -q 'const NSUInteger bufferLen' "$MULTIPART_M" 2>/dev/null; then
     # Replace the const declaration with a #define
-    sed -i '' 's/  const NSUInteger bufferLen = 4 \* 1024;/  #define RCT_MULTIPART_BUFFER_LEN (4 * 1024)/' "$MULTIPART_M"
+    sedi 's/  const NSUInteger bufferLen = 4 \* 1024;/  #define RCT_MULTIPART_BUFFER_LEN (4 * 1024)/' "$MULTIPART_M"
     # Replace all uses of bufferLen with the macro name
-    sed -i '' 's/buffer\[bufferLen\]/buffer[RCT_MULTIPART_BUFFER_LEN]/g' "$MULTIPART_M"
-    sed -i '' 's/maxLength:bufferLen/maxLength:RCT_MULTIPART_BUFFER_LEN/g' "$MULTIPART_M"
+    sedi 's/buffer\[bufferLen\]/buffer[RCT_MULTIPART_BUFFER_LEN]/g' "$MULTIPART_M"
+    sedi 's/maxLength:bufferLen/maxLength:RCT_MULTIPART_BUFFER_LEN/g' "$MULTIPART_M"
     echo "[patch-rn-warnings] RCTMultipartStreamReader.m: replaced bufferLen VLA with #define"
     PATCHED=$((PATCHED + 1))
   else
@@ -257,7 +266,7 @@ fi
 APPEARANCE_H="$RN_DIR/React/CoreModules/RCTAppearance.h"
 if [ -f "$APPEARANCE_H" ]; then
   if grep -q 'RCTCurrentOverrideAppearancePreference()' "$APPEARANCE_H" 2>/dev/null; then
-    sed -i '' 's/RCTCurrentOverrideAppearancePreference()/RCTCurrentOverrideAppearancePreference(void)/' "$APPEARANCE_H"
+    sedi 's/RCTCurrentOverrideAppearancePreference()/RCTCurrentOverrideAppearancePreference(void)/' "$APPEARANCE_H"
     echo "[patch-rn-warnings] RCTAppearance.h: added (void) to RCTCurrentOverrideAppearancePreference"
     PATCHED=$((PATCHED + 1))
   else

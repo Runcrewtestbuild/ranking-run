@@ -21,6 +21,7 @@ import ScreenHeader from '../../components/common/ScreenHeader';
 import CourseThumbnailMap from '../../components/course/CourseThumbnailMap';
 import { useTheme } from '../../hooks/useTheme';
 import { useAuthStore } from '../../stores/authStore';
+import { useToastStore } from '../../stores/toastStore';
 import { userService } from '../../services/userService';
 import { friendService } from '../../services/friendService';
 import type { ThemeColors } from '../../utils/constants';
@@ -100,7 +101,10 @@ export default function UserProfileScreen() {
         await userService.followUser(userId);
       }
     } catch {
-      // Keep optimistic state — server will sync later
+      // Revert optimistic update on failure
+      setIsFollowing(wasFollowing);
+      setFollowersCount(prevCount);
+      useToastStore.getState().showToast('error', '팔로우 처리에 실패했습니다');
     }
   }, [profile, isFollowing, followersCount, userId]);
 
@@ -124,7 +128,7 @@ export default function UserProfileScreen() {
         }
       }
     } catch {
-      // ignore
+      useToastStore.getState().showToast('error', '친구 요청 처리에 실패했습니다');
     } finally {
       setFriendActionLoading(false);
     }
@@ -336,8 +340,14 @@ const CourseCard = React.memo(function CourseCard({
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {course.route_preview && course.route_preview.length >= 2 ? (
-        <CourseThumbnailMap routePreview={course.route_preview} width={56} height={56} borderRadius={8} />
+      {course.thumbnail_url || (course.route_preview && course.route_preview.length >= 2) ? (
+        <CourseThumbnailMap
+          routePreview={course.route_preview ?? []}
+          thumbnailUrl={course.thumbnail_url}
+          width={56}
+          height={56}
+          borderRadius={8}
+        />
       ) : (
         <View style={[styles.courseThumbnail, styles.courseThumbnailFallback]}>
           <Ionicons name="map-outline" size={24} color={colors.textTertiary} />

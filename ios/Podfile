@@ -11,6 +11,7 @@ platform :ios, podfile_properties['ios.deploymentTarget'] || '15.1'
 install! 'cocoapods',
   :deterministic_uuids => false
 
+
 prepare_react_native_project!
 
 $RNMapboxMapsImpl = 'mapbox'
@@ -63,9 +64,13 @@ target 'RunCrew' do
 
     $RNMapboxMaps.post_install(installer)
 
+
     # Ensure RNMBX_11 flag is set for MapboxMaps v11 (||= in podspec may be
     # a no-op if react_native_post_install already populated OTHER_SWIFT_FLAGS)
     installer.pods_project.build_configurations.each do |config|
+      # Ensure project-level C++ standard is c++20 (Folly / React-jsi require it)
+      config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
+
       flags = config.build_settings['OTHER_SWIFT_FLAGS'] || ['$(inherited)']
       flags = flags.is_a?(String) ? flags.split(' ') : flags.dup
       unless flags.include?('RNMBX_11') || flags.include?('-DRNMBX_11')
@@ -118,6 +123,9 @@ target 'RunCrew' do
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |config|
         config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+
+        # Ensure all pods compile with C++20 (required by Folly / React-jsi)
+        config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
 
         # Prevent dSYM generation for pods (fixes "Upload Symbols Failed" for
         # hermes, MapboxCommon, MapboxCoreMaps which don't ship dSYMs)

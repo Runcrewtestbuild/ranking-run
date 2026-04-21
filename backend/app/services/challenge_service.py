@@ -6,9 +6,13 @@ from uuid import UUID
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import logging
+
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.models.challenge import Challenge, ChallengeParticipant
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 
 class ChallengeService:
@@ -296,6 +300,28 @@ class ChallengeService:
                     user = user_result.scalar_one_or_none()
                     if user is not None:
                         user.total_points += challenge.reward_points
+
+                # Send challenge completion notification
+                try:
+                    from app.core.config import get_settings
+                    from app.services.notification_service import NotificationService
+
+                    notification_svc = NotificationService(get_settings())
+                    await notification_svc.create_and_send(
+                        db=db,
+                        user_id=user_id,
+                        notification_type="challenge_completed",
+                        actor_id=user_id,
+                        title="챌린지 완료!",
+                        body=f"'{challenge.title}' 챌린지를 완료했습니다!",
+                        target_id=str(challenge.id),
+                        target_type="challenge",
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to send challenge_completed notification for user %s, challenge %s",
+                        user_id, challenge.id,
+                    )
 
         await db.flush()
 

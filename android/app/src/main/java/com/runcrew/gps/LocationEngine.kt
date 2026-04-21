@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.location.GnssStatus
 import android.location.LocationManager
 import android.os.Build
+import android.os.HandlerThread
 import android.os.Looper
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -115,8 +116,10 @@ class LocationEngine(
     private var previousMilestoneTime = 0L  // elapsed ms at last km milestone
 
     // --- Indoor / pedometer fallback ---
-
-    private val pedometerHandler = android.os.Handler(Looper.getMainLooper())
+    // Uses a dedicated HandlerThread instead of the main looper so callbacks
+    // fire reliably even if the main thread is busy (e.g., during UI rendering).
+    private var pedometerHandlerThread: HandlerThread? = null
+    private var pedometerHandler: android.os.Handler? = null
     private var pedometerFallbackRunnable: Runnable? = null
     @Volatile
     private var pedometerBaseSteps = 0
@@ -193,6 +196,10 @@ class LocationEngine(
      */
     fun stop() {
         stopPedometerFallback()
+        // Quit the pedometer thread only on full tracking stop
+        pedometerHandlerThread?.quitSafely()
+        pedometerHandlerThread = null
+        pedometerHandler = null
         removeLocationUpdates()
         unregisterGnssStatusCallback()
         sensorFusionManager?.stop()
@@ -216,6 +223,19 @@ class LocationEngine(
      */
     fun resume() {
         session.resume()
+    }
+
+    /**
+     * Restart GPS listeners without resetting cumulative distance or filters.
+     * Used by the JS heartbeat when no GPS updates are received for an extended period.
+     */
+    fun restart() {
+        Log.i(TAG, "restart — restarting GPS listeners (preserving state)")
+        removeLocationUpdates()
+        batteryOptimizer.reset()
+        currentGpsStatus = "searching"
+        listener?.onGPSStatusChange("searching", null, usedSatelliteCount)
+        requestLocationUpdates()
     }
 
     /**
@@ -380,11 +400,9 @@ class LocationEngine(
                 Log.d(TAG, "Spike rejected: raw-vs-filtered ${rawDist}m > ${maxPlausibleDist}m")
                 return
             }
-            // Background GPS guard: when update interval is large (>5s),
-            // GPS may report stale/cell-tower positions. Cap distance to 50m (matched with iOS).
+            // Background gap: accept and let Kalman filter smooth the transition.
             if (timeDelta > 5.0 && rawDist > 50.0) {
-                Log.d(TAG, "Background spike rejected: ${rawDist}m in ${timeDelta}s")
-                return
+                Log.d(TAG, "Background gap: ${rawDist}m in ${timeDelta}s — accepting (Kalman will smooth)")
             }
         }
 
@@ -480,16 +498,20 @@ class LocationEngine(
         // Emit to listener
         listener?.onFilteredLocationUpdate(filteredLocation, session)
 
-        // Milestone detection: emit split event at every km boundary
+        // Milestone detection: emit split event at every km boundary.
+        // Loop to emit ALL missed km boundaries when a GPS jump >1km occurs
+        // (e.g. tunnel exit, background resume) so the split array stays complete.
         val prevKm = (previousMilestoneDistance / 1000).toInt()
         val currentKm = (cumulativeDistance / 1000).toInt()
         if (currentKm > prevKm && currentKm > 0) {
-            val elapsedMs = session.getElapsedTime()
-            val elapsedSec = (elapsedMs / 1000).toInt()
-            val splitSeconds = ((elapsedMs - previousMilestoneTime) / 1000).toInt()
-            val splitPace = if (splitSeconds > 0) splitSeconds else 0
-            previousMilestoneTime = elapsedMs
-            listener?.onMilestoneReached(currentKm, splitPace, elapsedSec)
+            for (km in (prevKm + 1)..currentKm) {
+                val elapsedMs = session.getElapsedTime()
+                val elapsedSec = (elapsedMs / 1000).toInt()
+                val splitSeconds = ((elapsedMs - previousMilestoneTime) / 1000).toInt()
+                val splitPace = if (splitSeconds > 0) splitSeconds else 0
+                previousMilestoneTime = elapsedMs
+                listener?.onMilestoneReached(km, splitPace, elapsedSec)
+            }
         }
         previousMilestoneDistance = cumulativeDistance
     }
@@ -508,21 +530,31 @@ class LocationEngine(
         gpsDistanceAtLost = session.totalDistance
         Log.i(TAG, "Starting pedometer fallback (baseSteps=$pedometerBaseSteps, gpsDistAtLost=$gpsDistanceAtLost)")
 
+        // Initialize dedicated HandlerThread if not already running
+        if (pedometerHandlerThread == null) {
+            val thread = HandlerThread("PedometerFallback").apply { start() }
+            pedometerHandlerThread = thread
+            pedometerHandler = android.os.Handler(thread.looper)
+        }
+
+        val handler = pedometerHandler ?: return
         val runnable = object : Runnable {
             override fun run() {
                 emitPedometerUpdate()
-                pedometerHandler.postDelayed(this, 2000)
+                handler.postDelayed(this, 2000)
             }
         }
         pedometerFallbackRunnable = runnable
-        pedometerHandler.postDelayed(runnable, 2000)
+        handler.postDelayed(runnable, 2000)
     }
 
     private fun stopPedometerFallback() {
-        pedometerFallbackRunnable?.let {
-            pedometerHandler.removeCallbacks(it)
+        pedometerFallbackRunnable?.let { runnable ->
+            pedometerHandler?.removeCallbacks(runnable)
         }
         pedometerFallbackRunnable = null
+        // Don't quit the thread here — reuse it for the next fallback cycle.
+        // The thread is cleaned up in stop() when tracking fully stops.
     }
 
     /**
@@ -568,16 +600,18 @@ class LocationEngine(
         // Emit to listener (listener adds distanceSource via the event builder)
         listener?.onFilteredLocationUpdate(filteredLocation, session)
 
-        // Milestone detection
+        // Milestone detection — loop for GPS jump safety
         val prevKm = (previousMilestoneDistance / 1000).toInt()
         val currentKm = (newCumulativeDistance / 1000).toInt()
         if (currentKm > prevKm && currentKm > 0) {
-            val elapsedMs = session.getElapsedTime()
-            val elapsedSec = (elapsedMs / 1000).toInt()
-            val splitSeconds = ((elapsedMs - previousMilestoneTime) / 1000).toInt()
-            val splitPace = if (splitSeconds > 0) splitSeconds else 0
-            previousMilestoneTime = elapsedMs
-            listener?.onMilestoneReached(currentKm, splitPace, elapsedSec)
+            for (km in (prevKm + 1)..currentKm) {
+                val elapsedMs = session.getElapsedTime()
+                val elapsedSec = (elapsedMs / 1000).toInt()
+                val splitSeconds = ((elapsedMs - previousMilestoneTime) / 1000).toInt()
+                val splitPace = if (splitSeconds > 0) splitSeconds else 0
+                previousMilestoneTime = elapsedMs
+                listener?.onMilestoneReached(km, splitPace, elapsedSec)
+            }
         }
         previousMilestoneDistance = newCumulativeDistance
     }

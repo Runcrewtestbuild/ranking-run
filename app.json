@@ -3,7 +3,7 @@
     "name": "RUNVS",
     "slug": "runcrew",
     "scheme": "runcrew",
-    "version": "1.0.0",
+    "version": "1.0.15",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -37,7 +37,8 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE"
-      ]
+      ],
+      "versionCode": 2
     },
     "plugins": [
       "expo-secure-store",

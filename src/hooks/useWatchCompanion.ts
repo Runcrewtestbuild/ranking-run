@@ -53,9 +53,44 @@ export function useWatchCompanion(
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
 
+  // Keep navigation & checkpoint refs up to date without triggering the
+  // push effect on every GPS update (the navigation object is new each
+  // update even if direction/progress haven't meaningfully changed).
+  const navigationRef = useRef(navigation);
+  navigationRef.current = navigation;
+  const checkpointDataRef = useRef(checkpointData);
+  checkpointDataRef.current = checkpointData;
+  const intervalStateRef = useRef(intervalState);
+  intervalStateRef.current = intervalState;
+
+  // Derive stable primitives from navigation for dependency tracking.
+  // Only re-push to Watch when direction, off-course status, or progress
+  // milestones actually change — NOT on every GPS position update.
+  const navDirection = navigation?.nextDirection ?? '';
+  const navIsOffCourse = navigation?.isOffCourse ?? false;
+  const navNextTurnDirection = navigation?.nextTurnDirection ?? '';
+  // Quantize progress to whole-percent to avoid pushes on fractional changes
+  const navProgressQuantized = navigation ? Math.floor(navigation.progressPercent) : -1;
+  const cpPassed = checkpointData?.passedCount ?? 0;
+  const cpJustPassed = checkpointData?.justPassed ?? false;
+  const intervalPhase = intervalState?.currentPhase ?? '';
+  const intervalCurrentSet = intervalState?.currentSet ?? 0;
+  const intervalCompleted = intervalState?.isCompleted ?? false;
+
+  // Quantize values to reduce WCSession push frequency.
+  // Without quantization, pace/calories change every GPS tick → watch push every second.
+  const quantizedDistance = Math.floor(distanceMeters / 10) * 10;
+  const quantizedPace = Math.round(currentPaceSecondsPerKm / 5) * 5;
+  const quantizedAvgPace = Math.round(avgPaceSecondsPerKm / 5) * 5;
+  const quantizedCalories = Math.round(calories / 5) * 5;
+
   // Push run state to Watch when it changes (including idle for reset)
   useEffect(() => {
     if (Platform.OS !== 'ios' || !WatchBridgeModule) return;
+
+    const nav = navigationRef.current;
+    const cpData = checkpointDataRef.current;
+    const intState = intervalStateRef.current;
 
     // Phase is sent authoritatively by GPSTrackerModule (native).
     // Do NOT send phase here — it causes duplicate phase messages
@@ -102,37 +137,41 @@ export function useWatchCompanion(
       })() : '',
       metronomeBPM: runGoal.type === 'program' ? (runGoal.cadenceBPM ?? 0) : 0,
       // Course navigation data
-      isCourseRun: !!navigation,
-      navBearing: navigation?.bearingToNext ?? -1,
-      navRemainingDistance: navigation?.remainingDistanceMeters ?? -1,
-      navDeviation: navigation?.deviationMeters ?? -1,
-      navDirection: navigation?.nextDirection ?? '',
-      navProgress: navigation?.progressPercent ?? -1,
-      navIsOffCourse: navigation?.isOffCourse ?? false,
+      isCourseRun: !!nav,
+      navBearing: nav?.bearingToNext ?? -1,
+      navRemainingDistance: nav?.remainingDistanceMeters ?? -1,
+      navDeviation: nav?.deviationMeters ?? -1,
+      navDirection: nav?.nextDirection ?? '',
+      navProgress: nav?.progressPercent ?? -1,
+      navIsOffCourse: nav?.isOffCourse ?? false,
       // Turn-point navigation
-      navNextTurnDirection: navigation?.nextTurnDirection ?? '',
-      navDistanceToNextTurn: navigation?.distanceToNextTurn ?? -1,
+      navNextTurnDirection: nav?.nextTurnDirection ?? '',
+      navDistanceToNextTurn: nav?.distanceToNextTurn ?? -1,
       // Checkpoint progress
-      cpPassed: checkpointData?.passedCount ?? 0,
-      cpTotal: checkpointData?.totalCount ?? 0,
-      cpJustPassed: checkpointData?.justPassed ?? false,
+      cpPassed: cpData?.passedCount ?? 0,
+      cpTotal: cpData?.totalCount ?? 0,
+      cpJustPassed: cpData?.justPassed ?? false,
       // Interval training
-      intervalPhase: intervalState?.currentPhase ?? '',
-      intervalCurrentSet: intervalState?.currentSet ?? 0,
-      intervalTotalSets: intervalState?.totalSets ?? 0,
+      intervalPhase: intState?.currentPhase ?? '',
+      intervalCurrentSet: intState?.currentSet ?? 0,
+      intervalTotalSets: intState?.totalSets ?? 0,
       intervalRunSeconds: runGoal.type === 'interval' ? (runGoal.intervalRunSeconds ?? 0) : 0,
       intervalWalkSeconds: runGoal.type === 'interval' ? (runGoal.intervalWalkSeconds ?? 0) : 0,
-      intervalPhaseRemaining: intervalState?.phaseRemainingSeconds ?? 0,
-      intervalCompleted: intervalState?.isCompleted ?? false,
+      intervalPhaseRemaining: intState?.phaseRemainingSeconds ?? 0,
+      intervalCompleted: intState?.isCompleted ?? false,
     }).catch(() => {
       // Silently ignore send failures (Watch may be unreachable)
     });
   // NOTE: durationSeconds intentionally NOT in deps — watch computes timer
   // locally from runStartTime + elapsedBeforePause. This prevents sending
   // state every second just because duration ticked, reducing WCSession traffic.
-  }, [distanceMeters, currentPaceSecondsPerKm,
-      avgPaceSecondsPerKm, gpsStatus, calories, isAutoPaused, runGoal,
-      navigation, checkpointData, startTime, elapsedBeforePause, intervalState]);
+  // NOTE: navigation/checkpointData/intervalState use refs — only stable
+  // derived primitives are in deps to avoid pushing on every GPS update.
+  }, [quantizedDistance, quantizedPace, quantizedAvgPace, gpsStatus, quantizedCalories,
+      isAutoPaused, runGoal,
+      navDirection, navIsOffCourse, navNextTurnDirection, navProgressQuantized,
+      cpPassed, cpJustPassed, intervalPhase, intervalCurrentSet, intervalCompleted,
+      startTime, elapsedBeforePause]);
 
   // Subscribe to Watch events during active running
   useEffect(() => {

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { InteractionManager } from 'react-native';
 import {
   View,
   Text,
@@ -17,7 +18,6 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCourseListStore } from '../../stores/courseListStore';
 import EmptyState from '../../components/common/EmptyState';
-import DifficultyBadge from '../../components/course/DifficultyBadge';
 import CourseThumbnailMap from '../../components/course/CourseThumbnailMap';
 import { useTheme } from '../../hooks/useTheme';
 import type { ThemeColors } from '../../utils/constants';
@@ -30,6 +30,7 @@ import {
   BORDER_RADIUS,
   SHADOWS,
   inferDifficulty,
+  getDifficultyLabel,
   type DifficultyLevel,
 } from '../../utils/constants';
 
@@ -41,16 +42,17 @@ type CourseNav = NativeStackNavigationProp<CourseStackParamList, 'CourseList'>;
 
 const NEARBY_CARD_WIDTH = 160;
 const NEARBY_THUMB_HEIGHT = 100;
-const ROW_THUMB_SIZE = 72;
-const PREVIEW_LIMIT = 3;
+const ROW_THUMB_SIZE = 56;
 
-const DIFFICULTY_ACCENT_COLORS: Record<DifficultyLevel, string> = {
-  easy: '#34C759',
-  normal: '#007AFF',
-  hard: '#FF9500',
-  expert: '#FF3B30',
+/** Difficulty color map matching design spec */
+const DIFF_COLOR: Record<string, string> = {
+  easy: '#6EE7A0',
+  normal: '#FBBF54',
+  hard: '#F87171',
+  expert: '#F87171',
   legend: '#A78BFA',
 };
+const PREVIEW_LIMIT = 3;
 
 const DEFAULT_LAT = 37.5665;
 const DEFAULT_LNG = 126.978;
@@ -97,10 +99,15 @@ export default function CourseListScreen() {
   }, [fetchNearbyCourses]);
 
   useEffect(() => {
-    fetchPopularCourses();
-    fetchNewCourses();
-    fetchFavoriteCourses();
-    loadLocation();
+    // Defer data fetching until tab transition animation completes
+    // to prevent jank during tab switch (especially on iOS)
+    const task = InteractionManager.runAfterInteractions(() => {
+      fetchPopularCourses();
+      fetchNewCourses();
+      fetchFavoriteCourses();
+      loadLocation();
+    });
+    return () => task.cancel();
   }, [fetchPopularCourses, fetchNewCourses, fetchFavoriteCourses, loadLocation]);
 
   const handleRefresh = useCallback(async () => {
@@ -181,36 +188,44 @@ export default function CourseListScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.nearbyScrollContent}
             >
-              {favoriteCourses.map((course: FavoriteCourseItem) => (
-                <TouchableOpacity
-                  key={course.id}
-                  style={styles.nearbyCard}
-                  onPress={() => handleCoursePress(course.id)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.nearbyThumbContainer}>
-                    {course.route_preview && course.route_preview.length >= 2 ? (
-                      <CourseThumbnailMap
-                        routePreview={course.route_preview}
-                        width={NEARBY_CARD_WIDTH}
-                        height={NEARBY_THUMB_HEIGHT}
-                        borderRadius={0}
-                      />
-                    ) : (
-                      <View style={[styles.nearbyThumb, styles.nearbyThumbPlaceholder]}>
-                        <Ionicons name="map-outline" size={28} color={colors.textTertiary} />
-                      </View>
-                    )}
-                  </View>
-                  <View style={styles.nearbyInfo}>
-                    <Text style={styles.nearbyTitle} numberOfLines={1}>{course.title}</Text>
-                    <Text style={styles.nearbyDistance}>
-                      {formatDistance(course.distance_meters)}
-                    </Text>
-                    <Text style={styles.nearbyFromUser}>{course.creator_nickname}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
+              {favoriteCourses.map((course: FavoriteCourseItem) => {
+                const diff = (course.difficulty as DifficultyLevel) || inferDifficulty(course.distance_meters, 0);
+                return (
+                  <TouchableOpacity
+                    key={course.id}
+                    style={styles.nearbyCard}
+                    onPress={() => handleCoursePress(course.id)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.nearbyThumbContainer}>
+                      {course.thumbnail_url || (course.route_preview && course.route_preview.length >= 2) ? (
+                        <CourseThumbnailMap
+                          routePreview={course.route_preview ?? []}
+                          thumbnailUrl={course.thumbnail_url}
+                          width={NEARBY_CARD_WIDTH}
+                          height={NEARBY_THUMB_HEIGHT}
+                          borderRadius={0}
+                        />
+                      ) : (
+                        <View style={[styles.nearbyThumb, styles.nearbyThumbPlaceholder]}>
+                          <Ionicons name="map-outline" size={28} color={colors.textTertiary} />
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.hCardInfo}>
+                      <Text style={styles.hCardTitle} numberOfLines={1}>{course.title}</Text>
+                      <Text style={styles.hCardMeta}>
+                        {formatDistance(course.distance_meters)}
+                        <Text style={styles.hCardMetaSep}>{' · '}</Text>
+                        <Text style={{ color: DIFF_COLOR[diff] ?? colors.textSecondary }}>{getDifficultyLabel(diff)}</Text>
+                        {(course.total_runs ?? 0) > 0 && <Text style={styles.hCardMetaSep}>{' · '}</Text>}
+                        {(course.total_runs ?? 0) > 0 && `참여 ${formatNumber(course.total_runs ?? 0)}회`}
+                      </Text>
+                      <Text style={styles.hCardSub} numberOfLines={1}>{course.creator_nickname}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
           </View>
         )}
@@ -350,7 +365,6 @@ const NearbyCard = React.memo(function NearbyCard({
   const colors = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const difficulty = (course.difficulty as DifficultyLevel) || inferDifficulty(course.distance_meters, 0);
-  const accentColor = DIFFICULTY_ACCENT_COLORS[difficulty];
 
   return (
     <TouchableOpacity
@@ -360,9 +374,10 @@ const NearbyCard = React.memo(function NearbyCard({
     >
       {/* Thumbnail */}
       <View style={styles.nearbyThumbContainer}>
-        {course.route_preview && course.route_preview.length >= 2 ? (
+        {course.thumbnail_url || (course.route_preview && course.route_preview.length >= 2) ? (
           <CourseThumbnailMap
-            routePreview={course.route_preview}
+            routePreview={course.route_preview ?? []}
+            thumbnailUrl={course.thumbnail_url}
             width={NEARBY_CARD_WIDTH}
             height={NEARBY_THUMB_HEIGHT}
             borderRadius={0}
@@ -375,21 +390,16 @@ const NearbyCard = React.memo(function NearbyCard({
       </View>
 
       {/* Info */}
-      <View style={styles.nearbyInfo}>
-        <Text style={styles.nearbyTitle} numberOfLines={1}>
-          {course.title}
+      <View style={styles.hCardInfo}>
+        <Text style={styles.hCardTitle} numberOfLines={1}>{course.title}</Text>
+        <Text style={styles.hCardMeta}>
+          {formatDistance(course.distance_meters)}
+          <Text style={styles.hCardMetaSep}>{' · '}</Text>
+          <Text style={{ color: DIFF_COLOR[difficulty] ?? colors.textSecondary }}>{getDifficultyLabel(difficulty)}</Text>
+          {course.total_runs > 0 && <Text style={styles.hCardMetaSep}>{' · '}</Text>}
+          {course.total_runs > 0 && `참여 ${formatNumber(course.total_runs)}회`}
         </Text>
-        <View style={styles.nearbyMetaRow}>
-          <Text style={styles.nearbyDistance}>
-            {formatDistance(course.distance_meters)}
-          </Text>
-          <View style={[styles.difficultyDot, { backgroundColor: accentColor }]} />
-        </View>
-        <Text style={styles.nearbyFromUser}>
-          {t('course.nearbyDistance', {
-            distance: formatDistance(course.distance_from_user_meters),
-          })}
-        </Text>
+        <Text style={styles.hCardSub} numberOfLines={1}>{course.creator_nickname}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -415,41 +425,31 @@ const CourseRowCard = React.memo(function CourseRowCard({
       activeOpacity={0.7}
     >
       {/* Thumbnail */}
-      {course.route_preview && course.route_preview.length >= 2 ? (
+      {course.thumbnail_url || (course.route_preview && course.route_preview.length >= 2) ? (
         <CourseThumbnailMap
-          routePreview={course.route_preview}
+          routePreview={course.route_preview ?? []}
+          thumbnailUrl={course.thumbnail_url}
           width={ROW_THUMB_SIZE}
           height={ROW_THUMB_SIZE}
           borderRadius={BORDER_RADIUS.sm}
         />
       ) : (
         <View style={[styles.rowThumb, styles.rowThumbPlaceholder]}>
-          <Ionicons name="map-outline" size={24} color={colors.textTertiary} />
+          <Ionicons name="map-outline" size={22} color={colors.textTertiary} />
         </View>
       )}
 
       {/* Content */}
       <View style={styles.rowContent}>
-        <View style={styles.rowTopLine}>
-          <Text style={styles.rowTitle} numberOfLines={1}>
-            {course.title}
-          </Text>
-          <DifficultyBadge difficulty={difficulty} />
-        </View>
-        <View style={styles.rowBottomLine}>
-          <Text style={styles.rowMeta}>
-            {formatDistance(course.distance_meters)}
-          </Text>
-          <Text style={styles.rowMetaDivider}>{'·'}</Text>
-          <Ionicons
-            name="people-outline"
-            size={12}
-            color={colors.textTertiary}
-          />
-          <Text style={styles.rowMeta}>
-            {formatNumber(course.stats.total_runs)}
-          </Text>
-        </View>
+        <Text style={styles.rowTitle} numberOfLines={1}>{course.title}</Text>
+        <Text style={styles.vCardMeta}>
+          {formatDistance(course.distance_meters)}
+          <Text style={styles.vCardMetaSep}>{' · '}</Text>
+          <Text style={{ color: DIFF_COLOR[difficulty] ?? colors.textSecondary }}>{getDifficultyLabel(difficulty)}</Text>
+          <Text style={styles.vCardMetaSep}>{' · '}</Text>
+          {'참여 ' + formatNumber(course.stats.total_runs) + '회'}
+        </Text>
+        <Text style={styles.rowCreator} numberOfLines={1}>{course.creator.nickname}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -546,7 +546,7 @@ const createStyles = (c: ThemeColors) =>
       fontWeight: '500',
     },
 
-    // -- Nearby Card --
+    // -- Horizontal Card (Favorites / Nearby) --
     nearbyCard: {
       width: NEARBY_CARD_WIDTH,
       backgroundColor: c.card,
@@ -569,44 +569,32 @@ const createStyles = (c: ThemeColors) =>
       justifyContent: 'center',
       alignItems: 'center',
     },
-    nearbyThumbOverlay: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      height: 36,
-      backgroundColor: 'rgba(0, 0, 0, 0.15)',
+    hCardInfo: {
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: 6,
+      gap: 2,
     },
-    nearbyInfo: {
-      padding: SPACING.sm,
-      paddingTop: SPACING.sm + 2,
-      gap: 3,
-    },
-    nearbyTitle: {
-      fontSize: FONT_SIZES.sm,
+    hCardTitle: {
+      fontSize: 14,
       fontWeight: '700',
       color: c.text,
     },
-    nearbyMetaRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: SPACING.xs,
-    },
-    nearbyDistance: {
-      fontSize: FONT_SIZES.sm,
-      fontWeight: '600',
-      color: c.text,
-      fontVariant: ['tabular-nums'],
-    },
-    difficultyDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-    },
-    nearbyFromUser: {
-      fontSize: FONT_SIZES.xs,
+    hCardMeta: {
+      fontSize: 12,
       fontWeight: '500',
-      color: c.textTertiary,
+      color: c.text,
+      opacity: 0.7,
+      fontVariant: ['tabular-nums'] as const,
+    },
+    hCardMetaSep: {
+      color: c.text,
+      opacity: 0.35,
+    },
+    hCardSub: {
+      fontSize: 12,
+      fontWeight: '400',
+      color: c.text,
+      opacity: 0.4,
     },
 
     // -- Vertical list --
@@ -615,7 +603,7 @@ const createStyles = (c: ThemeColors) =>
       gap: SPACING.sm,
     },
 
-    // -- Row Card --
+    // -- Vertical Row Card (Popular / New) --
     rowCard: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -641,35 +629,29 @@ const createStyles = (c: ThemeColors) =>
     rowContent: {
       flex: 1,
       justifyContent: 'center',
-      gap: SPACING.xs,
-    },
-    rowTopLine: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      gap: SPACING.sm,
+      gap: 2,
     },
     rowTitle: {
-      flex: 1,
       fontSize: FONT_SIZES.md,
       fontWeight: '700',
       color: c.text,
     },
-    rowBottomLine: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
+    rowCreator: {
+      fontSize: 12,
+      fontWeight: '400',
+      color: c.text,
+      opacity: 0.4,
     },
-    rowMeta: {
+    vCardMeta: {
       fontSize: FONT_SIZES.sm,
       fontWeight: '500',
-      color: c.textSecondary,
-      fontVariant: ['tabular-nums'],
+      color: c.text,
+      opacity: 0.6,
+      fontVariant: ['tabular-nums'] as const,
     },
-    rowMetaDivider: {
-      fontSize: FONT_SIZES.sm,
-      color: c.textTertiary,
-      marginHorizontal: 2,
+    vCardMetaSep: {
+      color: c.text,
+      opacity: 0.25,
     },
 
     // -- See More Button --

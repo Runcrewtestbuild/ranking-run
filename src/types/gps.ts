@@ -75,6 +75,8 @@ export interface FilteredLocation {
   distanceFromPrevious: number;
   cumulativeDistance: number;
   isInterpolated: boolean;
+  cadence?: number;
+  heartRate?: number;
 }
 
 export type GPSStatus = 'searching' | 'locked' | 'lost' | 'disabled';

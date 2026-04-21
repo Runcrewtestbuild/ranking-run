@@ -23,7 +23,7 @@ export default function XpProgressBar({ level, totalDistanceMeters }: Props) {
     Animated.timing(anim, {
       toValue: xp.ratio,
       duration: 800,
-      useNativeDriver: false,
+      useNativeDriver: true,
     }).start();
   }, [xp.ratio]);
 
@@ -41,10 +41,9 @@ export default function XpProgressBar({ level, totalDistanceMeters }: Props) {
             styles.fill,
             {
               backgroundColor: tier.color,
-              width: anim.interpolate({
-                inputRange: [0, 1],
-                outputRange: ['0%', '100%'],
-              }),
+              width: '100%',
+              transform: [{ scaleX: anim }],
+              transformOrigin: 'left center',
             },
           ]}
         />

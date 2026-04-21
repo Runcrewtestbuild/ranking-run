@@ -7,6 +7,15 @@
 
 set -e
 
+# Cross-platform sed in-place: macOS uses -i '', GNU/Linux uses -i
+sedi() {
+  if sed --version 2>/dev/null | grep -q GNU; then
+    sed -i "$@"
+  else
+    sed -i '' "$@"
+  fi
+}
+
 # Resolve project root (script is at <root>/scripts/patch-expo-nullability.sh)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -200,21 +209,21 @@ if [ -f "$EXJSI_UTILS_H" ]; then
   # Fix 1: Add _Nonnull to PromiseInvocationBlock params (line 20)
   if grep -q 'RCTPromiseResolveBlock resolveWrapper' "$EXJSI_UTILS_H" 2>/dev/null && \
      ! grep -q 'RCTPromiseResolveBlock _Nonnull resolveWrapper' "$EXJSI_UTILS_H" 2>/dev/null; then
-    sed -i '' 's/RCTPromiseResolveBlock resolveWrapper, RCTPromiseRejectBlock rejectWrapper/RCTPromiseResolveBlock _Nonnull resolveWrapper, RCTPromiseRejectBlock _Nonnull rejectWrapper/' "$EXJSI_UTILS_H"
+    sedi 's/RCTPromiseResolveBlock resolveWrapper, RCTPromiseRejectBlock rejectWrapper/RCTPromiseResolveBlock _Nonnull resolveWrapper, RCTPromiseRejectBlock _Nonnull rejectWrapper/' "$EXJSI_UTILS_H"
     EXJSI_CHANGED=1
   fi
 
   # Fix 2: Add _Nonnull to callPromiseSetupWithBlock's block pointer param (line 22)
   if grep -q 'PromiseInvocationBlock setupBlock)' "$EXJSI_UTILS_H" 2>/dev/null && \
      ! grep -q 'PromiseInvocationBlock _Nonnull setupBlock)' "$EXJSI_UTILS_H" 2>/dev/null; then
-    sed -i '' 's/PromiseInvocationBlock setupBlock)/PromiseInvocationBlock _Nonnull setupBlock)/' "$EXJSI_UTILS_H"
+    sedi 's/PromiseInvocationBlock setupBlock)/PromiseInvocationBlock _Nonnull setupBlock)/' "$EXJSI_UTILS_H"
     EXJSI_CHANGED=1
   fi
 
   # Fix 3: Add _Nonnull to makeCodedError NSString params (line 48)
   if grep -q 'NSString \*code, NSString \*message' "$EXJSI_UTILS_H" 2>/dev/null && \
      ! grep -q 'NSString \* _Nonnull code' "$EXJSI_UTILS_H" 2>/dev/null; then
-    sed -i '' 's/NSString \*code, NSString \*message/NSString * _Nonnull code, NSString * _Nonnull message/' "$EXJSI_UTILS_H"
+    sedi 's/NSString \*code, NSString \*message/NSString * _Nonnull code, NSString * _Nonnull message/' "$EXJSI_UTILS_H"
     EXJSI_CHANGED=1
   fi
 

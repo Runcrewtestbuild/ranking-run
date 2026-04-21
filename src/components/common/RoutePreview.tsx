@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Image, StyleSheet, PixelRatio } from 'react-native';
-import { MAPBOX_ACCESS_TOKEN, MAPBOX_DARK_STYLE } from '../../config/env';
+import { MAPBOX_ACCESS_TOKEN, MAPBOX_DARK_STYLE, MAPBOX_LIGHT_STYLE } from '../../config/env';
 
 interface RoutePreviewProps {
   /** Array of [lng, lat] pairs */
@@ -50,7 +50,6 @@ function buildStaticMapUrl(
 ): string | null {
   if (!MAPBOX_ACCESS_TOKEN || coordinates.length < 2) return null;
 
-  // Use default Mapbox style for Static API (custom styles don't render tiles)
   const stylePath = 'mapbox/dark-v11';
 
   const color = strokeColor.replace('#', '');
@@ -69,7 +68,7 @@ export default function RoutePreview({
   coordinates,
   width,
   height,
-  strokeColor = '#FFC800',
+  strokeColor = '#FFD600',
   strokeWidth = 2,
   showMap = false,
 }: RoutePreviewProps) {

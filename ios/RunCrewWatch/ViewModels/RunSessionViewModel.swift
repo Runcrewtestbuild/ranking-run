@@ -268,6 +268,23 @@ class RunSessionViewModel: ObservableObject {
                 }
             } else {
                 self?.timerManager.stopStatePollTimer()
+                // Phone became unreachable during active companion run —
+                // auto-end after 30 seconds if phone doesn't reconnect.
+                // This handles force-quit scenarios where no phase change is sent.
+                if let phase = self?.state.phase,
+                   (phase == "running" || phase == "paused"),
+                   self?.isStandaloneMode == false {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+                        guard let self = self else { return }
+                        // Only reset if phone is STILL unreachable and still in running/paused
+                        if !WCSession.default.isReachable,
+                           (self.state.phase == "running" || self.state.phase == "paused"),
+                           !self.isStandaloneMode {
+                            print("[RunSessionVM] Phone unreachable for 30s — auto-ending companion run")
+                            self.resetToIdle()
+                        }
+                    }
+                }
             }
         }
 

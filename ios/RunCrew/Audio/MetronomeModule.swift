@@ -81,7 +81,7 @@ class MetronomeModule: NSObject {
         do {
             // Configure audio session
             let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playback, options: [.mixWithOthers, .duckOthers])
+            try audioSession.setCategory(.playback, options: [.mixWithOthers])
             try audioSession.setActive(true)
 
             // Setup engine
@@ -110,7 +110,20 @@ class MetronomeModule: NSObject {
             let timer = DispatchSource.makeTimerSource(queue: timerQueue)
             timer.schedule(deadline: .now(), repeating: interval, leeway: .milliseconds(1))
             timer.setEventHandler { [weak self] in
-                guard let self = self, let player = self.playerNode, let buffer = self.clickBuffer else { return }
+                guard let self = self,
+                      let engine = self.audioEngine,
+                      let player = self.playerNode,
+                      let buffer = self.clickBuffer else { return }
+                // Re-activate audio session & engine if TTS or another audio
+                // source interrupted it (e.g. Siri, phone call, TTS announcement).
+                if !engine.isRunning {
+                    NSLog("[Metronome] Engine stopped (TTS/interrupt?), restarting")
+                    let session = AVAudioSession.sharedInstance()
+                    try? session.setCategory(.playback, options: [.mixWithOthers])
+                    try? session.setActive(true)
+                    try? engine.start()
+                    player.play()
+                }
                 player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
             }
             timer.resume()
@@ -148,10 +161,37 @@ class MetronomeModule: NSObject {
             stop()
             return
         }
-        if isRunning {
-            // Restart with new BPM
-            start(bpm)
+        guard isRunning else { return }
+        // Skip if BPM hasn't actually changed (avoids timer reset flicker)
+        guard bpm != currentBPM else { return }
+
+        currentBPM = bpm
+        let interval = 60.0 / bpm
+
+        // Reschedule the existing timer instead of tearing down the entire
+        // audio engine. This prevents the click gap caused by stop+start
+        // and avoids the "metronome speeding up" feeling from timer resets.
+        timer?.cancel()
+        let newTimer = DispatchSource.makeTimerSource(queue: timerQueue)
+        newTimer.schedule(deadline: .now() + interval, repeating: interval, leeway: .milliseconds(1))
+        newTimer.setEventHandler { [weak self] in
+            guard let self = self,
+                  let engine = self.audioEngine,
+                  let player = self.playerNode,
+                  let buffer = self.clickBuffer else { return }
+            if !engine.isRunning {
+                NSLog("[Metronome] Engine stopped during BPM change, restarting")
+                let session = AVAudioSession.sharedInstance()
+                try? session.setCategory(.playback, options: [.mixWithOthers])
+                try? session.setActive(true)
+                try? engine.start()
+                player.play()
+            }
+            player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
         }
+        newTimer.resume()
+        self.timer = newTimer
+        NSLog("[Metronome] BPM changed to %.0f (interval: %.3fs)", bpm, interval)
     }
 
     @objc func isPlaying(_ resolve: @escaping RCTPromiseResolveBlock,

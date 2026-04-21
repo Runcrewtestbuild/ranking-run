@@ -1,10 +1,14 @@
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
+import { Alert, Platform } from 'react-native';
 import type { AuthProvider, AuthResponse, UserProfile } from '../types/api';
 import { SECURE_STORE_KEYS } from '../utils/constants';
 import { authService } from '../services/authService';
 import api, { ApiError, performTokenRefresh } from '../services/api';
+import { notificationService } from '../services/notificationService';
+import * as Notifications from 'expo-notifications';
 import i18n from '../i18n';
+import { clearMyPageCache } from '../screens/mypage/MyPageScreen';
 
 interface BanInfo {
   reason: string;
@@ -55,11 +59,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   login: async (provider, token, nonce): Promise<boolean> => {
     set({ error: null });
-    try {
+
+    const performLogin = async (force: boolean): Promise<boolean> => {
       const response: AuthResponse = await authService.login({
         provider,
         token,
         nonce,
+        force,
       });
 
       await SecureStore.setItemAsync(
@@ -92,7 +98,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             });
             return false;
           }
-          // Profile fetch failed — set authenticated anyway so the user isn't stuck
         }
         set({
           accessToken: response.access_token,
@@ -104,7 +109,53 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       return response.user.is_new_user;
+    };
+
+    try {
+      return await performLogin(false);
     } catch (error: unknown) {
+      // Handle single-device login: user already logged in on another device
+      if (
+        error instanceof ApiError &&
+        error.status === 409 &&
+        (error.data as Record<string, unknown>)?.code === 'ALREADY_LOGGED_IN'
+      ) {
+        return new Promise<boolean>((resolve, reject) => {
+          Alert.alert(
+            '로그인 확인',
+            '이 기기에서 로그인하시겠습니까? 기존 기기에서는 자동으로 로그아웃됩니다.',
+            [
+              {
+                text: '취소',
+                style: 'cancel',
+                onPress: () => {
+                  set({ error: null });
+                  // Reject with a cancellation so the caller knows login didn't proceed
+                  reject(new Error('LOGIN_CANCELLED'));
+                },
+              },
+              {
+                text: '로그인',
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    const result = await performLogin(true);
+                    resolve(result);
+                  } catch (forceError: unknown) {
+                    const message =
+                      forceError instanceof Error
+                        ? forceError.message
+                        : i18n.t('auth.errors.loginFailed');
+                    set({ error: message });
+                    reject(forceError);
+                  }
+                },
+              },
+            ],
+          );
+        });
+      }
+
       const message =
         error instanceof Error ? error.message : i18n.t('auth.errors.loginFailed');
       set({ error: message });
@@ -113,8 +164,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    // Unregister push token before clearing auth
+    try {
+      const { data: token } = await Notifications.getDevicePushTokenAsync();
+      const deviceToken = typeof token === 'string' ? token : String(token);
+      await notificationService.unregisterToken(deviceToken);
+    } catch {
+      // Token retrieval or unregister may fail — proceed with logout
+    }
+
     await SecureStore.deleteItemAsync(SECURE_STORE_KEYS.ACCESS_TOKEN);
     await SecureStore.deleteItemAsync(SECURE_STORE_KEYS.REFRESH_TOKEN);
+    clearMyPageCache();
     set({
       user: null,
       accessToken: null,
@@ -232,7 +293,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
       }
     } catch {
-      set({ isLoading: false });
+      // Outer catch: SecureStore read itself failed (very rare).
+      // If we somehow got tokens before the error, keep them.
+      const currentToken = get().accessToken;
+      if (currentToken) {
+        set({ isAuthenticated: true, isLoading: false });
+      } else {
+        set({ isLoading: false });
+      }
     }
   },
 

@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Image,
+  DeviceEventEmitter,
   Platform,
   StatusBar,
 } from 'react-native';
@@ -122,6 +123,8 @@ export default function NotificationInboxScreen() {
       setNotifications((prev) =>
         prev.map((n) => ({ ...n, is_read: true })),
       );
+      // Notify HomeScreen to clear unread badge immediately
+      DeviceEventEmitter.emit('notifications:allRead');
     } catch {
       // ignore
     }

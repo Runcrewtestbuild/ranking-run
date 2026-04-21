@@ -39,15 +39,16 @@ class NotificationService:
         token (it may belong to a different user after a re-login), then insert
         a fresh row for the current user.
         """
-        await db.execute(
-            delete(DeviceToken).where(DeviceToken.device_token == device_token)
-        )
-        token = DeviceToken(
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        stmt = pg_insert(DeviceToken).values(
             user_id=user_id,
             device_token=device_token,
             platform=platform,
+        ).on_conflict_do_update(
+            index_elements=['device_token'],
+            set_={'user_id': user_id, 'platform': platform, 'updated_at': func.now()},
         )
-        db.add(token)
+        await db.execute(stmt)
         await db.flush()
 
     async def unregister_token(
@@ -65,12 +66,12 @@ class NotificationService:
         self,
         db: AsyncSession,
         user_id: UUID,
-    ) -> list[str]:
-        """Get all device tokens for a user."""
+    ) -> list[tuple[str, str]]:
+        """Get all device tokens for a user as (token, platform) tuples."""
         result = await db.execute(
-            select(DeviceToken.device_token).where(DeviceToken.user_id == user_id)
+            select(DeviceToken.device_token, DeviceToken.platform).where(DeviceToken.user_id == user_id)
         )
-        return [row[0] for row in result.all()]
+        return [(row[0], row[1]) for row in result.all()]
 
     # ------------------------------------------------------------------
     # Sending
@@ -89,13 +90,16 @@ class NotificationService:
         Returns the number of notifications successfully sent.  Tokens that
         FCM reports as invalid are automatically removed.
         """
-        tokens = await self.get_user_tokens(db, user_id)
-        if not tokens:
+        token_pairs = await self.get_user_tokens(db, user_id)
+        if not token_pairs:
             return 0
 
         sent = 0
-        for token in tokens:
-            success = await self._send_fcm(token, title, body, data)
+        for token, platform in token_pairs:
+            if platform == 'ios':
+                success = await self._send_apns(token, title, body, data)
+            else:
+                success = await self._send_fcm(token, title, body, data)
             if success:
                 sent += 1
             else:
@@ -257,6 +261,74 @@ class NotificationService:
             firebase_admin.initialize_app(cred)
 
         self._firebase_initialised = True
+
+    async def _send_apns(
+        self,
+        device_token: str,
+        title: str,
+        body: str,
+        data: dict | None = None,
+    ) -> bool:
+        """Send a push notification via APNs (iOS). Returns True on success."""
+        if not self._settings.APNS_KEY_PATH:
+            logger.debug("APNs not configured, skipping push to %s...", device_token[:20])
+            return True
+
+        try:
+            import httpx
+            import jwt as pyjwt
+            import time
+
+            # Build JWT token for APNs
+            with open(self._settings.APNS_KEY_PATH, 'r') as f:
+                key = f.read()
+
+            now = int(time.time())
+            token = pyjwt.encode(
+                {'iss': self._settings.APNS_TEAM_ID, 'iat': now},
+                key,
+                algorithm='ES256',
+                headers={'kid': self._settings.APNS_KEY_ID},
+            )
+
+            # APNs payload
+            # expo-notifications reads 'body' key as content.data
+            payload = {
+                'aps': {
+                    'alert': {'title': title, 'body': body},
+                    'sound': 'default',
+                    'badge': 1,
+                },
+                'body': data or {},
+            }
+
+            host = 'api.sandbox.push.apple.com' if self._settings.APNS_USE_SANDBOX else 'api.push.apple.com'
+            url = f'https://{host}/3/device/{device_token}'
+
+            async with httpx.AsyncClient(http2=True) as client:
+                resp = await client.post(
+                    url,
+                    json=payload,
+                    headers={
+                        'authorization': f'bearer {token}',
+                        'apns-topic': self._settings.APNS_BUNDLE_ID,
+                        'apns-push-type': 'alert',
+                        'apns-priority': '10',
+                    },
+                )
+
+            if resp.status_code == 200:
+                return True
+            elif resp.status_code == 410:  # Unregistered
+                logger.info("APNs token unregistered, removing: %s...", device_token[:20])
+                return False
+            else:
+                logger.warning("APNs send failed (%d): %s", resp.status_code, resp.text)
+                return resp.status_code < 500  # Don't remove token on server errors
+
+        except Exception:
+            logger.exception("APNs send failed for token %s...", device_token[:20])
+            return False
 
     async def _send_fcm(
         self,

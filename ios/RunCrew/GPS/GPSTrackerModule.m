@@ -17,6 +17,9 @@ RCT_EXTERN_METHOD(pauseTracking:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(resumeTracking:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(restartTracking:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(getRawGPSPoints:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 

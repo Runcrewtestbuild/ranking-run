@@ -29,6 +29,7 @@ class MetronomeModule(reactContext: ReactApplicationContext) :
     @Volatile private var audioThread: Thread? = null
     @Volatile private var isRunning = false
     @Volatile private var currentBPM = 0.0
+    @Volatile private var pendingBeatBuffer: ShortArray? = null
 
     companion object {
         private const val TAG = "Metronome"
@@ -104,7 +105,7 @@ class MetronomeModule(reactContext: ReactApplicationContext) :
                     .setAudioAttributes(
                         AudioAttributes.Builder()
                             .setUsage(AudioAttributes.USAGE_MEDIA)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                             .build()
                     )
                     .setAudioFormat(
@@ -120,20 +121,33 @@ class MetronomeModule(reactContext: ReactApplicationContext) :
 
                 track.play()
 
-                // Continuously stream beat buffers until stopped
+                // Continuously stream beat buffers until stopped.
+                // Check for pending BPM changes between beats.
+                var activeBuf = beatBuffer
                 while (isRunning) {
-                    val written = track.write(beatBuffer, 0, beatBuffer.size)
+                    // Hot-swap beat buffer if BPM was changed via setBPM()
+                    pendingBeatBuffer?.let { newBuf ->
+                        activeBuf = newBuf
+                        pendingBeatBuffer = null
+                    }
+                    val written = track.write(activeBuf, 0, activeBuf.size)
                     if (written < 0) {
-                        Log.w(TAG, "AudioTrack write error: $written")
+                        Log.w(TAG, "AudioTrack write error: $written — restarting")
+                        // AudioTrack was killed by system (background audio policy).
+                        // Break and let the finally block clean up.
                         break
                     }
                 }
 
-                track.stop()
+                try { track.stop() } catch (_: Exception) {}
             } catch (e: Exception) {
                 Log.e(TAG, "Audio thread error: ${e.message}")
             } finally {
                 try { track?.release() } catch (_: Exception) {}
+                // Mark as stopped so start() creates fresh resources
+                isRunning = false
+                currentBPM = 0.0
+                Log.i(TAG, "Audio thread ended")
             }
         }, "metronome-audio")
         thread.priority = Thread.MAX_PRIORITY
@@ -168,7 +182,17 @@ class MetronomeModule(reactContext: ReactApplicationContext) :
             stop()
             return
         }
-        if (isRunning) start(bpm)
+        if (!isRunning || bpm == currentBPM) return
+
+        // Build new beat buffer and hot-swap it into the audio loop
+        // without stopping/restarting the thread (no click gap).
+        currentBPM = bpm
+        val clickSamples = generateClickSamples()
+        val beatPeriodSamples = (SAMPLE_RATE * 60.0 / bpm).toInt()
+        val newBuffer = ShortArray(beatPeriodSamples)
+        clickSamples.copyInto(newBuffer, 0)
+        pendingBeatBuffer = newBuffer
+        Log.i(TAG, "BPM changed to ${bpm.toInt()}")
     }
 
     @ReactMethod

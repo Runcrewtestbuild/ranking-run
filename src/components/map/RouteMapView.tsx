@@ -1,10 +1,11 @@
 import React, { useRef, useEffect, useCallback, forwardRef, useImperativeHandle, useMemo, useState } from 'react';
-import { StyleSheet, View, Text, Platform, Animated, Easing, Image, Pressable } from 'react-native';
+import { StyleSheet, View, Text, Platform, Animated, Easing, Image, Pressable, TouchableOpacity } from 'react-native';
 import Mapbox, { UserTrackingMode } from '@rnmapbox/maps';
 import { Ionicons } from '../../lib/icons';
 import { COLORS, DIFFICULTY_COLORS, type DifficultyLevel } from '../../utils/constants';
 import { useTheme } from '../../hooks/useTheme';
 import { MAPBOX_DARK_STYLE, MAPBOX_LIGHT_STYLE } from '../../config/env';
+import { useRunningStore } from '../../stores/runningStore';
 
 // ============================================================
 // RouteMapView — Mapbox GL implementation
@@ -128,6 +129,12 @@ interface RouteMapViewProps {
   splitMarkers?: Array<{ km: number; latitude: number; longitude: number; pace?: string }>;
   /** When true, start camera at lastKnownLocation then animate to route bounds after map loads */
   animateToRouteOnLoad?: boolean;
+  /** When true, render route line with a blue→yellow→orange gradient instead of solid color */
+  useGradient?: boolean;
+  /** Number of completed laps (displayed as badge near start point when > 0) */
+  lapCount?: number;
+  /** When true, subscribe to routePoints from runningStore internally (avoids parent re-renders on GPS ticks) */
+  subscribeToRunningRoute?: boolean;
 }
 
 export interface Camera {
@@ -151,6 +158,8 @@ export interface RouteMapViewHandle {
    *  Unlike animateCamera, this does NOT toggle internalFollow, so custom
    *  follow seamlessly takes over after the animation completes. */
   smoothZoomIn: (camera: Camera, duration?: number) => void;
+  /** Capture a snapshot of the current map view. Returns a file URI (e.g. file:///...). */
+  takeSnapshot: (writeToDisk?: boolean) => Promise<string>;
 }
 
 // ---- Helpers ----
@@ -210,10 +219,112 @@ function deltaToZoom(latDelta: number): number {
   return Math.max(1, Math.min(20, Math.log2(360 / Math.max(latDelta, 0.0001))));
 }
 
+// ---- Smooth location marker (isolated to avoid re-rendering parent on every animation frame) ----
+
+interface SmoothLocationMarkerProps {
+  customUserLocation?: { latitude: number; longitude: number };
+  customUserHeading?: number;
+  followUserMode?: 'normal' | 'compass' | 'course';
+}
+
+const SmoothLocationMarker = React.memo(function SmoothLocationMarker({
+  customUserLocation,
+  customUserHeading,
+  followUserMode,
+}: SmoothLocationMarkerProps) {
+  const headingAnimRef = useRef(new Animated.Value(0));
+  const prevHeadingRef = useRef(0);
+  const markerTargetRef = useRef<{ lng: number; lat: number } | null>(null);
+  const markerCurrentRef = useRef<{ lng: number; lat: number } | null>(null);
+  const [smoothMarkerPos, setSmoothMarkerPos] = useState<[number, number] | null>(null);
+  const markerAnimFrameRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!customUserLocation) return;
+    const target = { lng: customUserLocation.longitude, lat: customUserLocation.latitude };
+    markerTargetRef.current = target;
+    if (!markerCurrentRef.current) {
+      markerCurrentRef.current = { ...target };
+      setSmoothMarkerPos([target.lng, target.lat]);
+      return;
+    }
+    const startLng = markerCurrentRef.current.lng;
+    const startLat = markerCurrentRef.current.lat;
+    const startTime = Date.now();
+    const duration = Platform.OS === 'android' ? 800 : 900;
+
+    let frameCount = 0;
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      const ease = 1 - Math.pow(1 - t, 3);
+      const lng = startLng + (target.lng - startLng) * ease;
+      const lat = startLat + (target.lat - startLat) * ease;
+      markerCurrentRef.current = { lng, lat };
+      frameCount++;
+      if (frameCount % 2 === 0 || t >= 1) {
+        setSmoothMarkerPos([lng, lat]);
+      }
+      if (t < 1) {
+        markerAnimFrameRef.current = requestAnimationFrame(animate);
+      }
+    };
+    cancelAnimationFrame(markerAnimFrameRef.current);
+    markerAnimFrameRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(markerAnimFrameRef.current);
+  }, [customUserLocation?.latitude, customUserLocation?.longitude]);
+
+  if (!smoothMarkerPos) return null;
+
+  if (customUserHeading != null) {
+    const cameraHeading = (followUserMode === 'course' || followUserMode === 'compass')
+      ? (customUserHeading ?? 0) : 0;
+    const target = (((customUserHeading ?? 0) - cameraHeading) % 360 + 360) % 360;
+    let delta = target - prevHeadingRef.current;
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+    const newVal = prevHeadingRef.current + delta;
+    prevHeadingRef.current = newVal;
+    Animated.timing(headingAnimRef.current, {
+      toValue: newVal,
+      duration: 300,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }
+
+  const hasHeading = customUserHeading != null;
+  const spin = headingAnimRef.current.interpolate({
+    inputRange: [-360, 360],
+    outputRange: ['-360deg', '360deg'],
+  });
+
+  return (
+    <Mapbox.MarkerView
+      coordinate={smoothMarkerPos}
+      anchor={{ x: 0.5, y: 0.5 }}
+      allowOverlap={true}
+      allowOverlapWithPuck={true}
+    >
+      <Animated.View
+        style={[
+          styles.userLocationWrapper,
+          hasHeading ? { transform: [{ rotate: spin }] } : undefined,
+        ]}
+      >
+        {hasHeading && (
+          <View style={styles.headingChevron} />
+        )}
+        <View style={styles.userLocationInner} />
+      </Animated.View>
+    </Mapbox.MarkerView>
+  );
+});
+
 // ---- Component ----
 
 const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function RouteMapView({
-  routePoints = [],
+  routePoints: routePointsProp = [],
   markers,
   eventMarkers,
   friendMarkers,
@@ -244,64 +355,34 @@ const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function 
   signalGapSegments,
   splitMarkers,
   animateToRouteOnLoad = false,
+  useGradient = false,
+  lapCount,
+  subscribeToRunningRoute = false,
 }, ref) {
+  // When subscribeToRunningRoute is true, subscribe to version counter (number)
+  // instead of the array reference. This avoids shallow-compare on large arrays.
+  // Read the actual data from getRoutePoints() which returns the mutable backing array.
+  const routeVersion = useRunningStore((s) => subscribeToRunningRoute ? s.routePointsVersion : -1);
+  const routePoints = useMemo(() => {
+    if (!subscribeToRunningRoute || routeVersion < 0) return routePointsProp;
+    return useRunningStore.getState().routePoints;
+  }, [subscribeToRunningRoute, routeVersion, routePointsProp]);
+
   const cameraRef = useRef<Mapbox.Camera>(null);
+  const mapViewRef = useRef<Mapbox.MapView>(null);
   const colors = useTheme();
   const isDark = colors.statusBar === 'light-content';
   const mapBearingRef = useRef(0);
   const currentZoomRef = useRef(DEFAULT_ZOOM);
 
-  // Smooth heading rotation animation
-  const headingAnimRef = useRef(new Animated.Value(0));
-  const prevHeadingRef = useRef(0);
   // Suppress custom follow during smoothZoomIn animation so it doesn't
   // interrupt the flyTo with competing setCamera calls.
   const suppressFollowUntilRef = useRef(0);
+  // Last camera position — used to skip updates when position changed < ~0.5m
+  const lastCameraPosRef = useRef<{ lat: number; lng: number } | null>(null);
 
-  // Smooth GPS marker position interpolation (prevents choppy jumps)
-  const markerTargetRef = useRef<{ lng: number; lat: number } | null>(null);
-  const markerCurrentRef = useRef<{ lng: number; lat: number } | null>(null);
-  const [smoothMarkerPos, setSmoothMarkerPos] = useState<[number, number] | null>(null);
-  const markerAnimFrameRef = useRef<number>(0);
-
-  useEffect(() => {
-    if (!customUserLocation) return;
-    const target = { lng: customUserLocation.longitude, lat: customUserLocation.latitude };
-    markerTargetRef.current = target;
-    if (!markerCurrentRef.current) {
-      // First position — snap immediately
-      markerCurrentRef.current = { ...target };
-      setSmoothMarkerPos([target.lng, target.lat]);
-      return;
-    }
-    // Animate from current to target over ~800ms using lerp
-    const startLng = markerCurrentRef.current.lng;
-    const startLat = markerCurrentRef.current.lat;
-    const startTime = Date.now();
-    const duration = Platform.OS === 'android' ? 800 : 500;
-
-    let frameCount = 0;
-    const animate = () => {
-      const elapsed = Date.now() - startTime;
-      const t = Math.min(elapsed / duration, 1);
-      // Ease-out cubic for natural deceleration
-      const ease = 1 - Math.pow(1 - t, 3);
-      const lng = startLng + (target.lng - startLng) * ease;
-      const lat = startLat + (target.lat - startLat) * ease;
-      markerCurrentRef.current = { lng, lat };
-      frameCount++;
-      // Throttle state updates to every 2nd frame (~33ms) to reduce re-renders
-      if (frameCount % 2 === 0 || t >= 1) {
-        setSmoothMarkerPos([lng, lat]);
-      }
-      if (t < 1) {
-        markerAnimFrameRef.current = requestAnimationFrame(animate);
-      }
-    };
-    cancelAnimationFrame(markerAnimFrameRef.current);
-    markerAnimFrameRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(markerAnimFrameRef.current);
-  }, [customUserLocation?.latitude, customUserLocation?.longitude]);
+  // Smooth GPS marker position interpolation is handled by <SmoothLocationMarker />
+  // to avoid re-rendering the entire RouteMapView on every animation frame.
 
   // Debug: track mount/unmount to detect unexpected remounts
   useEffect(() => {
@@ -429,6 +510,11 @@ const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function 
       config.padding = { paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 };
       cameraRef.current?.setCamera(config);
     },
+    takeSnapshot: async (writeToDisk = true) => {
+      if (!mapViewRef.current) throw new Error('MapView ref not available');
+      const uri = await (mapViewRef.current as any).takeSnap(writeToDisk);
+      return uri as string;
+    },
     recenterOnUser: (location?: { latitude: number; longitude: number }) => {
       // Directly move camera to given location, then re-enable follow.
       // On Android, native follow is disabled so we must always setCamera explicitly.
@@ -527,6 +613,15 @@ const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function 
       // without competing setCamera calls that cause jitter on Android.
       if (Date.now() < suppressFollowUntilRef.current) return;
 
+      // Skip camera update if position changed less than ~0.5m to avoid
+      // unnecessary setCamera calls on every GPS tick.
+      if (lastCameraPosRef.current) {
+        const dlat = Math.abs(customUserLocation.latitude - lastCameraPosRef.current.lat);
+        const dlng = Math.abs(customUserLocation.longitude - lastCameraPosRef.current.lng);
+        if (dlat < 0.000005 && dlng < 0.000005) return; // ~0.5m
+      }
+      lastCameraPosRef.current = { lat: customUserLocation.latitude, lng: customUserLocation.longitude };
+
       const zoomLevel = followZoomLevel ?? 16;
       // Only rotate the map when in course/compass mode (running).
       // In normal mode (idle/touring), keep the map north-up — the heading
@@ -624,11 +719,24 @@ const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function 
     return Math.sqrt(dlat * dlat + dlng * dlng) < 0.0005; // ~50m
   }, [startPoint, endPoint]);
 
-  // Route GeoJSON
+  // Route GeoJSON — throttled during live running to avoid rebuilding on every GPS tick.
+  // Only rebuilds when point count changes by 3+ (every ~3 seconds at 1Hz GPS).
+  // Static routes (result screen, course preview) update immediately.
+  const lastGeoJSONLenRef = useRef(0);
+  const cachedRouteGeoJSONRef = useRef<ReturnType<typeof toLineGeoJSON> | null>(null);
   const routeGeoJSON = useMemo(() => {
     if (!isRouteMode || routePoints.length < 2) return null;
-    return toLineGeoJSON(routePoints);
-  }, [isRouteMode, routePoints]);
+    const len = routePoints.length;
+    // During live running (subscribeToRunningRoute), throttle updates
+    if (subscribeToRunningRoute && cachedRouteGeoJSONRef.current && len - lastGeoJSONLenRef.current < 10) {
+      return cachedRouteGeoJSONRef.current;
+    }
+    lastGeoJSONLenRef.current = len;
+    cachedRouteGeoJSONRef.current = toLineGeoJSON(routePoints);
+    return cachedRouteGeoJSONRef.current;
+  // routeVersion triggers rebuild when mutable backing array is updated
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRouteMode, routePoints, subscribeToRunningRoute, routeVersion]);
 
   // Deviation overlay GeoJSON (red segments where runner went off-course)
   const deviationGeoJSON = useMemo<GeoJSON.Feature<GeoJSON.MultiLineString> | null>(() => {
@@ -688,12 +796,14 @@ const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function 
   return (
     <View
       style={[styles.container, style]}
+      pointerEvents={!isInteractive && Platform.OS === 'android' ? 'none' : 'auto'}
       onTouchStart={isInteractive && onUserMapInteraction ? () => {
         if (useCustomFollow) setInternalFollow(false);
         onUserMapInteraction();
       } : undefined}
     >
       <Mapbox.MapView
+        ref={mapViewRef}
         styleURL={mapStyleURL}
         projection={projection}
         logoEnabled={false}
@@ -702,9 +812,9 @@ const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function 
         scaleBarEnabled={false}
         scrollEnabled={isInteractive}
         zoomEnabled={isInteractive}
-        rotateEnabled={!!pitchEnabledProp || followUserModeProp === 'course'}
-        pitchEnabled={!!pitchEnabledProp || followPitchProp != null}
-        onPress={onMapPress ? (feature: any) => onMapPress(feature) : undefined}
+        rotateEnabled={isInteractive && (!!pitchEnabledProp || followUserModeProp === 'course')}
+        pitchEnabled={isInteractive && (!!pitchEnabledProp || followPitchProp != null)}
+        onPress={onMapPress && isInteractive ? (feature: any) => onMapPress(feature) : undefined}
         onDidFinishLoadingMap={handleDidFinishLoadingMap}
         onRegionDidChange={isMarkersMode || useCustomFollow || customUserLocation ? handleRegionDidChange : undefined}
         style={styles.map}
@@ -735,15 +845,30 @@ const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function 
 
         {/* ---- Route display mode ---- */}
         {routeGeoJSON && (
-          <Mapbox.ShapeSource id="route-source" shape={routeGeoJSON}>
+          <Mapbox.ShapeSource
+            id="route-source"
+            shape={routeGeoJSON}
+            lineMetrics={useGradient}
+          >
             <Mapbox.LineLayer
               id="route-line"
               style={{
-                lineColor: '#FFD600',
                 lineWidth: 6,
                 lineCap: 'round',
                 lineJoin: 'round',
                 lineEmissiveStrength: 1,
+                ...(useGradient
+                  ? {
+                      lineGradient: [
+                        'interpolate',
+                        ['linear'],
+                        ['line-progress'],
+                        0, '#4A90D9',
+                        0.5, '#FFD600',
+                        1, '#FF6B35',
+                      ],
+                    }
+                  : { lineColor: '#FFD600' }),
               }}
             />
           </Mapbox.ShapeSource>
@@ -814,6 +939,19 @@ const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function 
           </Mapbox.MarkerView>
         )}
 
+        {/* ---- Lap count badge (near start point) ---- */}
+        {startPoint && lapCount != null && lapCount > 0 && (
+          <Mapbox.MarkerView
+            coordinate={[startPoint.longitude, startPoint.latitude]}
+            anchor={{ x: 0.5, y: 1.2 }}
+            allowOverlap={true}
+          >
+            <View style={styles.lapBadge}>
+              <Text style={styles.lapBadgeText}>{lapCount}바퀴</Text>
+            </View>
+          </Mapbox.MarkerView>
+        )}
+
         {/* ---- Checkpoint markers (numbered circles along the route) ---- */}
         {checkpoints && checkpoints.length > 0 && checkpoints.map((cp) => {
             const bgColor = cp.passed ? '#34C759' : cp.isNext ? '#FFD700' : 'rgba(255,255,255,0.25)';
@@ -867,10 +1005,11 @@ const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function 
                 allowOverlap={true}
                 allowOverlapWithPuck={true}
               >
-                <Pressable
+                <View
                   style={styles.courseBadgeWrapper}
-                  onPress={() => onMarkerPress?.(m.id)}
-                  hitSlop={8}
+                  onStartShouldSetResponder={() => true}
+                  onResponderRelease={() => onMarkerPress?.(m.id)}
+                  hitSlop={Platform.OS === 'android' ? { top: 16, bottom: 16, left: 16, right: 16 } : 8}
                 >
                   {m.dominion?.crew_logo_url ? (
                     <Image
@@ -884,7 +1023,7 @@ const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function 
                       <Ionicons name={icon} size={14} color={COLORS.white} />
                     </View>
                   )}
-                </Pressable>
+                </View>
               </Mapbox.MarkerView>
             );
           })}
@@ -892,8 +1031,7 @@ const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function 
         {/* User location — unmount native puck entirely on Android when custom marker is active
             to prevent double-layer issue (visible=false still renders native puck on some Android devices).
             On iOS, keep it mounted with visible=false so onUpdate still fires for location callbacks. */}
-        {(showUserLocation || onUserLocationChange) &&
-         !(customUserLocation && Platform.OS === 'android') && (
+        {(showUserLocation || onUserLocationChange) && (
           <Mapbox.UserLocation
             visible={showUserLocation && !customUserLocation}
             showsUserHeadingIndicator={showUserLocation && !customUserLocation}
@@ -901,50 +1039,12 @@ const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function 
           />
         )}
 
-        {/* Custom orange location dot + heading arrow via MarkerView (above all layers, always visible) */}
-        {smoothMarkerPos && (() => {
-          // Animate heading rotation smoothly
-          if (customUserHeading != null) {
-            const target = ((customUserHeading - mapBearingRef.current) % 360 + 360) % 360;
-            // Shortest path rotation (handle 0/360 wraparound)
-            let delta = target - prevHeadingRef.current;
-            if (delta > 180) delta -= 360;
-            if (delta < -180) delta += 360;
-            const newVal = prevHeadingRef.current + delta;
-            prevHeadingRef.current = newVal;
-            Animated.timing(headingAnimRef.current, {
-              toValue: newVal,
-              duration: 300,
-              easing: Easing.out(Easing.cubic),
-              useNativeDriver: true,
-            }).start();
-          }
-          const hasHeading = customUserHeading != null;
-          const spin = headingAnimRef.current.interpolate({
-            inputRange: [-360, 360],
-            outputRange: ['-360deg', '360deg'],
-          });
-          return (
-            <Mapbox.MarkerView
-              coordinate={smoothMarkerPos}
-              anchor={{ x: 0.5, y: 0.5 }}
-              allowOverlap={true}
-              allowOverlapWithPuck={true}
-            >
-              <Animated.View
-                style={[
-                  styles.userLocationWrapper,
-                  hasHeading ? { transform: [{ rotate: spin }] } : undefined,
-                ]}
-              >
-                {hasHeading && (
-                  <View style={styles.headingChevron} />
-                )}
-                <View style={styles.userLocationInner} />
-              </Animated.View>
-            </Mapbox.MarkerView>
-          );
-        })()}
+        {/* Custom orange location dot + heading arrow (isolated component to avoid parent re-renders) */}
+        <SmoothLocationMarker
+          customUserLocation={customUserLocation}
+          customUserHeading={customUserHeading}
+          followUserMode={followUserModeProp}
+        />
 
         {/* ---- Event markers ---- */}
         {eventMarkers
@@ -987,8 +1087,8 @@ const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function 
           </Mapbox.MarkerView>
         ))}
 
-        {/* ---- Last known location marker ---- */}
-        {lastKnownLocation && (
+        {/* ---- Last known location marker (only when custom orange marker is NOT active) ---- */}
+        {lastKnownLocation && !customUserLocation && (
           <Mapbox.MarkerView
             coordinate={[lastKnownLocation.longitude, lastKnownLocation.latitude]}
             anchor={{ x: 0.5, y: 0.5 }}
@@ -1251,6 +1351,27 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.8)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
+  },
+
+  // ---- Lap count badge ----
+  lapBadge: {
+    backgroundColor: 'rgba(232, 87, 42, 0.9)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: COLORS.white,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  lapBadgeText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.white,
+    letterSpacing: 0.5,
   },
 
   // ---- Racing badge course markers ----

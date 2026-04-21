@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import { Alert } from 'react-native';
 import { API_BASE_URL, SECURE_STORE_KEYS } from '../utils/constants';
 
 /**
@@ -30,30 +31,56 @@ async function performTokenRefresh(): Promise<string> {
         throw new ApiError(401, { message: 'No refresh token' });
       }
 
-      const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      });
+      // H2: Retry up to 3 attempts (initial + 2 retries) with 2s delay on network failure
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+          });
 
-      if (!refreshResponse.ok) {
-        const errorData = await refreshResponse.json().catch(() => null);
-        // Only delete tokens on definitive auth rejection (401 Unauthorized).
-        // Other 4xx (429 rate-limit, 400 malformed, 403 forbidden) may be transient
-        // — deleting tokens on these causes unnecessary logout on flaky networks.
-        if (refreshResponse.status === 401) {
-          await SecureStore.deleteItemAsync(SECURE_STORE_KEYS.ACCESS_TOKEN);
-          await SecureStore.deleteItemAsync(SECURE_STORE_KEYS.REFRESH_TOKEN);
+          if (!refreshResponse.ok) {
+            const errorData = await refreshResponse.json().catch(() => null);
+            // Only delete tokens on definitive auth rejection (401 Unauthorized).
+            // Other 4xx (429 rate-limit, 400 malformed, 403 forbidden) may be transient
+            // — deleting tokens on these causes unnecessary logout on flaky networks.
+            if (refreshResponse.status === 401) {
+              await SecureStore.deleteItemAsync(SECURE_STORE_KEYS.ACCESS_TOKEN);
+              await SecureStore.deleteItemAsync(SECURE_STORE_KEYS.REFRESH_TOKEN);
+
+              // Detect session revoked by another device's force-login
+              const errorCode = (errorData as Record<string, unknown>)?.code;
+              if (errorCode === 'SESSION_REVOKED') {
+                Alert.alert(
+                  '알림',
+                  '다른 기기에서 로그인되어 로그아웃되었습니다',
+                  [{ text: '확인' }],
+                );
+              }
+            }
+            // 401 is definitive — no point retrying
+            throw new ApiError(refreshResponse.status, errorData);
+          }
+
+          const { access_token, refresh_token: newRefreshToken } = await refreshResponse.json();
+
+          await SecureStore.setItemAsync(SECURE_STORE_KEYS.ACCESS_TOKEN, access_token);
+          await SecureStore.setItemAsync(SECURE_STORE_KEYS.REFRESH_TOKEN, newRefreshToken);
+
+          return access_token;
+        } catch (err) {
+          lastError = err;
+          // Don't retry on definitive auth errors (4xx) — only retry on network/timeout
+          if (err instanceof ApiError) throw err;
+          if (attempt < 2) {
+            await new Promise(r => setTimeout(r, 2000));
+            continue;
+          }
         }
-        throw new ApiError(refreshResponse.status, errorData);
       }
-
-      const { access_token, refresh_token: newRefreshToken } = await refreshResponse.json();
-
-      await SecureStore.setItemAsync(SECURE_STORE_KEYS.ACCESS_TOKEN, access_token);
-      await SecureStore.setItemAsync(SECURE_STORE_KEYS.REFRESH_TOKEN, newRefreshToken);
-
-      return access_token;
+      throw lastError;
     } finally {
       isRefreshing = false;
       refreshPromise = null;

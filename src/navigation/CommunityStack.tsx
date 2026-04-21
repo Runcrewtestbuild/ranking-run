@@ -1,7 +1,7 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../types/navigation';
-import CommunityFeedScreen from '../screens/community/CommunityFeedScreen';
+import ActivityFeedScreen from '../screens/social/ActivityFeedScreen';
 import CommunityPostDetailScreen from '../screens/community/CommunityPostDetailScreen';
 import CommunityPostCreateScreen from '../screens/community/CommunityPostCreateScreen';
 import CrewCreateScreen from '../screens/crew/CrewCreateScreen';
@@ -20,6 +20,8 @@ import FollowListScreen from '../screens/profile/FollowListScreen';
 import FriendsScreen from '../screens/profile/FriendsScreen';
 import UnifiedSearchScreen from '../screens/community/UnifiedSearchScreen';
 import CrewMemberSettingsScreen from '../screens/crew/CrewMemberSettingsScreen';
+import VersusDetailScreen from '../screens/social/VersusDetailScreen';
+import VersusCreateScreen from '../screens/social/VersusCreateScreen';
 import { useTheme } from '../hooks/useTheme';
 
 const Stack = createNativeStackNavigator<CommunityStackParamList>();
@@ -34,7 +36,7 @@ export default function CommunityStack() {
         animation: 'slide_from_right',
       }}
     >
-      <Stack.Screen name="CommunityFeed" component={CommunityFeedScreen} />
+      <Stack.Screen name="CommunityFeed" component={ActivityFeedScreen} />
       <Stack.Screen name="CommunityPostDetail" component={CommunityPostDetailScreen} />
       <Stack.Screen name="CommunityPostCreate" component={CommunityPostCreateScreen} />
       <Stack.Screen name="CrewCreate" component={CrewCreateScreen} />
@@ -53,6 +55,8 @@ export default function CommunityStack() {
       <Stack.Screen name="Friends" component={FriendsScreen} />
       <Stack.Screen name="UnifiedSearch" component={UnifiedSearchScreen} />
       <Stack.Screen name="CrewMemberSettings" component={CrewMemberSettingsScreen} />
+      <Stack.Screen name="VersusDetail" component={VersusDetailScreen} />
+      <Stack.Screen name="VersusCreate" component={VersusCreateScreen} />
     </Stack.Navigator>
   );
 }

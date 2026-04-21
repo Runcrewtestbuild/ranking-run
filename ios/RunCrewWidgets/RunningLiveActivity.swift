@@ -11,6 +11,7 @@ struct RunningLiveActivity: Widget {
         ActivityConfiguration(for: RunningActivityAttributes.self) { context in
             // Lock Screen / Notification Banner
             LockScreenRunView(context: context)
+            .widgetURL(URL(string: "runcrew://running"))
         } dynamicIsland: { context in
             DynamicIsland {
                 // ── Expanded ──
