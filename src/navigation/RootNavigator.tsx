@@ -225,7 +225,7 @@ export default function RootNavigator() {
               if (navRef.current) {
                 try {
                   (navRef.current as any).navigate('Main', {
-                    screen: 'World',
+                    screen: 'WorldTab',
                     params: {
                       screen: 'RunResult',
                       params: {

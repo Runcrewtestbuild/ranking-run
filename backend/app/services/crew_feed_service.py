@@ -336,7 +336,7 @@ class CrewFeedService:
                     "id": str(rr.id),
                     "distance_meters": rr.distance_meters,
                     "duration_seconds": rr.duration_seconds,
-                    "pace_seconds_per_km": rr.pace_seconds_per_km,
+                    "pace_seconds_per_km": rr.avg_pace_seconds_per_km,
                 }
 
         return {

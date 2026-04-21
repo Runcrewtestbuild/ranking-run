@@ -6,6 +6,7 @@ from uuid import UUID
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.core.exceptions import NotFoundError
 from app.models.run_record import RunRecord
@@ -196,6 +197,7 @@ class SeasonService:
         # Paginated results
         result = await db.execute(
             select(SeasonRanking)
+            .options(joinedload(SeasonRanking.user))
             .where(*base_filters)
             .order_by(SeasonRanking.points.desc())
             .offset(page * per_page)
@@ -222,7 +224,9 @@ class SeasonService:
         my_ranking = None
         if requesting_user_id:
             my_result = await db.execute(
-                select(SeasonRanking).where(
+                select(SeasonRanking)
+                .options(joinedload(SeasonRanking.user))
+                .where(
                     SeasonRanking.season_id == season_id,
                     SeasonRanking.user_id == requesting_user_id,
                 )

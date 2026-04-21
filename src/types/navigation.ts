@@ -73,7 +73,6 @@ export type CourseStackParamList = {
   CourseList: undefined;
   CourseSearch: { initialSort?: 'total_runs' | 'created_at' | 'distance_meters' } | undefined;
   CourseDetail: { courseId: string; openReview?: boolean; selectForRaid?: string };
-  CourseRanking: { courseId: string };
   CrewDetail: { crewId: string };
   CourseCreate: {
     runRecordId: string;
@@ -85,11 +84,6 @@ export type CourseStackParamList = {
   };
   CourseRouteCorrect: { courseId: string };
   UserProfile: { userId: string };
-};
-
-export type RunningStackParamList = {
-  RunningMain: { courseId?: string } | undefined;
-  RunResult: { sessionId: string; alreadyCompleted?: boolean };
 };
 
 export type CommunityStackParamList = {

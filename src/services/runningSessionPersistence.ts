@@ -15,7 +15,7 @@
  * What we DON'T save (reconstructable / transient):
  *  - currentLocation (single GPS fix, refreshed immediately)
  *  - gpsStatus/gpsAccuracy (live sensor state)
- *  - heartRate, cadence (live sensor)
+ *  - heartRate, cadence (persisted for recovery since v2)
  *  - loop detection state (recalculated)
  */
 
@@ -45,6 +45,10 @@ export interface PersistedRunningSession {
   elevationGainMeters: number;
   elevationLossMeters: number;
   calories: number;
+
+  // Live sensor data (optional — may not be available on all devices)
+  cadence?: number;
+  heartRate?: number;
 
   // GPS data (the critical part — this is what gets lost on crash)
   filteredLocations: FilteredLocation[];
