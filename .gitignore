@@ -62,3 +62,4 @@ android/app/build/
 
 # Proxy
 proxy.py
+backend/credentials/
