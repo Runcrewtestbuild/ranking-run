@@ -17,6 +17,8 @@ engine: AsyncEngine = create_async_engine(
     pool_size=20,
     max_overflow=10,
     pool_pre_ping=True,
+    pool_recycle=1800,  # Recycle connections after 30 min
+    pool_timeout=30,    # Fail fast if no connection available in 30s
 )
 
 async_session_factory = async_sessionmaker(
