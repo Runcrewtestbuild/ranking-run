@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { FONT_SIZES } from '../../utils/constants';
 
@@ -18,8 +18,6 @@ interface Props {
 }
 
 const CHART_LEFT_PAD = 36;
-const SCREEN_W = Dimensions.get('window').width;
-const CHART_W = SCREEN_W - 20 * 2 - 16 * 2 - CHART_LEFT_PAD;
 
 export default function TimeSeriesLineChart({
   data,
@@ -30,6 +28,8 @@ export default function TimeSeriesLineChart({
   formatValue,
 }: Props) {
   const colors = useTheme();
+  const { width: screenW } = useWindowDimensions();
+  const chartW = useMemo(() => screenW - 20 * 2 - 16 * 2 - CHART_LEFT_PAD, [screenW]);
   const color = lineColor ?? colors.primary;
   const chartH = height - 24;
 
@@ -48,7 +48,7 @@ export default function TimeSeriesLineChart({
     const avg = values.reduce((a, b) => a + b, 0) / values.length;
 
     const pad = 4;
-    const w = CHART_W - pad * 2;
+    const w = chartW - pad * 2;
     const h = chartH - pad * 2;
 
     const pts = data.map((d, i) => ({
@@ -78,7 +78,7 @@ export default function TimeSeriesLineChart({
       yLabels: [format(mx), format(Math.round(avg)), format(mn)],
       avgValue: avg,
     };
-  }, [data, chartH, format]);
+  }, [data, chartH, chartW, format]);
 
   if (data.filter((d) => d.value > 0).length < 2) return null;
 

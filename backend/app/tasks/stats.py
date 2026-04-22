@@ -3,7 +3,7 @@
 import logging
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core.config import get_settings
 from app.db.session import async_session_factory
@@ -121,9 +121,14 @@ async def update_stats_after_run(
             )
             crew_ids = [row[0] for row in crew_result.all()]
             for cid in crew_ids:
+                await db.execute(
+                    update(Crew).where(Crew.id == cid).values(
+                        total_xp=Crew.total_xp + distance_meters
+                    )
+                )
+                # Refresh to recalculate level from updated XP
                 crew = await db.get(Crew, cid)
                 if crew is not None:
-                    crew.total_xp += distance_meters
                     crew.level = calc_crew_level(crew.total_xp)
 
             await db.commit()

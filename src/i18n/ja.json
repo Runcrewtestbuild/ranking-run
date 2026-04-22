@@ -570,6 +570,14 @@
     "map3dOnDesc": "ワールドタブで3Dマップ使用中",
     "map3dOffDesc": "ワールドタブで2Dマップ使用中",
     "integration": "連携",
+    "privacy": "プライバシー",
+    "runVisibility": {
+      "title": "ランニング記録の公開",
+      "description": "他のユーザーがあなたのランニング記録を閲覧できる範囲を設定します",
+      "public": "全体公開",
+      "followers": "フォロワーのみ",
+      "private": "非公開"
+    },
     "legal": "規約とポリシー",
     "termsOfService": "利用規約",
     "privacyPolicy": "プライバシーポリシー",
@@ -1066,7 +1074,21 @@
     "findFriends": "友達を探す",
     "running": "ランニング中",
     "noFollowers": "まだフォロワーがいません",
-    "noFollowing": "まだ誰もフォローしていません"
+    "noFollowing": "まだ誰もフォローしていません",
+    "today": "今日",
+    "tomorrow": "明日",
+    "cancelJoin": "参加取消",
+    "joinRun": "参加する",
+    "pinned": "固定",
+    "admin": "管理者",
+    "distance": "距離",
+    "time": "時間",
+    "avgPace": "平均ペース",
+    "groupRunDetail": "グループラン詳細",
+    "locationTbd": "場所未定",
+    "participantCount": "{{count}}人参加",
+    "participants": "参加者",
+    "noParticipantsYet": "まだ参加者がいません"
   },
   "friend": {
     "title": "友達",
@@ -1088,6 +1110,19 @@
     "noSentRequests": "送信した申請はありません",
     "actionFailed": "処理に失敗しました",
     "menuDesc": "友達リスト・リクエスト管理"
+  },
+  "runGoalTag": {
+    "freeRun": "フリーラン",
+    "distanceGoal": "距離目標",
+    "timeGoal": "時間目標",
+    "paceGoal": "ペース目標",
+    "programGoal": "目標ラン",
+    "interval": "インターバル",
+    "sets": "セット",
+    "achieved": "達成",
+    "notAchieved": "未達成",
+    "completed": "完了",
+    "notCompleted": "未完了"
   },
   "groupRun": {
     "title": "グループラン",

@@ -80,6 +80,7 @@ export default function RouteSnapshotGenerator({ forceRegenerate = false }: Rout
   const [mapReady, setMapReady] = useState(false);
   const processingRef = useRef(false);
   const mountedRef = useRef(true);
+  const delayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tilesLoadedResolveRef = useRef<(() => void) | null>(null);
 
   // Fetch runs without thumbnails on mount
@@ -159,6 +160,10 @@ export default function RouteSnapshotGenerator({ forceRegenerate = false }: Rout
 
     return () => {
       clearTimeout(startTimer);
+      if (delayTimerRef.current) {
+        clearTimeout(delayTimerRef.current);
+        delayTimerRef.current = null;
+      }
       mountedRef.current = false;
     };
   }, []);
@@ -266,7 +271,7 @@ export default function RouteSnapshotGenerator({ forceRegenerate = false }: Rout
         }
 
         // Delay before processing next run to avoid battery drain
-        setTimeout(() => {
+        delayTimerRef.current = setTimeout(() => {
           if (mountedRef.current) {
             setCurrentRun(remaining[0]);
           }

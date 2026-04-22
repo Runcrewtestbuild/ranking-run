@@ -61,6 +61,9 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     weekly_goal_km: Mapped[float] = mapped_column(Float, default=20.0, server_default="20.0", nullable=False)
     run_visibility: Mapped[str] = mapped_column(String(20), default="public", server_default="public", nullable=False)  # public | followers | private
 
+    # Admin
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
     # Ban
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     banned_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)

@@ -1,7 +1,7 @@
 """Announcement endpoints: public listing and admin creation."""
 
 from dependency_injector.wiring import inject, Provide
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
 from sqlalchemy import select
 
@@ -51,6 +51,9 @@ async def create_announcement(
         Provide[Container.notification_service]
     ),
 ) -> AnnouncementResponse:
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
     result = await service.create(db=db, data=body.model_dump())
 
     # Broadcast announcement notification to all users (in background)

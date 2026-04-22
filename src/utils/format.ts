@@ -121,30 +121,35 @@ export function formatRunGoalTag(
   goalData: { type: string; value?: number | null; intervalSets?: number; intervalRunSeconds?: number; intervalWalkSeconds?: number } | null | undefined,
   runData: { distance_meters: number; duration_seconds: number; avg_pace_seconds_per_km: number; completedSets?: number },
 ): { label: string; achieved: boolean | null } {
+  const t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, opts);
+
   if (!goalData?.type) {
-    return { label: '\uC790\uC720\uB7EC\uB2DD', achieved: null };
+    return { label: t('runGoalTag.freeRun'), achieved: null };
   }
+
+  const achievedStr = t('runGoalTag.achieved');
+  const notAchievedStr = t('runGoalTag.notAchieved');
 
   switch (goalData.type) {
     case 'distance': {
       const goalKm = ((goalData.value ?? 0) / 1000).toFixed(1);
       const met = runData.distance_meters >= (goalData.value ?? 0);
-      return { label: `\uAC70\uB9AC \uBAA9\uD45C ${goalKm}km \u00B7 ${met ? '\uB2EC\uC131' : '\uBBF8\uB2EC\uC131'}`, achieved: met };
+      return { label: `${t('runGoalTag.distanceGoal')} ${goalKm}km \u00B7 ${met ? achievedStr : notAchievedStr}`, achieved: met };
     }
     case 'time': {
       const goalMin = Math.floor((goalData.value ?? 0) / 60);
       const met = runData.duration_seconds >= (goalData.value ?? 0);
-      return { label: `\uC2DC\uAC04 \uBAA9\uD45C ${goalMin}\uBD84 \u00B7 ${met ? '\uB2EC\uC131' : '\uBBF8\uB2EC\uC131'}`, achieved: met };
+      return { label: `${t('runGoalTag.timeGoal')} ${goalMin}${t('common.minuteShort')} \u00B7 ${met ? achievedStr : notAchievedStr}`, achieved: met };
     }
     case 'pace': {
       const goalPace = formatPace(goalData.value ?? 0);
       const met = runData.avg_pace_seconds_per_km > 0 && runData.avg_pace_seconds_per_km <= (goalData.value ?? 0);
-      return { label: `\uD398\uC774\uC2A4 \uBAA9\uD45C ${goalPace} \u00B7 ${met ? '\uB2EC\uC131' : '\uBBF8\uB2EC\uC131'}`, achieved: met };
+      return { label: `${t('runGoalTag.paceGoal')} ${goalPace} \u00B7 ${met ? achievedStr : notAchievedStr}`, achieved: met };
     }
     case 'program': {
       const goalKm = ((goalData.value ?? 0) / 1000).toFixed(1);
       const met = runData.distance_meters >= (goalData.value ?? 0);
-      return { label: `\uBAA9\uD45C\uB7EC\uB2DD ${goalKm}km \u00B7 ${met ? '\uB2EC\uC131' : '\uBBF8\uB2EC\uC131'}`, achieved: met };
+      return { label: `${t('runGoalTag.programGoal')} ${goalKm}km \u00B7 ${met ? achievedStr : notAchievedStr}`, achieved: met };
     }
     case 'interval': {
       const targetSets = goalData.intervalSets ?? 0;
@@ -152,12 +157,12 @@ export function formatRunGoalTag(
       const met = completed >= targetSets;
       return {
         label: met
-          ? `인터벌 ${targetSets}세트 · 완료`
-          : `인터벌 ${completed}/${targetSets}세트 · 미완료`,
+          ? `${t('runGoalTag.interval')} ${targetSets}${t('runGoalTag.sets')} \u00B7 ${t('runGoalTag.completed')}`
+          : `${t('runGoalTag.interval')} ${completed}/${targetSets}${t('runGoalTag.sets')} \u00B7 ${t('runGoalTag.notCompleted')}`,
         achieved: met,
       };
     }
     default:
-      return { label: '\uC790\uC720\uB7EC\uB2DD', achieved: null };
+      return { label: t('runGoalTag.freeRun'), achieved: null };
   }
 }

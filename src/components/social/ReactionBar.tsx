@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, memo } from 'react';
+import React, { useState, useCallback, useRef, memo, useMemo } from 'react';
 import {
   View,
   Text,
@@ -77,7 +77,7 @@ function ReactionBarInner({
     setPickerVisible(false);
   }, [scaleAnim]);
 
-  const s = createStyles(colors);
+  const s = useMemo(() => createStyles(colors), [colors]);
 
   // Show reactions that have counts or are user's own reactions
   const visibleReactions = REACTION_TYPES.filter(

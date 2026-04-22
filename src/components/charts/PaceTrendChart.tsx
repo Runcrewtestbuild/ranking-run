@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { formatPace } from '../../utils/format';
 import { FONT_SIZES, SPACING } from '../../utils/constants';
@@ -16,12 +16,12 @@ interface Props {
 }
 
 const CHART_LEFT_PAD = 42;
-const SCREEN_W = Dimensions.get('window').width;
-// Chart typically rendered inside a card with SPACING.xxl * 2 horizontal padding + SPACING.xl * 2 card padding
-const CHART_W = SCREEN_W - 24 * 2 - 20 * 2 - CHART_LEFT_PAD;
 
 export default function PaceTrendChart({ data, height = 140 }: Props) {
   const colors = useTheme();
+  const { width: screenW } = useWindowDimensions();
+  // Chart typically rendered inside a card with SPACING.xxl * 2 horizontal padding + SPACING.xl * 2 card padding
+  const chartW = useMemo(() => screenW - 24 * 2 - 20 * 2 - CHART_LEFT_PAD, [screenW]);
 
   const chartH = height - 28;
 
@@ -37,7 +37,7 @@ export default function PaceTrendChart({ data, height = 140 }: Props) {
     const yRange = padMax - padMin;
 
     const pad = 6;
-    const w = CHART_W - pad * 2;
+    const w = chartW - pad * 2;
     const h = chartH - pad * 2;
 
     const pts = data.map((d, i) => ({
@@ -66,7 +66,7 @@ export default function PaceTrendChart({ data, height = 140 }: Props) {
       segments: segs,
       yLabels: [formatPace(mn), formatPace(mid), formatPace(mx)],
     };
-  }, [data, chartH]);
+  }, [data, chartH, chartW]);
 
   if (data.length < 2) return null;
 

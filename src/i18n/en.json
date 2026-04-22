@@ -1111,6 +1111,19 @@
     "actionFailed": "Action failed",
     "menuDesc": "Friends list & requests"
   },
+  "runGoalTag": {
+    "freeRun": "Free Run",
+    "distanceGoal": "Distance Goal",
+    "timeGoal": "Time Goal",
+    "paceGoal": "Pace Goal",
+    "programGoal": "Program Goal",
+    "interval": "Interval",
+    "sets": "sets",
+    "achieved": "Achieved",
+    "notAchieved": "Not Achieved",
+    "completed": "Completed",
+    "notCompleted": "Not Completed"
+  },
   "groupRun": {
     "title": "Group Run",
     "create": "Create Group Run",

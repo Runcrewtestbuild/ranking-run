@@ -65,6 +65,8 @@ export default function CommunityPostDetailScreen() {
 
   const inputRef = useRef<TextInput>(null);
   const [crewRole, setCrewRole] = useState<string | null>(null);
+  const [authorAvatarFailed, setAuthorAvatarFailed] = useState(false);
+  const [postImageFailed, setPostImageFailed] = useState(false);
 
   const isMine = !!currentUser && !!post && currentUser.id === post.author.id;
   const isCrewAdmin = crewRole === 'owner' || crewRole === 'admin';
@@ -307,8 +309,6 @@ export default function CommunityPostDetailScreen() {
   }
 
   const authorInitial = (post.author.nickname ?? '?').charAt(0).toUpperCase();
-  const [authorAvatarFailed, setAuthorAvatarFailed] = useState(false);
-  const [postImageFailed, setPostImageFailed] = useState(false);
 
   return (
     <BlurredBackground>

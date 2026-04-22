@@ -119,7 +119,7 @@ export default function ChallengeDetailScreen() {
   const goalIcon = GOAL_TYPE_ICONS[challenge.goal_type] ?? 'trophy-outline';
   const progress = challenge.my_progress;
   const progressRatio = progress
-    ? Math.min(1, progress.current_value / challenge.goal_value)
+    ? challenge.goal_value > 0 ? Math.min(1, progress.current_value / challenge.goal_value) : 0
     : 0;
 
   return (

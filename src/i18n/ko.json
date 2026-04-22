@@ -1111,6 +1111,19 @@
     "actionFailed": "처리에 실패했습니다",
     "menuDesc": "친구 목록 및 요청 관리"
   },
+  "runGoalTag": {
+    "freeRun": "자유러닝",
+    "distanceGoal": "거리 목표",
+    "timeGoal": "시간 목표",
+    "paceGoal": "페이스 목표",
+    "programGoal": "목표러닝",
+    "interval": "인터벌",
+    "sets": "세트",
+    "achieved": "달성",
+    "notAchieved": "미달성",
+    "completed": "완료",
+    "notCompleted": "미완료"
+  },
   "groupRun": {
     "title": "그룹런",
     "create": "그룹런 만들기",

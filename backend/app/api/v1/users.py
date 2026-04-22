@@ -9,7 +9,7 @@ from fastapi import APIRouter, Body, Depends, Query, status
 import json
 
 from geoalchemy2.functions import ST_AsGeoJSON
-from sqlalchemy import desc, func, select, update
+from sqlalchemy import delete, desc, func, select, update
 
 from app.core.container import Container
 from app.core.deps import CurrentUser, CurrentUserAllowBanned, DbSession
@@ -54,7 +54,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 @router.get("/search/code", response_model=PublicProfileResponse | None)
 @inject
 async def search_by_code(
-    code: str = Query(..., min_length=5, max_length=5),
+    code: str = Query(..., min_length=8, max_length=8),
     current_user: CurrentUser = None,
     db: DbSession = None,
     follow_service: FollowService = Depends(Provide[Container.follow_service]),
@@ -875,18 +875,12 @@ async def delete_account(
     """Permanently delete the current user's account and all associated data."""
     user_id = current_user.id
 
-    # Nullify user references in run records/sessions (don't delete running data)
-    await db.execute(
-        update(RunRecord).where(RunRecord.user_id == user_id).values(user_id=None)
-    )
-    await db.execute(
-        update(RunSession).where(RunSession.user_id == user_id).values(user_id=None)
-    )
+    # Delete user's run records and sessions (columns are NOT NULL, cannot nullify)
+    await db.execute(delete(RunRecord).where(RunRecord.user_id == user_id))
+    await db.execute(delete(RunSession).where(RunSession.user_id == user_id))
 
-    # Nullify course creator references (keep courses alive)
-    await db.execute(
-        update(Course).where(Course.creator_id == user_id).values(creator_id=None)
-    )
+    # Delete user's courses (creator_id is NOT NULL, cannot nullify)
+    await db.execute(delete(Course).where(Course.creator_id == user_id))
 
     # Delete the user — cascading FKs handle:
     # social_accounts, refresh_tokens, gear_items, follows, rankings,
