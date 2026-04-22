@@ -1302,6 +1302,7 @@ export default function WorldScreen() {
     if (finishingRef.current) return;
     finishingRef.current = true;
 
+    try {
     const store = useRunningStore.getState();
     const sid = store.sessionId;
     // Save checkpoint passes before completing
@@ -1468,6 +1469,13 @@ export default function WorldScreen() {
       setResultUploading(false);
       // C4: Mark complete AFTER pending save and server attempt are done
       complete();
+    }
+    } catch (e) {
+      // If ANY step fails (stopTracking, savePending, etc.), reset the guard
+      // so the user can try stopping again
+      console.warn('[WorldScreen] finishRun failed:', e);
+    } finally {
+      finishingRef.current = false;
     }
   }, [stopTracking, complete, hapticFeedback]);
 
