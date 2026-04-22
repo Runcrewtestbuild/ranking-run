@@ -107,47 +107,50 @@ export default function RootNavigator() {
   // Handle widget deep link: if app opens via runcrew://running with active session,
   // navigate directly to running screen instead of letting linking config create a new one
   const widgetHandledRef = useRef(false);
-  useEffect(() => {
-    if (!isAuthenticated || !navReadyRef.current || widgetHandledRef.current) return;
+  const handleWidgetDeepLink = useCallback(async () => {
+    if (!isAuthenticated || widgetHandledRef.current) return;
 
-    (async () => {
-      const initialUrl = await Linking.getInitialURL();
-      if (!initialUrl?.includes('running')) return;
+    const initialUrl = await Linking.getInitialURL();
+    if (!initialUrl?.includes('running')) return;
 
-      widgetHandledRef.current = true;
+    widgetHandledRef.current = true;
 
-      let phase = useRunningStore.getState().phase;
+    let phase = useRunningStore.getState().phase;
 
-      // If store is idle but a persisted session exists, restore it first
-      if (phase === 'idle') {
-        const persisted = await loadPersistedSession();
-        if (persisted && (persisted.phase === 'running' || persisted.phase === 'paused')) {
-          // Restore session in its original phase (running/paused) so user can continue
-          useRunningStore.getState().restoreSession({
-            ...persisted,
-            phase: persisted.phase as RunningPhase,
+    // If store is idle but a persisted session exists, restore it first
+    if (phase === 'idle') {
+      const persisted = await loadPersistedSession();
+      if (persisted && (persisted.phase === 'running' || persisted.phase === 'paused')) {
+        // Restore session in its original phase (running/paused) so user can continue
+        useRunningStore.getState().restoreSession({
+          ...persisted,
+          phase: persisted.phase as RunningPhase,
+        });
+        phase = persisted.phase as RunningPhase;
+        // Skip normal crash recovery since we handled it here
+        recoveryCheckedRef.current = true;
+      }
+    }
+
+    if (phase === 'running' || phase === 'paused') {
+      // Active session exists — navigate to RunningMain directly
+      setTimeout(() => {
+        try {
+          (navRef.current as any)?.navigate('Main', {
+            screen: 'WorldTab',
+            params: { screen: 'RunningMain' },
           });
-          phase = persisted.phase as RunningPhase;
-          // Skip normal crash recovery since we handled it here
-          recoveryCheckedRef.current = true;
+        } catch (e) {
+          console.warn('[WidgetDeepLink] Navigation failed:', e);
         }
-      }
-
-      if (phase === 'running' || phase === 'paused') {
-        // Active session exists — navigate to RunningMain directly
-        setTimeout(() => {
-          try {
-            (navRef.current as any)?.navigate('Main', {
-              screen: 'WorldTab',
-              params: { screen: 'RunningMain' },
-            });
-          } catch (e) {
-            console.warn('[WidgetDeepLink] Navigation failed:', e);
-          }
-        }, 300);
-      }
-    })();
+      }, 300);
+    }
   }, [isAuthenticated, navRef]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !navReadyRef.current) return;
+    handleWidgetDeepLink();
+  }, [isAuthenticated, handleWidgetDeepLink]);
 
   // Initialize network monitoring + auto-sync on network recovery
   useEffect(() => {
@@ -257,8 +260,10 @@ export default function RootNavigator() {
     navReadyRef.current = true;
     if (!isLoading && isAuthenticated) {
       checkCrashRecovery();
+      // Also handle pending widget deep link now that navigation is ready
+      handleWidgetDeepLink();
     }
-  }, [isLoading, isAuthenticated, checkCrashRecovery]);
+  }, [isLoading, isAuthenticated, checkCrashRecovery, handleWidgetDeepLink]);
 
   const navTheme = useMemo(
     () => ({

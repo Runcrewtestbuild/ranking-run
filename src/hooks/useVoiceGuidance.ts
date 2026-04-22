@@ -92,8 +92,8 @@ export function useVoiceGuidance({
   const voiceIdRef = useRef<string | undefined>(undefined);
   const lastAnnouncementTimeRef = useRef(0);
   const lastTurnIndexRef = useRef(-1);
-  /** Tracks which distance threshold was announced for the current turn: 0=none, 200, 100, 20 */
-  const lastTurnThresholdRef = useRef<number>(0);
+  /** Tracks which distance thresholds have been announced for the current turn */
+  const announcedTurnThresholdsRef = useRef<Set<number>>(new Set());
   const lastMilestoneKmRef = useRef(0);
   const wasOffCourseRef = useRef(false);
   const lastOffCourseLevelRef = useRef(0);
@@ -147,18 +147,19 @@ export function useVoiceGuidance({
       // Reset threshold tracking when turn index changes
       if (turnIdx !== lastTurnIndexRef.current) {
         lastTurnIndexRef.current = turnIdx;
-        lastTurnThresholdRef.current = 0;
+        announcedTurnThresholdsRef.current.clear();
       }
 
-      if (dist <= 20 && lastTurnThresholdRef.current < 20) {
+      // Check each threshold independently — a Set prevents re-announcing
+      if (dist <= 20 && !announcedTurnThresholdsRef.current.has(20)) {
         announcement = i18n.t('voice.turnNow', { direction: dir });
-        lastTurnThresholdRef.current = 20;
-      } else if (dist <= 100 && dist > 20 && lastTurnThresholdRef.current < 100) {
+        announcedTurnThresholdsRef.current.add(20);
+      } else if (dist <= 100 && dist > 20 && !announcedTurnThresholdsRef.current.has(100)) {
         announcement = i18n.t('voice.turnIn100m', { direction: dir });
-        lastTurnThresholdRef.current = 100;
-      } else if (dist <= 200 && dist > 100 && lastTurnThresholdRef.current < 200) {
+        announcedTurnThresholdsRef.current.add(100);
+      } else if (dist <= 200 && dist > 100 && !announcedTurnThresholdsRef.current.has(200)) {
         announcement = i18n.t('voice.turnIn200m', { direction: dir });
-        lastTurnThresholdRef.current = 200;
+        announcedTurnThresholdsRef.current.add(200);
       }
     }
 

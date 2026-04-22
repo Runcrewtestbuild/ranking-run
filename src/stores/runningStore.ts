@@ -151,6 +151,7 @@ interface RunningState {
   reset: () => void;
   addSplit: (split: Split) => void;
   incrementChunkSequence: () => void;
+  decrementChunkSequence: () => void;
   markChunkUploaded: (sequence: number, pointCount: number, distance: number) => void;
   setPhase: (phase: RunningPhase) => void;
   updateHeartRate: (bpm: number) => void;
@@ -679,6 +680,12 @@ export const useRunningStore = create<RunningState>((set, get) => ({
     set((state) => ({
       chunkSequence: state.chunkSequence + 1,
       lastChunkTimestamp: Date.now(),
+    }));
+  },
+
+  decrementChunkSequence: () => {
+    set((state) => ({
+      chunkSequence: Math.max(0, state.chunkSequence - 1),
     }));
   },
 

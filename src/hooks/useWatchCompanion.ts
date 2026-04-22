@@ -214,7 +214,7 @@ export function useWatchCompanion(
     // Check initial Watch paired status (isPaired = 페어링 여부)
     WatchBridgeModule.getWatchStatus()
       .then((status: { isPaired: boolean; isReachable: boolean; isAppInstalled: boolean }) => {
-        setWatchConnected(status.isPaired);
+        setWatchConnected(status.isReachable ?? false);
       })
       .catch((err: any) => {
         console.warn('[useWatchCompanion] 워치 상태 조회 실패:', err);

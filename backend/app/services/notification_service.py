@@ -1,5 +1,6 @@
 """Push notification service using Firebase Cloud Messaging + in-app inbox."""
 
+import asyncio
 import logging
 from uuid import UUID
 
@@ -324,7 +325,7 @@ class NotificationService:
                 return False
             else:
                 logger.warning("APNs send failed (%d): %s", resp.status_code, resp.text)
-                return resp.status_code < 500  # Don't remove token on server errors
+                return resp.status_code < 400  # Keep token only on success; remove on 4xx client errors
 
         except Exception:
             logger.exception("APNs send failed for token %s...", device_token[:20])
@@ -353,7 +354,7 @@ class NotificationService:
                 token=device_token,
             )
 
-            messaging.send(message)
+            await asyncio.to_thread(messaging.send, message)
             return True
         except Exception as e:
             error_str = str(e)

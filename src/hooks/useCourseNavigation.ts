@@ -75,7 +75,8 @@ function projectOnSegment(
   a: Coordinate,
   b: Coordinate,
 ): { projected: Coordinate; t: number } {
-  const dx = b.longitude - a.longitude;
+  const cosLat = Math.cos((a.latitude + b.latitude) / 2 * Math.PI / 180);
+  const dx = (b.longitude - a.longitude) * cosLat;
   const dy = b.latitude - a.latitude;
   const lenSq = dx * dx + dy * dy;
   if (lenSq < 1e-14) return { projected: a, t: 0 };
@@ -135,7 +136,7 @@ export function useCourseNavigation(
     lastLocationRef.current = currentLocation;
 
     // Find nearest point on course (forward-biased windowed search)
-    const lastIdx = lastIndexRef.current;
+    const lastIdx = Math.min(lastIndexRef.current, courseRoute.length - 1);
     // Full search only at the very start; otherwise use directional window
     // to prevent snapping back to earlier segments on round-trip courses.
     const pointDist = haversineDistance(currentLocation, courseRoute[lastIdx]);

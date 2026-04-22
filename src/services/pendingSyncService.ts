@@ -60,7 +60,8 @@ export async function savePendingProfile(data: ProfileUpdateRequest): Promise<vo
 
 export async function getPendingProfile(): Promise<ProfileUpdateRequest | null> {
   const raw = await AsyncStorage.getItem(KEYS.PENDING_PROFILE);
-  return raw ? JSON.parse(raw) : null;
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
 }
 
 export async function clearPendingProfile(): Promise<void> {
@@ -80,7 +81,11 @@ export async function savePendingCourse(course: PendingCourse): Promise<void> {
 
 export async function getPendingCourses(): Promise<PendingCourse[]> {
   const raw = await AsyncStorage.getItem(KEYS.PENDING_COURSES);
-  return raw ? JSON.parse(raw) : [];
+  if (!raw) return [];
+  const parsed: PendingCourse[] = (() => { try { return JSON.parse(raw); } catch { return []; } })();
+  // Cap at 500 entries — trim oldest first
+  if (parsed.length > 500) return parsed.slice(parsed.length - 500);
+  return parsed;
 }
 
 export async function clearPendingCourses(): Promise<void> {
@@ -119,7 +124,10 @@ export async function savePendingRunRecord(record: PendingRunRecord): Promise<vo
 
 export async function getPendingRunRecords(): Promise<PendingRunRecord[]> {
   const raw = await AsyncStorage.getItem(KEYS.PENDING_RUNS);
-  return raw ? JSON.parse(raw) : [];
+  if (!raw) return [];
+  const parsed: PendingRunRecord[] = (() => { try { return JSON.parse(raw); } catch { return []; } })();
+  if (parsed.length > 500) return parsed.slice(parsed.length - 500);
+  return parsed;
 }
 
 export async function removePendingRunRecord(id: string): Promise<void> {
@@ -154,7 +162,10 @@ export async function savePendingChunk(chunk: PendingChunk): Promise<void> {
 
 export async function getPendingChunks(): Promise<PendingChunk[]> {
   const raw = await AsyncStorage.getItem(KEYS.PENDING_CHUNKS);
-  return raw ? JSON.parse(raw) : [];
+  if (!raw) return [];
+  const parsed: PendingChunk[] = (() => { try { return JSON.parse(raw); } catch { return []; } })();
+  if (parsed.length > 500) return parsed.slice(parsed.length - 500);
+  return parsed;
 }
 
 export async function removePendingChunk(id: string): Promise<void> {

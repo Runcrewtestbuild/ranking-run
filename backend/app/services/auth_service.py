@@ -303,18 +303,13 @@ class AuthService:
             valid_token = latest.scalar_one_or_none()
 
             if valid_token is not None:
-                # A valid successor token exists — the user is fine, just
-                # reject this stale duplicate quietly.
-                user_result = await db.execute(
-                    select(User).where(User.id == matched_token.user_id)
+                # A valid successor token exists — reject the stale token.
+                # Do NOT create new tokens here; that causes unbounded token
+                # proliferation when multiple stale refreshes arrive.
+                raise AuthenticationError(
+                    code="TOKEN_REUSED",
+                    message="Refresh token has been superseded. Please use the latest token.",
                 )
-                user = user_result.scalar_one_or_none()
-                if user is not None:
-                    # Return a new token pair so the client recovers gracefully
-                    new_access_token = create_access_token(subject=str(user.id))
-                    new_refresh_token = create_refresh_token()
-                    await self.store_refresh_token(db, user.id, new_refresh_token)
-                    return user, new_access_token, new_refresh_token
 
             # Distinguish "kicked by another device" from generic reuse:
             # If the token was revoked but no valid successor exists for this

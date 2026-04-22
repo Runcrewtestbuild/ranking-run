@@ -44,6 +44,7 @@ export function useRunningChunkUpload() {
   const splits = useRunningStore((s) => s.splits);
   const pauseIntervals = useRunningStore((s) => s.pauseIntervals);
   const incrementChunkSequence = useRunningStore((s) => s.incrementChunkSequence);
+  const decrementChunkSequence = useRunningStore((s) => s.decrementChunkSequence);
   const markChunkUploaded = useRunningStore((s) => s.markChunkUploaded);
 
   // Keep refs for values used in the upload function (avoid stale closures)
@@ -140,15 +141,20 @@ export function useRunningChunkUpload() {
     try {
       // Add timeout to prevent hanging uploads from blocking all future chunks
       const uploadPromise = runService.uploadChunk(s.sessionId, chunkRequest);
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Upload timeout')), UPLOAD_TIMEOUT_MS),
-      );
+      let timeoutId: ReturnType<typeof setTimeout>;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Upload timeout')), UPLOAD_TIMEOUT_MS);
+      });
       await Promise.race([uploadPromise, timeoutPromise]);
+      clearTimeout(timeoutId!);
       markChunkUploaded(seq, pointCount, s.distanceMeters);
       console.log(`[ChunkUpload] Chunk ${seq} uploaded (${rawGPSPoints.length} pts, ${Math.round(chunkDistance)}m)`);
     } catch (error) {
       console.warn(`[ChunkUpload] Chunk ${seq} failed, saving locally:`, error);
-      // Save to local storage for retry on sync
+      // Decrement the optimistically incremented sequence so the same seq is retried next time
+      decrementChunkSequence();
+      // Save to local storage for retry on sync — do NOT call markChunkUploaded
+      // so GPS points remain in the array and will be included in the next chunk attempt
       savePendingChunk({
         id: `chunk-${s.sessionId}-${seq}`,
         sessionId: s.sessionId,
@@ -157,8 +163,6 @@ export function useRunningChunkUpload() {
       }).catch((err) => {
         console.warn('[ChunkUpload] 청크 로컬 저장 실패:', err);
       });
-      // Still mark the point count/distance so we don't re-collect the same points
-      markChunkUploaded(seq, pointCount, s.distanceMeters);
     } finally {
       uploadingRef.current = false;
     }

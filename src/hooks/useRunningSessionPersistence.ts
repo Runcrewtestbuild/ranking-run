@@ -20,6 +20,7 @@ import {
 } from '../services/runningSessionPersistence';
 
 const PERSIST_INTERVAL = 10; // Save every N GPS updates
+const MIN_SAVE_INTERVAL_MS = 10_000; // Max save frequency: every 10s
 
 function buildSnapshot(): PersistedRunningSession | null {
   const s = useRunningStore.getState();
@@ -52,6 +53,7 @@ function buildSnapshot(): PersistedRunningSession | null {
     lastChunkTimestamp: s.lastChunkTimestamp,
     lastChunkPointIndex: s.lastChunkPointIndex,
     uploadedChunkSequences: s.uploadedChunkSequences,
+    intervalSegments: s.intervalSegments,
     snappedRoutePoints: s.snappedRoutePoints,
     deviationLog: s.deviationLog,
     startPoint: s.startPoint,
@@ -62,15 +64,21 @@ function buildSnapshot(): PersistedRunningSession | null {
 
 export function useRunningSessionPersistence() {
   const updateCountRef = useRef(0);
+  const lastSaveTimeRef = useRef(0);
   const phase = useRunningStore((s) => s.phase);
   const distanceMeters = useRunningStore((s) => s.distanceMeters);
+  const durationSeconds = useRunningStore((s) => s.durationSeconds);
 
-  // Track GPS updates via distance changes and persist periodically
+  // Track GPS updates via distance/duration changes and persist periodically
   useEffect(() => {
     if (phase !== 'running' && phase !== 'paused') return;
 
+    const now = Date.now();
+    if (now - lastSaveTimeRef.current < MIN_SAVE_INTERVAL_MS) return;
+
     updateCountRef.current++;
     if (updateCountRef.current % PERSIST_INTERVAL === 0) {
+      lastSaveTimeRef.current = now;
       const snapshot = buildSnapshot();
       if (snapshot) {
         // H4: Await persistence to prevent data loss on app kill
@@ -83,7 +91,7 @@ export function useRunningSessionPersistence() {
         })();
       }
     }
-  }, [distanceMeters, phase]);
+  }, [distanceMeters, durationSeconds, phase]);
 
   // Persist immediately when app goes to background
   useEffect(() => {

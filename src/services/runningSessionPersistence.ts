@@ -74,6 +74,15 @@ export interface PersistedRunningSession {
   // Start point (for loop detection reconstruction)
   startPoint: { latitude: number; longitude: number } | null;
 
+  // Interval training segments
+  intervalSegments?: Array<{
+    set: number;
+    phase: 'run' | 'walk';
+    distanceMeters: number;
+    durationSeconds: number;
+    avgPaceSecondsPerKm: number;
+  }>;
+
   // Run goal
   runGoal: {
     type: 'distance' | 'time' | 'pace' | 'program' | 'interval' | null;
