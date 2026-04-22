@@ -386,20 +386,8 @@ export default function WorldScreen() {
 
   const isInRun = phase !== 'idle';  // includes completed to keep route visible
 
-  // Auto-redirect to RunningMain if session is active (e.g. after widget cold start)
-  const autoRedirectedRef = useRef(false);
-  useEffect(() => {
-    if ((phase === 'running' || phase === 'paused') && !autoRedirectedRef.current) {
-      autoRedirectedRef.current = true;
-      // Defer navigation to avoid "cannot update during render" warning
-      InteractionManager.runAfterInteractions(() => {
-        navigation.navigate('RunningMain');
-      });
-    }
-    if (phase === 'idle') {
-      autoRedirectedRef.current = false;
-    }
-  }, [phase, navigation]);
+  // WorldScreen handles running UI inline — no auto-redirect to RunningMain.
+  // RunningMain is only used for widget deep links and watch-initiated runs.
 
   // GPS & timer hooks (always mounted, only active when phase is running/paused)
   const { startTracking, stopTracking, pauseTracking, resumeTracking } = useGPSTracker();

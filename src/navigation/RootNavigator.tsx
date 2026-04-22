@@ -33,7 +33,7 @@ const linking: LinkingOptions<RootStackParamList> = {
         screens: {
           WorldTab: {
             screens: {
-              RunningMain: 'running',
+              World: 'running',
             },
           },
           CourseTab: {
@@ -133,12 +133,11 @@ export default function RootNavigator() {
     }
 
     if (phase === 'running' || phase === 'paused') {
-      // Active session exists — navigate to RunningMain directly
+      // Active session — navigate to WorldTab (inline running UI handles display)
       setTimeout(() => {
         try {
           (navRef.current as any)?.navigate('Main', {
             screen: 'WorldTab',
-            params: { screen: 'RunningMain' },
           });
         } catch (e) {
           console.warn('[WidgetDeepLink] Navigation failed:', e);
