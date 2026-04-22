@@ -6,6 +6,8 @@ import {
   StyleSheet,
   TouchableOpacity,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useTheme } from '../../hooks/useTheme';
 import type { ThemeColors } from '../../utils/constants';
 import { FONT_SIZES, SPACING, BORDER_RADIUS } from '../../utils/constants';
@@ -14,23 +16,23 @@ import ReactionBar from './ReactionBar';
 
 // ---- Helpers ----
 
-function formatRelativeTime(dateStr: string): string {
+function formatRelativeTime(dateStr: string, t: TFunction): string {
   const now = Date.now();
   const then = new Date(dateStr).getTime();
   const diffSec = Math.floor((now - then) / 1000);
 
-  if (diffSec < 60) return '방금';
+  if (diffSec < 60) return t('social.activity.justNow');
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}분 전`;
+  if (diffMin < 60) return t('social.activity.minutesAgo', { count: diffMin });
   const diffHour = Math.floor(diffMin / 60);
-  if (diffHour < 24) return `${diffHour}시간 전`;
+  if (diffHour < 24) return t('social.activity.hoursAgo', { count: diffHour });
   const diffDay = Math.floor(diffHour / 24);
-  if (diffDay < 7) return `${diffDay}일 전`;
+  if (diffDay < 7) return t('social.activity.daysAgo', { count: diffDay });
   const diffWeek = Math.floor(diffDay / 7);
-  if (diffWeek < 5) return `${diffWeek}주 전`;
+  if (diffWeek < 5) return t('social.activity.weeksAgo', { count: diffWeek });
   const diffMonth = Math.floor(diffDay / 30);
-  if (diffMonth < 12) return `${diffMonth}개월 전`;
-  return `${Math.floor(diffMonth / 12)}년 전`;
+  if (diffMonth < 12) return t('social.activity.monthsAgo', { count: diffMonth });
+  return t('social.activity.yearsAgo', { count: Math.floor(diffMonth / 12) });
 }
 
 function formatDuration(seconds: number): string {
@@ -68,18 +70,18 @@ function getActivityIcon(type: FeedActivity['activityType']): string {
   }
 }
 
-function getActivityTitle(activity: FeedActivity): string {
+function getActivityTitle(activity: FeedActivity, t: TFunction): string {
   switch (activity.activityType) {
     case 'run_completed':
-      return '\uD83C\uDFC3 \uB7EC\uB2DD \uC644\uB8CC';
+      return `\uD83C\uDFC3 ${t('social.activity.runCompleted')}`;
     case 'pr_achieved':
-      return '\uD83C\uDFC6 \uAC1C\uC778 \uCD5C\uACE0 \uAE30\uB85D!';
+      return `\uD83C\uDFC6 ${t('social.activity.prAchieved')}`;
     case 'challenge_completed':
-      return '\uD83C\uDF1F \uCC4C\uB9B0\uC9C0 \uB2EC\uC131';
+      return `\uD83C\uDF1F ${t('social.activity.challengeCompleted')}`;
     case 'crew_joined':
-      return '\uD83D\uDC65 \uD06C\uB8E8 \uAC00\uC785';
+      return `\uD83D\uDC65 ${t('social.activity.crewJoined')}`;
     case 'streak_milestone':
-      return '\uD83D\uDD25 \uC5F0\uC18D \uB7EC\uB2DD';
+      return `\uD83D\uDD25 ${t('social.activity.streakMilestone')}`;
     default:
       return '';
   }
@@ -92,6 +94,7 @@ interface CardHeaderProps {
   styles: ReturnType<typeof createStyles>;
   colors: ThemeColors;
   onUserPress?: (userId: string) => void;
+  t: TFunction;
 }
 
 const CardHeader = memo(function CardHeader({
@@ -99,6 +102,7 @@ const CardHeader = memo(function CardHeader({
   styles: s,
   colors,
   onUserPress,
+  t,
 }: CardHeaderProps) {
   const [avatarError, setAvatarError] = useState(false);
   const handlePress = useCallback(() => {
@@ -131,7 +135,7 @@ const CardHeader = memo(function CardHeader({
         <Text style={s.nickname} numberOfLines={1}>
           {activity.userNickname}
         </Text>
-        <Text style={s.timestamp}>{formatRelativeTime(activity.createdAt)}</Text>
+        <Text style={s.timestamp}>{formatRelativeTime(activity.createdAt, t)}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -143,7 +147,7 @@ interface RunStatsProps {
   colors: ThemeColors;
 }
 
-const RunStats = memo(function RunStats({ runRecord, styles: s }: RunStatsProps) {
+const RunStats = memo(function RunStats({ runRecord, styles: s, t }: RunStatsProps & { t: TFunction }) {
   return (
     <View style={s.runStatsContainer}>
       {runRecord.thumbnailUrl && (
@@ -164,13 +168,13 @@ const RunStats = memo(function RunStats({ runRecord, styles: s }: RunStatsProps)
           <Text style={s.statValue}>
             {formatDuration(runRecord.durationSeconds)}
           </Text>
-          <Text style={s.statLabel}>{'\uC2DC\uAC04'}</Text>
+          <Text style={s.statLabel}>{t('social.activity.statTime')}</Text>
         </View>
         <View style={s.statItem}>
           <Text style={s.statValue}>
             {formatPace(runRecord.avgPaceSecondsPerKm)}
           </Text>
-          <Text style={s.statLabel}>{'\uD398\uC774\uC2A4'}</Text>
+          <Text style={s.statLabel}>{t('social.activity.statPace')}</Text>
         </View>
       </View>
     </View>
@@ -182,7 +186,7 @@ interface PRContentProps {
   styles: ReturnType<typeof createStyles>;
 }
 
-const PRContent = memo(function PRContent({ activity, styles: s }: PRContentProps) {
+const PRContent = memo(function PRContent({ activity, styles: s, t }: PRContentProps & { t: TFunction }) {
   const meta = activity.metadata;
   const distanceLabel = (meta.distance_label as string) ?? '';
   const newTime = (meta.new_time as string) ?? '';
@@ -196,7 +200,7 @@ const PRContent = memo(function PRContent({ activity, styles: s }: PRContentProp
       </Text>
       {prevTime ? (
         <Text style={s.prSubText}>
-          ({'\uC774\uC804'}: {prevTime}) {'\u26A1'} {improvement}
+          ({t('social.activity.prPrevious')}: {prevTime}) {'\u26A1'} {improvement}
         </Text>
       ) : null}
     </View>
@@ -258,6 +262,7 @@ function ActivityCardInner({
   onUserPress,
 }: ActivityCardProps) {
   const colors = useTheme();
+  const { t } = useTranslation();
   const s = useMemo(() => createStyles(colors), [colors]);
 
   const handleToggleReaction = useCallback(
@@ -267,7 +272,7 @@ function ActivityCardInner({
     [activity.id, onToggleReaction],
   );
 
-  const activityTitle = getActivityTitle(activity);
+  const activityTitle = getActivityTitle(activity, t);
 
   return (
     <View style={s.card}>
@@ -276,6 +281,7 @@ function ActivityCardInner({
         styles={s}
         colors={colors}
         onUserPress={onUserPress}
+        t={t}
       />
 
       {/* Activity title (for non-post types) */}
@@ -285,12 +291,12 @@ function ActivityCardInner({
 
       {/* Run completed — stats card */}
       {activity.activityType === 'run_completed' && activity.runRecord && (
-        <RunStats runRecord={activity.runRecord} styles={s} colors={colors} />
+        <RunStats runRecord={activity.runRecord} styles={s} colors={colors} t={t} />
       )}
 
       {/* PR achieved — special display */}
       {activity.activityType === 'pr_achieved' && (
-        <PRContent activity={activity} styles={s} />
+        <PRContent activity={activity} styles={s} t={t} />
       )}
 
       {/* Content text */}

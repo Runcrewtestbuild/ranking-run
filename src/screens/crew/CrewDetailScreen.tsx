@@ -95,7 +95,7 @@ export default function CrewDetailScreen() {
           const raid = await crewChallengeService.getActiveChallenge(crewId);
           setActiveRaid(raid);
         } catch {
-          // ignore
+          showToast('error', t('common.loadError'));
         }
       }
 
@@ -107,7 +107,7 @@ export default function CrewDetailScreen() {
           setPostsPage(0);
           setHasMorePosts(postsData.data.length === POSTS_PER_PAGE);
         } catch {
-          // ignore
+          showToast('error', t('common.loadError'));
         }
       }
 
@@ -119,7 +119,7 @@ export default function CrewDetailScreen() {
           setPendingRequests(reqData.data);
           setPendingCount(reqData.total_count);
         } catch {
-          // ignore - user may not have access
+          showToast('error', t('common.loadError'));
         }
       }
     } catch {

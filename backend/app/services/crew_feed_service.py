@@ -13,7 +13,7 @@ from app.core.exceptions import (
     PermissionDeniedError,
 )
 from app.models.crew import Crew, CrewMember
-from app.models.crew_post import CrewPost
+from app.models.crew_post import CrewPost, CrewPostLike
 from app.models.run_record import RunRecord
 from app.models.user import User
 
@@ -56,7 +56,7 @@ class CrewFeedService:
         )
         posts = result.scalars().unique().all()
 
-        return [await self._post_to_dict(db, p) for p in posts], total_count
+        return [await self._post_to_dict(db, p, viewer_id=user_id) for p in posts], total_count
 
     # ------------------------------------------------------------------
     # Post CRUD
@@ -254,11 +254,11 @@ class CrewFeedService:
         post_id: UUID,
         user_id: UUID,
     ) -> dict:
-        """Increment the like_count on a crew post.
+        """Toggle the like on a crew post for the given user.
 
-        This is a simple counter-based implementation without per-user
-        tracking.  A dedicated like table can be introduced later for
-        idempotent toggle behaviour.
+        If the user already liked the post, the like is removed and the
+        count decremented.  Otherwise a new like is created and the count
+        incremented.  Returns the updated post dict with ``is_liked``.
         """
         await self._assert_crew_member(db, crew_id, user_id)
         post = await self._get_post_or_404(db, post_id)
@@ -269,11 +269,30 @@ class CrewFeedService:
                 message="해당 크루의 게시글이 아닙니다",
             )
 
-        post.like_count = post.like_count + 1
+        # Check existing like
+        existing = await db.execute(
+            select(CrewPostLike).where(
+                CrewPostLike.post_id == post_id,
+                CrewPostLike.user_id == user_id,
+            )
+        )
+        like_row = existing.scalar_one_or_none()
+
+        if like_row:
+            # Unlike
+            await db.delete(like_row)
+            post.like_count = max(post.like_count - 1, 0)
+            is_liked = False
+        else:
+            # Like
+            db.add(CrewPostLike(post_id=post_id, user_id=user_id))
+            post.like_count = post.like_count + 1
+            is_liked = True
+
         await db.flush()
         await db.refresh(post)
 
-        return await self._post_to_dict(db, post)
+        return await self._post_to_dict(db, post, viewer_id=user_id, is_liked=is_liked)
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -325,7 +344,11 @@ class CrewFeedService:
         return member
 
     async def _post_to_dict(
-        self, db: AsyncSession, post: CrewPost
+        self,
+        db: AsyncSession,
+        post: CrewPost,
+        viewer_id: UUID | None = None,
+        is_liked: bool | None = None,
     ) -> dict:
         author = post.author
         run_record_info = None
@@ -338,6 +361,16 @@ class CrewFeedService:
                     "duration_seconds": rr.duration_seconds,
                     "pace_seconds_per_km": rr.avg_pace_seconds_per_km,
                 }
+
+        # Resolve is_liked: use explicit value if provided, otherwise query
+        if is_liked is None and viewer_id is not None:
+            like_result = await db.execute(
+                select(CrewPostLike.id).where(
+                    CrewPostLike.post_id == post.id,
+                    CrewPostLike.user_id == viewer_id,
+                ).limit(1)
+            )
+            is_liked = like_result.scalar_one_or_none() is not None
 
         return {
             "id": str(post.id),
@@ -353,6 +386,7 @@ class CrewFeedService:
             "post_type": post.post_type,
             "run_record": run_record_info,
             "like_count": post.like_count,
+            "is_liked": is_liked if is_liked is not None else False,
             "comment_count": post.comment_count,
             "created_at": post.created_at,
             "updated_at": post.updated_at,

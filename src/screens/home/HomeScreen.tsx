@@ -221,7 +221,7 @@ export default function HomeScreen() {
       setCache('home:weekly', weekly);
       setCache('home:runs', runs);
     } catch {
-      useToastStore.getState().showToast('error', '홈 데이터를 불러올 수 없습니다');
+      useToastStore.getState().showToast('error', t('common.loadError'));
     } finally {
       setLoading(false);
     }
@@ -261,7 +261,7 @@ export default function HomeScreen() {
         setMyCrewRaids([]); _cachedRaids = [];
       }
     } catch {
-      // partial failures ok
+      useToastStore.getState().showToast('error', t('common.loadError'));
     }
   }, []);
 
@@ -432,6 +432,8 @@ export default function HomeScreen() {
               onPress={() => navigation.navigate('ActivityFeed')}
               activeOpacity={0.6}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="활동 피드"
             >
               <Ionicons name="people-outline" size={24} color={colors.text} />
             </TouchableOpacity>
@@ -439,6 +441,8 @@ export default function HomeScreen() {
               onPress={() => navigation.navigate('NotificationInbox')}
               activeOpacity={0.6}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="알림"
             >
               <Ionicons name="notifications-outline" size={24} color={colors.text} />
               {unreadCount > 0 && <View style={styles.unreadBadge} />}
@@ -558,6 +562,8 @@ export default function HomeScreen() {
             style={styles.ctaButton}
             activeOpacity={0.85}
             onPress={() => navigation.getParent()?.navigate('WorldTab')}
+            accessibilityRole="button"
+            accessibilityLabel="러닝 시작"
           >
             <Ionicons name="play" size={18} color="#FFFFFF" />
             <Text style={styles.ctaButtonText}>{t('home.startRunning')}</Text>
@@ -650,6 +656,8 @@ export default function HomeScreen() {
                   onPress={() => navigation.getParent()?.navigate('CourseTab')}
                   activeOpacity={0.7}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="즐겨찾기 코스 전체 보기"
                 >
                   <Text style={styles.seeAllText}>{t('home.viewAll')}</Text>
                 </TouchableOpacity>
@@ -707,6 +715,8 @@ export default function HomeScreen() {
                   onPress={() => navigation.navigate('ChallengeList')}
                   activeOpacity={0.7}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="챌린지 전체 보기"
                 >
                   <Text style={styles.seeAllText}>{t('home.viewAllSection')}</Text>
                 </TouchableOpacity>
@@ -770,6 +780,8 @@ export default function HomeScreen() {
                   onPress={() => navigation.getParent()?.navigate('CourseTab')}
                   activeOpacity={0.7}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="그룹 러닝 전체 보기"
                 >
                   <Text style={styles.seeAllText}>{t('home.viewAllSection')}</Text>
                 </TouchableOpacity>
@@ -877,6 +889,8 @@ export default function HomeScreen() {
                 onPress={() => navigation.navigate('RunHistory')}
                 activeOpacity={0.7}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="러닝 기록 전체 보기"
               >
                 <Text style={styles.seeAllText}>{t('home.viewAll')}</Text>
               </TouchableOpacity>
@@ -1049,7 +1063,7 @@ export default function HomeScreen() {
           <View style={{ ...StyleSheet.absoluteFillObject, zIndex: 9999, elevation: 9999 }}>
             <Animated.View style={[guideStyles.root, { opacity: guideOpacity }]}>
               <View style={guideStyles.card}>
-                <TouchableOpacity style={guideStyles.skipBtn} onPress={dismissGuide} activeOpacity={0.7}>
+                <TouchableOpacity style={guideStyles.skipBtn} onPress={dismissGuide} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="가이드 건너뛰기">
                   <Text style={guideStyles.skipText}>{t('guide.skip', { defaultValue: '건너뛰기' })}</Text>
                 </TouchableOpacity>
 
@@ -1090,7 +1104,7 @@ export default function HomeScreen() {
                   ))}
                 </View>
 
-                <TouchableOpacity style={guideStyles.ctaBtn} onPress={handleGuideNext} activeOpacity={0.85}>
+                <TouchableOpacity style={guideStyles.ctaBtn} onPress={handleGuideNext} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel={guideStep === STEP_COUNT - 1 ? '시작하기' : '다음'}>
                   <Text style={guideStyles.ctaText}>
                     {guideStep === STEP_COUNT - 1
                       ? t('guide.start', { defaultValue: '시작하기' })
@@ -1108,7 +1122,7 @@ export default function HomeScreen() {
         <Modal visible={guideVisible} transparent animationType="none" statusBarTranslucent>
           <Animated.View style={[guideStyles.root, { opacity: guideOpacity }]}>
             <View style={guideStyles.card}>
-              <TouchableOpacity style={guideStyles.skipBtn} onPress={dismissGuide} activeOpacity={0.7}>
+              <TouchableOpacity style={guideStyles.skipBtn} onPress={dismissGuide} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="가이드 건너뛰기">
                 <Text style={guideStyles.skipText}>{t('guide.skip', { defaultValue: '건너뛰기' })}</Text>
               </TouchableOpacity>
 
@@ -1149,7 +1163,7 @@ export default function HomeScreen() {
                 ))}
               </View>
 
-              <TouchableOpacity style={guideStyles.ctaBtn} onPress={handleGuideNext} activeOpacity={0.85}>
+              <TouchableOpacity style={guideStyles.ctaBtn} onPress={handleGuideNext} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel={guideStep === STEP_COUNT - 1 ? '시작하기' : '다음'}>
                 <Text style={guideStyles.ctaText}>
                   {guideStep === STEP_COUNT - 1
                     ? t('guide.start', { defaultValue: '시작하기' })

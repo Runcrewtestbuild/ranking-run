@@ -172,7 +172,7 @@ export default function MyPageScreen() {
         Alert.alert(t('mypage.checkinSuccess'), t('mypage.checkinPoints', { points: res.points_earned }));
       }
     } catch {
-      useToastStore.getState().showToast('error', '출석 체크에 실패했습니다');
+      useToastStore.getState().showToast('error', t('common.loadError'));
     } finally {
       setIsCheckingIn(false);
     }
@@ -241,7 +241,7 @@ export default function MyPageScreen() {
         useAuthStore.getState().setUser(profileData);
       }
     } catch {
-      // Partial failures are acceptable
+      useToastStore.getState().showToast('error', t('common.loadError'));
     } finally {
       setIsInitialLoading(false);
     }
@@ -252,7 +252,7 @@ export default function MyPageScreen() {
       setAnalytics(analyticsData); _cachedAnalytics = analyticsData;
       setCache('mypage:analytics', analyticsData);
     } catch {
-      // Secondary data failures are non-blocking
+      useToastStore.getState().showToast('error', t('common.loadError'));
     }
   }, [selectedPeriod]);
 
@@ -339,6 +339,8 @@ export default function MyPageScreen() {
           onPress={() => navigation.navigate('Settings')}
           activeOpacity={0.7}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="설정"
         >
           <Ionicons name="settings-sharp" size={24} color={colors.text} />
         </TouchableOpacity>
@@ -390,6 +392,8 @@ export default function MyPageScreen() {
                 style={styles.profileStatItem}
                 onPress={() => user?.id && navigation.navigate('FollowList', { userId: user.id, type: 'followers' })}
                 activeOpacity={0.6}
+                accessibilityRole="button"
+                accessibilityLabel={`팔로워 ${socialCounts.followers}명`}
               >
                 <Text style={styles.profileStatValue}>{socialCounts.followers}</Text>
                 <Text style={styles.profileStatLabel}>{t('mypage.followers')}</Text>
@@ -398,6 +402,8 @@ export default function MyPageScreen() {
                 style={styles.profileStatItem}
                 onPress={() => user?.id && navigation.navigate('FollowList', { userId: user.id, type: 'following' })}
                 activeOpacity={0.6}
+                accessibilityRole="button"
+                accessibilityLabel={`팔로잉 ${socialCounts.following}명`}
               >
                 <Text style={styles.profileStatValue}>{socialCounts.following}</Text>
                 <Text style={styles.profileStatLabel}>{t('mypage.following')}</Text>
@@ -439,6 +445,8 @@ export default function MyPageScreen() {
             style={styles.editProfileButton}
             onPress={() => navigation.navigate('ProfileEdit')}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t('mypage.editProfile')}
           >
             <Text style={styles.editProfileButtonText}>{t('mypage.editProfile')}</Text>
           </TouchableOpacity>

@@ -32,7 +32,7 @@ from app.models.live_group_run import LiveGroupRun, LiveGroupRunParticipant
 from app.models.activity_feed import ActivityFeed
 from app.models.reaction import Reaction
 from app.models.versus import VersusMatch
-from app.models.crew_post import CrewPost
+from app.models.crew_post import CrewPost, CrewPostLike
 from app.models.scheduled_run import ScheduledRun, ScheduledRunParticipant
 from app.models.season import Season, SeasonRanking
 
@@ -85,6 +85,7 @@ __all__ = [
     "Reaction",
     "VersusMatch",
     "CrewPost",
+    "CrewPostLike",
     "ScheduledRun",
     "ScheduledRunParticipant",
     "Season",

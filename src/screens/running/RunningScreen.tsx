@@ -710,6 +710,8 @@ export default function RunningScreen() {
               style={styles.voiceChip}
               onPress={() => setVoiceGuidance(!voiceGuidance)}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={voiceGuidance ? '음성 안내 끄기' : '음성 안내 켜기'}
             >
               <Ionicons
                 name={voiceGuidance ? 'volume-high' : 'volume-mute'}
@@ -790,6 +792,8 @@ export default function RunningScreen() {
                 setFollowUser(true);
               }}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="내 위치로 이동"
             >
               <Ionicons name="locate" size={20} color={colors.text} />
             </TouchableOpacity>
@@ -1057,6 +1061,8 @@ function IdleView({
             style={styles.idleModeChip}
             onPress={handleDismissCourse}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="코스 러닝 해제"
           >
             <Text style={styles.idleModeChipText}>{t('running.status.courseRunning')}</Text>
             <Ionicons name="close" size={14} color={colors.textSecondary} />

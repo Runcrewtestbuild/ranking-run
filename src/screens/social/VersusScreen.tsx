@@ -12,6 +12,7 @@ import {
 import { Ionicons } from '../../lib/icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 import type { CommunityStackParamList } from '../../types/navigation';
 import type { RankingSummaryItem, LeaderboardCategory, LeaderboardScope, LeaderboardEntry } from '../../types/leaderboard';
 import type { VersusChallenge } from '../../types/versus';
@@ -33,18 +34,18 @@ import HorizontalBarChart from '../../components/charts/HorizontalBarChart';
 
 type Nav = NativeStackNavigationProp<CommunityStackParamList, 'CommunityFeed'>;
 
-const CATEGORY_CHIPS: { key: LeaderboardCategory; label: string }[] = [
-  { key: 'weekly_distance', label: '\uC8FC\uAC04\uAC70\uB9AC' },
-  { key: 'monthly_count', label: '\uC6D4\uAC04\uD69F\uC218' },
-  { key: 'pace', label: '\uD398\uC774\uC2A4' },
-  { key: 'course', label: '\uCF54\uC2A4' },
+const CATEGORY_CHIP_KEYS: { key: LeaderboardCategory; i18nKey: string }[] = [
+  { key: 'weekly_distance', i18nKey: 'social.versus.categoryWeeklyDistance' },
+  { key: 'monthly_count', i18nKey: 'social.versus.categoryMonthlyCount' },
+  { key: 'pace', i18nKey: 'social.versus.categoryPace' },
+  { key: 'course', i18nKey: 'social.versus.categoryCourse' },
 ];
 
-const SCOPE_OPTIONS: { key: LeaderboardScope; label: string }[] = [
-  { key: 'nearby', label: '\uB0B4 \uC8FC\uBCC0' },
-  { key: 'global', label: '\uC804\uCCB4' },
-  { key: 'friends', label: '\uCE5C\uAD6C' },
-  { key: 'crew', label: '\uD06C\uB8E8' },
+const SCOPE_OPTION_KEYS: { key: LeaderboardScope; i18nKey: string }[] = [
+  { key: 'nearby', i18nKey: 'social.versus.scopeNearby' },
+  { key: 'global', i18nKey: 'social.versus.scopeGlobal' },
+  { key: 'friends', i18nKey: 'social.versus.scopeFriends' },
+  { key: 'crew', i18nKey: 'social.versus.scopeCrew' },
 ];
 
 function getRankChangeIndicator(
@@ -63,7 +64,7 @@ function formatSummaryValue(item: RankingSummaryItem): string {
     case 'weekly_distance':
       return formatDistance(item.value * 1000);
     case 'monthly_count':
-      return `${item.value}\uD68C`;
+      return `${item.value}`;
     case 'pace':
     case 'course':
       return formatPace(item.value);
@@ -72,22 +73,23 @@ function formatSummaryValue(item: RankingSummaryItem): string {
   }
 }
 
-function formatRemainingTime(endsAt: string): string {
+function formatRemainingTime(endsAt: string, t: (key: string, opts?: Record<string, unknown>) => string): string {
   const end = new Date(endsAt).getTime();
   const now = Date.now();
   const diffMs = end - now;
-  if (diffMs <= 0) return '\uC885\uB8CC';
+  if (diffMs <= 0) return t('social.versus.ended');
   const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
   const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-  if (days > 0) return `${days}\uC77C ${hours}\uC2DC\uAC04`;
+  if (days > 0) return t('social.versus.daysHours', { days, hours });
   const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-  return `${hours}\uC2DC\uAC04 ${minutes}\uBD84`;
+  return t('social.versus.hoursMinutes', { hours, minutes });
 }
 
 function buildEncouragement(
   myEntry: LeaderboardEntry | null,
   entries: LeaderboardEntry[],
   category: LeaderboardCategory,
+  t: (key: string, opts?: Record<string, unknown>) => string,
 ): string | null {
   if (!myEntry || myEntry.rank <= 1) return null;
   const above = entries.find((e) => e.rank === myEntry.rank - 1);
@@ -97,9 +99,9 @@ function buildEncouragement(
 
   switch (category) {
     case 'weekly_distance':
-      return `#${myEntry.rank - 1}\uAE4C\uC9C0 ${formatDistance(diff * 1000)} \uB0A8\uC558\uC5B4\uC694!`;
+      return t('social.versus.encourageDistance', { rank: myEntry.rank - 1, distance: formatDistance(diff * 1000) });
     case 'monthly_count':
-      return `#${myEntry.rank - 1}\uAE4C\uC9C0 ${diff}\uD68C \uB0A8\uC558\uC5B4\uC694!`;
+      return t('social.versus.encourageCount', { rank: myEntry.rank - 1, count: diff });
     default:
       return null;
   }
@@ -108,6 +110,7 @@ function buildEncouragement(
 export default function VersusScreen() {
   const colors = useTheme();
   const navigation = useNavigation<Nav>();
+  const { t } = useTranslation();
   const showToast = useToastStore((st) => st.showToast);
   const s = useMemo(() => createStyles(colors), [colors]);
 
@@ -202,8 +205,8 @@ export default function VersusScreen() {
   }, [leaderboardEntries]);
 
   const encouragement = useMemo(
-    () => buildEncouragement(myEntry, leaderboardEntries, selectedCategory),
-    [myEntry, leaderboardEntries, selectedCategory],
+    () => buildEncouragement(myEntry, leaderboardEntries, selectedCategory, t),
+    [myEntry, leaderboardEntries, selectedCategory, t],
   );
 
   const barChartData = useMemo(() => {
@@ -260,7 +263,7 @@ export default function VersusScreen() {
         {/* My Ranking Summary */}
         {rankingSummary.length > 0 && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>{'\uB0B4 \uB7AD\uD0B9 \uC694\uC57D'}</Text>
+            <Text style={s.sectionTitle}>{t('social.versus.myRankingSummary')}</Text>
             <View style={s.summaryRow}>
               {rankingSummary.slice(0, 3).map((item) => {
                 const change = getRankChangeIndicator(item.rank, item.previousRank);
@@ -282,7 +285,7 @@ export default function VersusScreen() {
 
         {/* Leaderboard */}
         <View style={s.section}>
-          <Text style={s.sectionTitle}>{'\uB9AC\uB354\uBCF4\uB4DC'}</Text>
+          <Text style={s.sectionTitle}>{t('social.versus.leaderboard')}</Text>
 
           {/* Category chips */}
           <ScrollView
@@ -290,7 +293,7 @@ export default function VersusScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={s.chipsContainer}
           >
-            {CATEGORY_CHIPS.map((chip) => {
+            {CATEGORY_CHIP_KEYS.map((chip) => {
               const isActive = selectedCategory === chip.key;
               return (
                 <TouchableOpacity
@@ -308,7 +311,7 @@ export default function VersusScreen() {
                       isActive ? s.chipTextActive : s.chipTextInactive,
                     ]}
                   >
-                    {chip.label}
+                    {t(chip.i18nKey)}
                   </Text>
                 </TouchableOpacity>
               );
@@ -317,7 +320,7 @@ export default function VersusScreen() {
 
           {/* Scope selector */}
           <View style={s.scopeRow}>
-            <Text style={s.scopeLabel}>{'\uBC94\uC704:'}</Text>
+            <Text style={s.scopeLabel}>{t('social.versus.scopePrefix')}</Text>
             <TouchableOpacity
               style={s.scopeButton}
               onPress={() => setScopeDropdownOpen(!scopeDropdownOpen)}
@@ -336,7 +339,7 @@ export default function VersusScreen() {
 
           {scopeDropdownOpen && (
             <View style={s.scopeDropdown}>
-              {SCOPE_OPTIONS.map((opt) => (
+              {SCOPE_OPTION_KEYS.map((opt) => (
                 <TouchableOpacity
                   key={opt.key}
                   style={[
@@ -356,7 +359,7 @@ export default function VersusScreen() {
                       selectedScope === opt.key && s.scopeOptionTextActive,
                     ]}
                   >
-                    {opt.label}
+                    {t(opt.i18nKey)}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -398,7 +401,7 @@ export default function VersusScreen() {
                 color={colors.textTertiary}
               />
               <Text style={s.emptyText}>
-                {'\uC544\uC9C1 \uB9AC\uB354\uBCF4\uB4DC \uB370\uC774\uD130\uAC00 \uC5C6\uC5B4\uC694'}
+                {t('social.versus.emptyLeaderboard')}
               </Text>
             </View>
           )}
@@ -406,7 +409,7 @@ export default function VersusScreen() {
 
         {/* Active Battles */}
         <View style={s.section}>
-          <Text style={s.sectionTitle}>{'\uC9C4\uD589 \uC911 \uB300\uACB0'}</Text>
+          <Text style={s.sectionTitle}>{t('social.versus.activeBattles')}</Text>
           {activeBattles.length > 0 ? (
             activeBattles.map((battle) => (
               <TouchableOpacity
@@ -439,6 +442,7 @@ export default function VersusScreen() {
                       {formatBattleValue(
                         battle.challenger.currentValue,
                         battle.metric,
+                        t('social.versus.countSuffix'),
                       )}
                     </Text>
                   </View>
@@ -474,6 +478,7 @@ export default function VersusScreen() {
                       {formatBattleValue(
                         battle.opponent.currentValue,
                         battle.metric,
+                        t('social.versus.countSuffix'),
                       )}
                     </Text>
                   </View>
@@ -481,8 +486,8 @@ export default function VersusScreen() {
 
                 {battle.endsAt && (
                   <Text style={s.battleRemaining}>
-                    {'\uB0A8\uC740 \uC2DC\uAC04: '}
-                    {formatRemainingTime(battle.endsAt)}
+                    {t('social.versus.remainingTime')}
+                    {formatRemainingTime(battle.endsAt, t)}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -495,10 +500,10 @@ export default function VersusScreen() {
                 color={colors.textTertiary}
               />
               <Text style={s.emptyText}>
-                {'\uC9C4\uD589 \uC911\uC778 \uB300\uACB0\uC774 \uC5C6\uC5B4\uC694'}
+                {t('social.versus.emptyBattles')}
               </Text>
               <Text style={s.emptySubtext}>
-                {'\uB300\uACB0\uC744 \uC2E0\uCCAD\uD574\uBCF4\uC138\uC694!'}
+                {t('social.versus.emptyBattlesHint')}
               </Text>
             </View>
           )}
@@ -512,7 +517,7 @@ export default function VersusScreen() {
         activeOpacity={0.8}
       >
         <Ionicons name="flash" size={24} color="#FFF" />
-        <Text style={s.fabText}>{'\uB300\uACB0 \uC2E0\uCCAD'}</Text>
+        <Text style={s.fabText}>{t('social.versus.createBattle')}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -521,12 +526,13 @@ export default function VersusScreen() {
 function formatBattleValue(
   value: number,
   metric: 'distance' | 'count' | 'pace',
+  countSuffix = '회',
 ): string {
   switch (metric) {
     case 'distance':
       return formatDistance(value * 1000);
     case 'count':
-      return `${value}\uD68C`;
+      return `${value}${countSuffix}`;
     case 'pace':
       return formatPace(value);
     default:

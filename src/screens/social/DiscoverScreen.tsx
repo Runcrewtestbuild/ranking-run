@@ -18,8 +18,10 @@ import type { ThemeColors } from '../../utils/constants';
 import { FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '../../utils/constants';
 import type { CommunityStackParamList } from '../../types/navigation';
 import type { CrewItem, CourseListItem } from '../../types/api';
+import { useTranslation } from 'react-i18next';
 import { crewService } from '../../services/crewService';
 import { courseService } from '../../services/courseService';
+import { useToastStore } from '../../stores/toastStore';
 
 type Nav = NativeStackNavigationProp<CommunityStackParamList, 'CommunityFeed'>;
 
@@ -37,8 +39,10 @@ type SectionItem =
 
 export default function DiscoverScreen() {
   const colors = useTheme();
+  const { t } = useTranslation();
   const s = useMemo(() => createStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
+  const showToast = useToastStore((st) => st.showToast);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [recommendedCrews, setRecommendedCrews] = useState<CrewItem[]>([]);
@@ -60,7 +64,7 @@ export default function DiscoverScreen() {
       setRecommendedCrews(crewRes.data);
       setPopularCourses(courseRes.data);
     } catch {
-      // silent
+      showToast('error', t('common.loadError'));
     }
   }, []);
 
@@ -93,8 +97,9 @@ export default function DiscoverScreen() {
       setSearchResults(res.data);
     } catch {
       setSearchResults([]);
+      showToast('error', t('common.loadError'));
     }
-  }, []);
+  }, [showToast, t]);
 
   // ---- Navigation ----
 
@@ -118,7 +123,7 @@ export default function DiscoverScreen() {
       if (searchResults.length === 0) {
         items.push({ type: 'empty_search', query: searchQuery });
       } else {
-        items.push({ type: 'section_header', title: `"${searchQuery}" 검색 결과`, icon: 'search' });
+        items.push({ type: 'section_header', title: t('social.discover.searchResultTitle', { query: searchQuery }), icon: 'search' });
         searchResults.forEach((crew) => {
           items.push({ type: 'crew_card', data: crew });
         });
@@ -128,7 +133,7 @@ export default function DiscoverScreen() {
 
     // Recommended crews
     if (recommendedCrews.length > 0) {
-      items.push({ type: 'section_header', title: '추천 크루', icon: 'people' });
+      items.push({ type: 'section_header', title: t('social.discover.recommendedCrews'), icon: 'people' });
       recommendedCrews.forEach((crew) => {
         items.push({ type: 'crew_card', data: crew });
       });
@@ -136,18 +141,18 @@ export default function DiscoverScreen() {
 
     // Popular courses
     if (popularCourses.length > 0) {
-      items.push({ type: 'section_header', title: '인기 코스', icon: 'map' });
+      items.push({ type: 'section_header', title: t('social.discover.popularCourses'), icon: 'map' });
       popularCourses.forEach((course) => {
         items.push({ type: 'course_card', data: course });
       });
     }
 
     // Challenge section placeholder
-    items.push({ type: 'section_header', title: '챌린지', icon: 'trophy' });
+    items.push({ type: 'section_header', title: t('social.discover.challenges'), icon: 'trophy' });
     items.push({ type: 'challenge_placeholder' });
 
     return items;
-  }, [isSearching, searchQuery, searchResults, recommendedCrews, popularCourses]);
+  }, [isSearching, searchQuery, searchResults, recommendedCrews, popularCourses, t]);
 
   // ---- Render ----
 
@@ -161,7 +166,7 @@ export default function DiscoverScreen() {
                 <Ionicons name="search" size={18} color={colors.textTertiary} />
                 <TextInput
                   style={s.searchInput}
-                  placeholder="크루, 코스, 러너 검색"
+                  placeholder={t('social.discover.searchPlaceholder')}
                   placeholderTextColor={colors.textTertiary}
                   value={searchQuery}
                   onChangeText={handleSearch}
@@ -211,7 +216,7 @@ export default function DiscoverScreen() {
                 <Text style={s.crewName} numberOfLines={1}>{item.data.name}</Text>
                 <Text style={s.crewMeta} numberOfLines={1}>
                   {item.data.region ? `${item.data.region} \u00B7 ` : ''}
-                  {item.data.member_count}명
+                  {t('social.discover.memberCount', { count: item.data.member_count })}
                 </Text>
                 {item.data.description && (
                   <Text style={s.crewDesc} numberOfLines={1}>{item.data.description}</Text>
@@ -219,7 +224,7 @@ export default function DiscoverScreen() {
               </View>
               {!item.data.is_member && (
                 <View style={s.joinHint}>
-                  <Text style={s.joinHintText}>가입</Text>
+                  <Text style={s.joinHintText}>{t('social.discover.join')}</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -244,7 +249,7 @@ export default function DiscoverScreen() {
                 <Text style={s.courseMeta} numberOfLines={1}>
                   {(item.data.distance_meters / 1000).toFixed(1)}km
                   {'  \u00B7  '}
-                  {item.data.stats.total_runs}회 완주
+                  {t('social.discover.totalRuns', { count: item.data.stats.total_runs })}
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
@@ -255,8 +260,8 @@ export default function DiscoverScreen() {
           return (
             <View style={s.challengePlaceholder}>
               <Ionicons name="trophy-outline" size={36} color={colors.textTertiary} />
-              <Text style={s.challengeText}>곧 챌린지가 시작됩니다</Text>
-              <Text style={s.challengeSubtext}>다양한 러닝 챌린지에 참여해 보세요</Text>
+              <Text style={s.challengeText}>{t('social.discover.challengeComingSoon')}</Text>
+              <Text style={s.challengeSubtext}>{t('social.discover.challengeHint')}</Text>
             </View>
           );
 
@@ -265,9 +270,9 @@ export default function DiscoverScreen() {
             <View style={s.emptySearch}>
               <Ionicons name="search-outline" size={40} color={colors.textTertiary} />
               <Text style={s.emptySearchTitle}>
-                "{item.query}"에 대한 결과가 없어요
+                {t('social.discover.emptySearchTitle', { query: item.query })}
               </Text>
-              <Text style={s.emptySearchSubtitle}>다른 키워드로 검색해 보세요</Text>
+              <Text style={s.emptySearchSubtitle}>{t('social.discover.emptySearchHint')}</Text>
             </View>
           );
 
@@ -275,7 +280,7 @@ export default function DiscoverScreen() {
           return null;
       }
     },
-    [s, colors, searchQuery, handleSearch, handleCrewPress, handleCoursePress],
+    [s, colors, t, searchQuery, handleSearch, handleCrewPress, handleCoursePress],
   );
 
   const keyExtractor = useCallback(

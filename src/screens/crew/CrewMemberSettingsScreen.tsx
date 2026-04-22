@@ -83,10 +83,10 @@ export default function CrewMemberSettingsScreen() {
         // haptics not available
       }
       await crewService.leaveCrew(crewId);
-      showToast('success', '크루를 탈퇴했습니다');
+      showToast('success', t('crew.memberSettings.leaveSuccess'));
       navigation.navigate('CommunityFeed');
     } catch {
-      showToast('error', '크루 탈퇴에 실패했습니다');
+      showToast('error', t('crew.memberSettings.leaveFailed'));
       setIsLeaving(false);
     }
   }, [crewId, isLeaving, navigation, showToast]);
@@ -154,7 +154,7 @@ export default function CrewMemberSettingsScreen() {
   });
 
   const getCountdownText = () => {
-    if (holdProgress === -1) return '탈퇴!';
+    if (holdProgress === -1) return t('crew.memberSettings.leaveConfirm');
     if (holdProgress === 0) return '';
     return `${holdProgress}`;
   };
@@ -183,7 +183,7 @@ export default function CrewMemberSettingsScreen() {
           <View style={styles.menuItem}>
             <View style={styles.menuItemLeft}>
               <Ionicons name="notifications-outline" size={20} color={colors.text} />
-              <Text style={styles.menuItemText}>크루 알림</Text>
+              <Text style={styles.menuItemText}>{t('crew.memberSettings.notifications')}</Text>
             </View>
             <Switch
               value={notificationsEnabled}
@@ -194,17 +194,16 @@ export default function CrewMemberSettingsScreen() {
           </View>
           <View style={styles.menuItemHint}>
             <Text style={styles.hintText}>
-              크루 게시글, 공지사항 등의 알림을 받습니다
+              {t('crew.memberSettings.notificationsHint')}
             </Text>
           </View>
         </View>
 
         {/* Danger Zone */}
         <View style={styles.leaveSection}>
-          <Text style={styles.leaveSectionTitle}>크루 탈퇴</Text>
+          <Text style={styles.leaveSectionTitle}>{t('crew.memberSettings.leaveTitle')}</Text>
           <Text style={styles.leaveDescription}>
-            탈퇴 후에는 크루 게시판과 랭킹에서 제외됩니다.{'\n'}
-            다시 가입하려면 승인이 필요할 수 있습니다.
+            {t('crew.memberSettings.leaveDesc')}
           </Text>
 
           {/* Leave Button */}
@@ -238,7 +237,7 @@ export default function CrewMemberSettingsScreen() {
                 </View>
               </View>
             </Pressable>
-            <Text style={styles.leaveHintText}>3초간 길게 눌러 탈퇴</Text>
+            <Text style={styles.leaveHintText}>{t('crew.memberSettings.leaveHint')}</Text>
           </View>
         </View>
       </View>

@@ -2050,7 +2050,7 @@ export default function WorldScreen() {
 
       {/* ===== Unified recenter button (always visible) ===== */}
       <Animated.View style={[styles.recenterContainer, { opacity: worldOverlayOpacity }]} pointerEvents={isInRun ? 'none' : 'auto'}>
-        <TouchableOpacity style={styles.recenterBtn} onPress={handleRecenter} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.recenterBtn} onPress={handleRecenter} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="내 위치로 이동">
           <Ionicons name="locate" size={20} color={colors.text} />
         </TouchableOpacity>
       </Animated.View>
@@ -2062,6 +2062,8 @@ export default function WorldScreen() {
             style={styles.fabRun}
             onPress={() => { setTouring(false); setWelcomeVisible(true); }}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="러닝 시작"
           >
             <Ionicons name="walk" size={20} color={COLORS.white} />
           </TouchableOpacity>
@@ -2077,6 +2079,8 @@ export default function WorldScreen() {
                   style={styles.hudBackBtn}
                   onPress={() => { resetTo2D(); setSelectedMarker(null); }}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="뒤로 가기"
                 >
                   <Ionicons name="chevron-back" size={20} color={COLORS.white} />
                 </TouchableOpacity>
@@ -2202,7 +2206,7 @@ export default function WorldScreen() {
                 </View>
               )}
               <View style={styles.hudActions}>
-                <TouchableOpacity style={styles.hudDetailBtn} onPress={handleGoDetail} activeOpacity={0.7}>
+                <TouchableOpacity style={styles.hudDetailBtn} onPress={handleGoDetail} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="코스 상세 보기">
                   <Ionicons name="information-circle" size={16} color={COLORS.black} />
                   <Text style={styles.hudDetailText}>{t('course.detail.details')}</Text>
                 </TouchableOpacity>
@@ -2212,7 +2216,7 @@ export default function WorldScreen() {
                     <Text style={styles.hudRunTextDisabled}>{t('world.goToStart')}</Text>
                   </View>
                 ) : (
-                  <TouchableOpacity style={styles.hudRunBtn} onPress={handleStartCourseRun} activeOpacity={0.85}>
+                  <TouchableOpacity style={styles.hudRunBtn} onPress={handleStartCourseRun} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="코스 러닝 시작">
                     <Ionicons name="navigate" size={16} color={COLORS.white} />
                     <Text style={styles.hudRunText}>{t('world.goToStart')}</Text>
                   </TouchableOpacity>
@@ -2280,6 +2284,8 @@ export default function WorldScreen() {
                       style={[styles.modeChip, !metronomeMuted && { borderColor: colors.primary }]}
                       onPress={() => setMetronomeMuted(!metronomeMuted)}
                       activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={metronomeMuted ? '메트로놈 켜기' : '메트로놈 끄기'}
                     >
                       <Ionicons
                         name={metronomeMuted ? 'musical-note' : 'musical-notes'}
@@ -2354,6 +2360,8 @@ export default function WorldScreen() {
             setFollowUser(true);
           }}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="내 위치로 이동"
         >
           <Ionicons name="navigate" size={20} color={colors.white} />
         </TouchableOpacity>
@@ -2658,6 +2666,8 @@ export default function WorldScreen() {
                       style={styles.runResumeBtn}
                       onPress={handleResume}
                       activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel="재개"
                     >
                       <Ionicons name="play" size={28} color={colors.white} />
                       <Text style={styles.runResumeBtnLabel}>재개</Text>
@@ -2667,6 +2677,8 @@ export default function WorldScreen() {
                       onPressIn={handleStopPressIn}
                       onPressOut={handleStopPressOut}
                       activeOpacity={0.9}
+                      accessibilityRole="button"
+                      accessibilityLabel="러닝 종료"
                     >
                       {stopProgressVisible && (
                         <Animated.View style={[styles.stopProgress, {
@@ -2679,7 +2691,7 @@ export default function WorldScreen() {
                   </>
                 ) : (
                   <>
-                    <TouchableOpacity style={styles.runPauseBtn} onPress={handlePause} activeOpacity={0.7}>
+                    <TouchableOpacity style={styles.runPauseBtn} onPress={handlePause} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="일시정지">
                       <Ionicons name="pause" size={28} color={colors.text} />
                       <Text style={styles.runPauseBtnLabel}>일시정지</Text>
                     </TouchableOpacity>
@@ -2688,6 +2700,8 @@ export default function WorldScreen() {
                       onPressIn={handleStopPressIn}
                       onPressOut={handleStopPressOut}
                       activeOpacity={0.9}
+                      accessibilityRole="button"
+                      accessibilityLabel="러닝 종료"
                     >
                       {stopProgressVisible && (
                         <Animated.View style={[styles.stopProgress, {
@@ -2745,7 +2759,7 @@ export default function WorldScreen() {
                       <Text style={styles.resultCourseBtnText}>코스 등록</Text>
                     </TouchableOpacity>
                   )}
-                  <TouchableOpacity style={styles.resultCloseBtn} onPress={handleCloseResult} activeOpacity={0.7}>
+                  <TouchableOpacity style={styles.resultCloseBtn} onPress={handleCloseResult} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="결과 닫기">
                     <Text style={styles.resultCloseBtnText}>닫기</Text>
                   </TouchableOpacity>
                 </View>
@@ -2797,6 +2811,8 @@ export default function WorldScreen() {
               onPress={handleStartCompetition}
               disabled={!readyToStart}
               activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="경쟁 시작"
             >
               <Ionicons name="play" size={16} color={readyToStart ? COLORS.white : colors.textTertiary} />
               <Text style={[
@@ -2810,6 +2826,8 @@ export default function WorldScreen() {
               style={styles.navFloatingCancelBtn}
               onPress={handleCancelNavigating}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="내비게이션 취소"
             >
               <Ionicons name="close" size={18} color={colors.textSecondary} />
             </TouchableOpacity>
@@ -2829,6 +2847,8 @@ export default function WorldScreen() {
               onPressIn={handleLockPressIn}
               onPressOut={handleLockPressOut}
               activeOpacity={0.9}
+              accessibilityRole="button"
+              accessibilityLabel="화면 잠금 해제"
             >
               <Animated.View
                 style={[

@@ -74,7 +74,7 @@ export default function UserProfileScreen() {
           const fs = await friendService.getFriendshipStatus(userId);
           setFriendshipStatus(fs);
         } catch {
-          // ignore
+          useToastStore.getState().showToast('error', t('common.loadError'));
         }
       }
     } catch (err) {
@@ -104,7 +104,7 @@ export default function UserProfileScreen() {
       // Revert optimistic update on failure
       setIsFollowing(wasFollowing);
       setFollowersCount(prevCount);
-      useToastStore.getState().showToast('error', '팔로우 처리에 실패했습니다');
+      useToastStore.getState().showToast('error', t('common.loadError'));
     }
   }, [profile, isFollowing, followersCount, userId]);
 
@@ -128,7 +128,7 @@ export default function UserProfileScreen() {
         }
       }
     } catch {
-      useToastStore.getState().showToast('error', '친구 요청 처리에 실패했습니다');
+      useToastStore.getState().showToast('error', t('common.loadError'));
     } finally {
       setFriendActionLoading(false);
     }

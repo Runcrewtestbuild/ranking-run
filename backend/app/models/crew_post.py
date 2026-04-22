@@ -1,4 +1,4 @@
-"""CrewPost model for crew-scoped feed posts."""
+"""CrewPost and CrewPostLike models for crew-scoped feed posts."""
 
 import uuid
 from datetime import datetime
@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -70,4 +71,41 @@ class CrewPost(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     crew: Mapped["Crew"] = relationship("Crew", lazy="noload")
     run_record: Mapped["RunRecord | None"] = relationship(
         "RunRecord", lazy="noload"
+    )
+    likes: Mapped[list["CrewPostLike"]] = relationship(
+        "CrewPostLike", back_populates="post", cascade="all, delete-orphan"
+    )
+
+
+class CrewPostLike(Base):
+    """Tracks per-user likes on crew posts for idempotent toggle."""
+
+    __tablename__ = "crew_post_likes"
+    __table_args__ = (
+        UniqueConstraint(
+            "post_id", "user_id", name="uq_crew_post_likes_post_user"
+        ),
+        Index("idx_crew_post_likes_user", "user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    post_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("crew_posts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    # Relationships
+    post: Mapped["CrewPost"] = relationship(
+        "CrewPost", back_populates="likes"
     )

@@ -48,6 +48,7 @@ class CrewPostResponse(BaseModel):
     post_type: str = "general"
     run_record: CrewPostRunRecord | None = None
     like_count: int = 0
+    is_liked: bool = False
     comment_count: int = 0
     created_at: datetime
     updated_at: datetime

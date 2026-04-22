@@ -21,6 +21,7 @@ import type {
   CrewMiniCard,
   DiscoverCrew,
 } from '../../types/crewFeed';
+import { useTranslation } from 'react-i18next';
 import { crewFeedService } from '../../services/crewFeedService';
 import { useToastStore } from '../../stores/toastStore';
 import GroupRunCard from '../../components/social/GroupRunCard';
@@ -47,6 +48,7 @@ type SectionItem =
 
 export default function CrewFeedScreen() {
   const colors = useTheme();
+  const { t } = useTranslation();
   const s = useMemo(() => createStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
   const showToast = useToastStore((st) => st.showToast);
@@ -86,9 +88,10 @@ export default function CrewFeedScreen() {
         return null;
       }
     } catch {
+      showToast('error', t('common.loadError'));
       return null;
     }
-  }, []);
+  }, [showToast, t]);
 
   const loadPosts = useCallback(
     async (crewId: string, pageNum: number, append = false) => {
@@ -98,10 +101,10 @@ export default function CrewFeedScreen() {
         setHasNext(res.has_next);
         setPage(pageNum);
       } catch {
-        showToast('error', '크루 게시글을 불러오지 못했어요');
+        showToast('error', t('social.crewFeed.errorLoadPosts'));
       }
     },
-    [showToast],
+    [showToast, t],
   );
 
   // Initial load
@@ -189,6 +192,8 @@ export default function CrewFeedScreen() {
 
   const handlePostLike = useCallback(
     (postId: string) => {
+      // Capture current state for rollback
+      const prevPosts = posts;
       setPosts((prev) =>
         prev.map((p) =>
           p.id === postId
@@ -201,10 +206,13 @@ export default function CrewFeedScreen() {
         ),
       );
       if (selectedCrewId) {
-        crewFeedService.togglePostLike(selectedCrewId, postId).catch(() => {});
+        crewFeedService.togglePostLike(selectedCrewId, postId).catch(() => {
+          // Revert on failure
+          setPosts(prevPosts);
+        });
       }
     },
-    [selectedCrewId],
+    [selectedCrewId, posts],
   );
 
   const handleAuthorPress = useCallback(
@@ -289,7 +297,7 @@ export default function CrewFeedScreen() {
         case 'upcoming_header':
           return (
             <View style={s.sectionHeader}>
-              <Text style={s.sectionTitle}>다가오는 그룹런</Text>
+              <Text style={s.sectionTitle}>{t('social.crewFeed.upcomingGroupRuns')}</Text>
             </View>
           );
 
@@ -305,7 +313,7 @@ export default function CrewFeedScreen() {
         case 'crew_selector_header':
           return (
             <View style={s.sectionHeader}>
-              <Text style={s.sectionTitle}>내 크루 ({myCrews.length})</Text>
+              <Text style={s.sectionTitle}>{t('social.crewFeed.myCrews')} ({myCrews.length})</Text>
             </View>
           );
 
@@ -321,7 +329,7 @@ export default function CrewFeedScreen() {
         case 'feed_header':
           return (
             <View style={s.sectionHeader}>
-              <Text style={s.sectionTitle}>{item.crewName} 최신</Text>
+              <Text style={s.sectionTitle}>{item.crewName} {t('social.crewFeed.latest')}</Text>
             </View>
           );
 
@@ -339,11 +347,11 @@ export default function CrewFeedScreen() {
             <View style={s.emptyContainer}>
               <Ionicons name="people-outline" size={48} color={colors.textTertiary} />
               <Text style={s.emptyTitle}>
-                혼자 달려도 좋지만, 함께 하면 더 멀리 갈 수 있어요
+                {t('social.crewFeed.emptyCrewTitle')}
               </Text>
               <View style={s.emptyActions}>
                 <Button
-                  title="내 주변 크루 찾기"
+                  title={t('social.crewFeed.findNearbyCrews')}
                   onPress={handleCrewSearch}
                   variant="primary"
                   leftIcon={
@@ -353,7 +361,7 @@ export default function CrewFeedScreen() {
                 />
                 <View style={{ height: SPACING.sm }} />
                 <Button
-                  title="크루 만들기"
+                  title={t('social.crewFeed.createCrew')}
                   onPress={handleCrewCreate}
                   variant="outline"
                   leftIcon={
@@ -368,7 +376,7 @@ export default function CrewFeedScreen() {
         case 'discover_header':
           return (
             <View style={s.sectionHeader}>
-              <Text style={s.sectionTitle}>추천 크루</Text>
+              <Text style={s.sectionTitle}>{t('social.crewFeed.recommendedCrews')}</Text>
             </View>
           );
 
@@ -388,7 +396,7 @@ export default function CrewFeedScreen() {
                 </Text>
                 <Text style={s.discoverMeta} numberOfLines={1}>
                   {item.data.region ? `${item.data.region} \u00B7 ` : ''}
-                  {item.data.memberCount}명
+                  {t('social.crewFeed.memberCount', { count: item.data.memberCount })}
                 </Text>
                 {item.data.description && (
                   <Text style={s.discoverDesc} numberOfLines={2}>
@@ -407,6 +415,7 @@ export default function CrewFeedScreen() {
     [
       s,
       colors,
+      t,
       myCrews.length,
       selectedCrewId,
       handleToggleGroupRunJoin,
