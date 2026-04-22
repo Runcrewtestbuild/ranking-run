@@ -8,6 +8,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '../../lib/icons';
+import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../hooks/useTheme';
 import { formatPace } from '../../utils/format';
 import { FONT_SIZES, SPACING, BORDER_RADIUS } from '../../utils/constants';
@@ -29,6 +30,7 @@ export default function SplitHistoryPanel({
   expanded,
   onToggle,
 }: SplitHistoryPanelProps) {
+  const { t } = useTranslation();
   const colors = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const animatedHeight = useRef(new Animated.Value(0)).current;
@@ -67,7 +69,7 @@ export default function SplitHistoryPanel({
         <View style={styles.headerLeft}>
           <Ionicons name="list-outline" size={14} color={colors.primary} />
           <Text style={styles.headerTitle}>
-            {'\uC2A4\uD50C\uB9BF'}
+            {t('running.splits.title')}
           </Text>
           <View style={styles.splitCountBadge}>
             <Text style={styles.splitCountText}>{splits.length}</Text>
@@ -98,10 +100,10 @@ export default function SplitHistoryPanel({
           <View style={styles.columnHeaders}>
             <Text style={[styles.colHeaderText, styles.colKm]}>km</Text>
             <Text style={[styles.colHeaderText, styles.colPace]}>
-              {'\uD398\uC774\uC2A4'}
+              {t('running.splits.pace')}
             </Text>
             <Text style={[styles.colHeaderText, styles.colElev]}>
-              {'\uACE0\uB3C4'}
+              {t('running.splits.elevation')}
             </Text>
           </View>
           {reversedSplits.map((split) => (

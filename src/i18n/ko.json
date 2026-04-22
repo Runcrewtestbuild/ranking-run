@@ -12,6 +12,8 @@
     "notification": "알림",
     "edit": "편집",
     "close": "닫기",
+    "me": "나",
+    "monthSuffix": "월",
     "seeMore": "더보기",
     "viewAll": "전체 보기",
     "loading": "불러오는 중...",
@@ -227,7 +229,13 @@
       "maxDeviation": "최대 이탈",
       "offCourseSegments": "코스 이탈 구간",
       "pointsEarned": "획득 포인트",
-      "signalGap": "신호 끊김 구간"
+      "signalGap": "신호 끊김 구간",
+      "intervalStats": "인터벌 구간 통계"
+    },
+    "splits": {
+      "title": "스플릿",
+      "pace": "페이스",
+      "elevation": "고도"
     }
   },
   "world": {
@@ -1056,6 +1064,18 @@
   },
   "social": {
     "title": "소셜",
+    "tabs": {
+      "feed": "피드",
+      "battle": "대결",
+      "crew": "크루",
+      "explore": "탐색",
+      "comingSoon": "준비 중",
+      "comingSoonHint": "곧 업데이트 예정입니다"
+    },
+    "feed": {
+      "empty": "피드가 비어있어요",
+      "emptyHint": "러닝을 시작하면 피드에 활동이 표시됩니다"
+    },
     "findCrew": "크루 찾기",
     "createCrew": "크루 만들기",
     "addFriend": "친구 추가",

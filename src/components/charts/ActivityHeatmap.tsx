@@ -2,6 +2,7 @@ import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { FONT_SIZES, SPACING } from '../../utils/constants';
+import i18n from '../../i18n';
 
 interface ActivityDay {
   date: string;
@@ -66,7 +67,7 @@ export default function ActivityHeatmap({ data }: Props) {
 
         if (date.getMonth() !== lastMonth && !isFuture) {
           lastMonth = date.getMonth();
-          mLabels.push({ label: (date.getMonth() + 1) + '\uC6D4', col: w });
+          mLabels.push({ label: (date.getMonth() + 1) + i18n.t('common.monthSuffix'), col: w });
         }
 
         week.push({

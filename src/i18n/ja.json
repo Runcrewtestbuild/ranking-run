@@ -12,6 +12,8 @@
     "notification": "お知らせ",
     "edit": "編集",
     "close": "閉じる",
+    "me": "自分",
+    "monthSuffix": "月",
     "seeMore": "もっと見る",
     "viewAll": "すべて見る",
     "loading": "読み込み中...",
@@ -227,7 +229,13 @@
       "maxDeviation": "最大逸脱",
       "offCourseSegments": "コース逸脱区間",
       "pointsEarned": "獲得ポイント",
-      "signalGap": "信号途切れ区間"
+      "signalGap": "信号途切れ区間",
+      "intervalStats": "インターバル区間統計"
+    },
+    "splits": {
+      "title": "スプリット",
+      "pace": "ペース",
+      "elevation": "標高"
     }
   },
   "world": {
@@ -1056,6 +1064,18 @@
   },
   "social": {
     "title": "ソーシャル",
+    "tabs": {
+      "feed": "フィード",
+      "battle": "対決",
+      "crew": "クルー",
+      "explore": "探索",
+      "comingSoon": "準備中",
+      "comingSoonHint": "まもなくアップデート予定です"
+    },
+    "feed": {
+      "empty": "フィードが空です",
+      "emptyHint": "ランニングを始めるとフィードにアクティビティが表示されます"
+    },
     "findCrew": "クルー検索",
     "createCrew": "クルー作成",
     "addFriend": "友達追加",

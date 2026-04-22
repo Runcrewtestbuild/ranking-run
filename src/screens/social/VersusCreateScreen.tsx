@@ -21,6 +21,7 @@ import type { VersusMetric, VersusDuration, VersusCreateRequest } from '../../ty
 import { VERSUS_METRIC_LABELS, VERSUS_DURATION_LABELS } from '../../types/versus';
 import type { UserProfile } from '../../types/api';
 import { versusService } from '../../services/versusService';
+import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../hooks/useTheme';
 import type { ThemeColors } from '../../utils/constants';
 import { FONT_SIZES, SPACING, BORDER_RADIUS } from '../../utils/constants';
@@ -40,6 +41,7 @@ interface SearchResult {
 }
 
 export default function VersusCreateScreen() {
+  const { t } = useTranslation();
   const colors = useTheme();
   const navigation = useNavigation<Nav>();
   const s = useMemo(() => createStyles(colors), [colors]);
@@ -100,12 +102,12 @@ export default function VersusCreateScreen() {
       };
       await versusService.createBattle(req);
       Alert.alert(
-        '\uB300\uACB0 \uC2E0\uCCAD \uC644\uB8CC',
-        `${selectedOpponent.nickname}\uB2D8\uC5D0\uAC8C \uB300\uACB0\uC744 \uC2E0\uCCAD\uD588\uC2B5\uB2C8\uB2E4.`,
-        [{ text: '\uD655\uC778', onPress: () => navigation.goBack() }],
+        t('social.versusCreate.successTitle'),
+        t('social.versusCreate.successMsg', { name: selectedOpponent.nickname }),
+        [{ text: t('social.versusCreate.successConfirm'), onPress: () => navigation.goBack() }],
       );
     } catch {
-      Alert.alert('\uC624\uB958', '\uB300\uACB0 \uC2E0\uCCAD\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.');
+      Alert.alert(t('social.versusCreate.errorTitle'), t('social.versusCreate.errorMsg'));
     } finally {
       setIsSubmitting(false);
     }
@@ -131,15 +133,15 @@ export default function VersusCreateScreen() {
   const stepTitle = useMemo(() => {
     switch (step) {
       case 'opponent':
-        return '\uC0C1\uB300 \uC120\uD0DD';
+        return t('social.versusCreate.stepOpponent');
       case 'metric':
-        return '\uB300\uACB0 \uD56D\uBAA9';
+        return t('social.versusCreate.stepMetric');
       case 'duration':
-        return '\uAE30\uAC04 \uC120\uD0DD';
+        return t('social.versusCreate.stepDuration');
       case 'confirm':
-        return '\uB300\uACB0 \uD655\uC778';
+        return t('social.versusCreate.stepConfirm');
     }
-  }, [step]);
+  }, [step, t]);
 
   const renderSearchResult = useCallback(
     ({ item }: { item: SearchResult }) => (
@@ -202,7 +204,7 @@ export default function VersusCreateScreen() {
           <View style={s.stepContent}>
             <TextInput
               style={s.searchInput}
-              placeholder={'\uB2C9\uB124\uC784\uC73C\uB85C \uAC80\uC0C9'}
+              placeholder={t('social.versusCreate.searchPlaceholder')}
               placeholderTextColor={colors.textTertiary}
               value={searchQuery}
               onChangeText={handleSearch}
@@ -224,7 +226,7 @@ export default function VersusCreateScreen() {
               ListEmptyComponent={
                 searchQuery.length >= 2 && !isSearching ? (
                   <Text style={s.emptySearch}>
-                    {'\uAC80\uC0C9 \uACB0\uACFC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4'}
+                    {t('social.versusCreate.noResults')}
                   </Text>
                 ) : null
               }
@@ -236,7 +238,7 @@ export default function VersusCreateScreen() {
         {step === 'metric' && (
           <View style={s.stepContent}>
             <Text style={s.stepDescription}>
-              {'\uC5B4\uB5A4 \uD56D\uBAA9\uC73C\uB85C \uB300\uACB0\uD560\uAE4C\uC694?'}
+              {t('social.versusCreate.metricQuestion')}
             </Text>
             {METRICS.map((metric) => (
               <TouchableOpacity
@@ -263,8 +265,8 @@ export default function VersusCreateScreen() {
                   </Text>
                   <Text style={s.optionDescription}>
                     {metric === 'distance'
-                      ? '\uAE30\uAC04 \uB0B4 \uCD1D \uB7EC\uB2DD \uAC70\uB9AC\uB85C \uACBD\uC7C1'
-                      : '\uAE30\uAC04 \uB0B4 \uCD1D \uB7EC\uB2DD \uD69F\uC218\uB85C \uACBD\uC7C1'}
+                      ? t('social.versusCreate.metricDistanceDesc')
+                      : t('social.versusCreate.metricCountDesc')}
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
@@ -277,7 +279,7 @@ export default function VersusCreateScreen() {
         {step === 'duration' && (
           <View style={s.stepContent}>
             <Text style={s.stepDescription}>
-              {'\uB300\uACB0 \uAE30\uAC04\uC744 \uC120\uD0DD\uD558\uC138\uC694'}
+              {t('social.versusCreate.durationQuestion')}
             </Text>
             <View style={s.durationRow}>
               {DURATIONS.map((d) => (
@@ -311,10 +313,10 @@ export default function VersusCreateScreen() {
         {step === 'confirm' && selectedOpponent && (
           <View style={s.stepContent}>
             <View style={s.confirmCard}>
-              <Text style={s.confirmTitle}>{'\uB300\uACB0 \uC694\uC57D'}</Text>
+              <Text style={s.confirmTitle}>{t('social.versusCreate.confirmTitle')}</Text>
 
               <View style={s.confirmRow}>
-                <Text style={s.confirmLabel}>{'\uC0C1\uB300'}</Text>
+                <Text style={s.confirmLabel}>{t('social.versusCreate.confirmOpponent')}</Text>
                 <View style={s.confirmValueRow}>
                   {selectedOpponent.avatar_url ? (
                     <Image
@@ -333,14 +335,14 @@ export default function VersusCreateScreen() {
               </View>
 
               <View style={s.confirmRow}>
-                <Text style={s.confirmLabel}>{'\uD56D\uBAA9'}</Text>
+                <Text style={s.confirmLabel}>{t('social.versusCreate.confirmMetric')}</Text>
                 <Text style={s.confirmValue}>
                   {VERSUS_METRIC_LABELS[selectedMetric]}
                 </Text>
               </View>
 
               <View style={s.confirmRow}>
-                <Text style={s.confirmLabel}>{'\uAE30\uAC04'}</Text>
+                <Text style={s.confirmLabel}>{t('social.versusCreate.confirmDuration')}</Text>
                 <Text style={s.confirmValue}>
                   {VERSUS_DURATION_LABELS[selectedDuration]}
                 </Text>
@@ -358,7 +360,7 @@ export default function VersusCreateScreen() {
               ) : (
                 <>
                   <Ionicons name="flash" size={20} color="#FFF" />
-                  <Text style={s.submitText}>{'\uB300\uACB0 \uC2E0\uCCAD\uD558\uAE30'}</Text>
+                  <Text style={s.submitText}>{t('social.versusCreate.submitButton')}</Text>
                 </>
               )}
             </TouchableOpacity>

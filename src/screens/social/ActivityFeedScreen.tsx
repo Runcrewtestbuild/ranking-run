@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '../../lib/icons';
 import { useNavigation } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { CommunityStackParamList } from '../../types/navigation';
 import type { FeedActivity, ReactionType } from '../../types/feed';
@@ -41,17 +42,18 @@ interface TabDef {
   label: string;
 }
 
-const TABS: TabDef[] = [
-  { key: 'feed', label: '\uD53C\uB4DC' },
-  { key: 'battle', label: '\uB300\uACB0' },
-  { key: 'crew', label: '\uD06C\uB8E8' },
-  { key: 'explore', label: '\uD0D0\uC0C9' },
+const TAB_KEYS: { key: SocialTab; i18nKey: string }[] = [
+  { key: 'feed', i18nKey: 'social.tabs.feed' },
+  { key: 'battle', i18nKey: 'social.tabs.battle' },
+  { key: 'crew', i18nKey: 'social.tabs.crew' },
+  { key: 'explore', i18nKey: 'social.tabs.explore' },
 ];
 
 // ---- Main Screen ----
 
 export default function ActivityFeedScreen() {
   const colors = useTheme();
+  const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const showToast = useToastStore((s) => s.showToast);
   const s = useMemo(() => createStyles(colors), [colors]);
@@ -191,9 +193,9 @@ export default function ActivityFeedScreen() {
     return (
       <View style={s.emptyContainer}>
         <Ionicons name="newspaper-outline" size={48} color={colors.textTertiary} />
-        <Text style={s.emptyTitle}>{'\uD53C\uB4DC\uAC00 \uBE44\uC5B4\uC788\uC5B4\uC694'}</Text>
+        <Text style={s.emptyTitle}>{t('social.feed.empty')}</Text>
         <Text style={s.emptySubtitle}>
-          {'\uB7EC\uB2DD\uC744 \uC2DC\uC791\uD558\uBA74 \uD53C\uB4DC\uC5D0 \uD65C\uB3D9\uC774 \uD45C\uC2DC\uB429\uB2C8\uB2E4'}
+          {t('social.feed.emptyHint')}
         </Text>
       </View>
     );
@@ -216,9 +218,9 @@ export default function ActivityFeedScreen() {
           color={colors.textTertiary}
         />
         <Text style={s.placeholderTitle}>
-          {TABS.find((t) => t.key === tab)?.label} {'\uC900\uBE44 \uC911'}
+          {t(TAB_KEYS.find((tk) => tk.key === tab)?.i18nKey ?? '')} {t('social.tabs.comingSoon')}
         </Text>
-        <Text style={s.placeholderSubtitle}>{'\uACE7 \uC5C5\uB370\uC774\uD2B8 \uC608\uC815\uC785\uB2C8\uB2E4'}</Text>
+        <Text style={s.placeholderSubtitle}>{t('social.tabs.comingSoonHint')}</Text>
       </View>
     ),
     [s, colors],
@@ -228,7 +230,7 @@ export default function ActivityFeedScreen() {
     <SafeAreaView style={[s.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
       {/* Tab bar */}
       <View style={s.tabBar}>
-        {TABS.map((tab) => {
+        {TAB_KEYS.map((tab) => {
           const isActive = activeTab === tab.key;
           return (
             <TouchableOpacity
@@ -246,7 +248,7 @@ export default function ActivityFeedScreen() {
                   isActive ? s.tabTextActive : s.tabTextInactive,
                 ]}
               >
-                {tab.label}
+                {t(tab.i18nKey)}
               </Text>
             </TouchableOpacity>
           );

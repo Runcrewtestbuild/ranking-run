@@ -6,6 +6,7 @@ import type { ThemeColors } from '../../utils/constants';
 import { FONT_SIZES, SPACING, BORDER_RADIUS } from '../../utils/constants';
 import type { LeaderboardEntry, LeaderboardCategory } from '../../types/leaderboard';
 import { formatDistance, formatPace } from '../../utils/format';
+import i18n from '../../i18n';
 
 interface Props {
   entry: LeaderboardEntry;
@@ -39,7 +40,7 @@ function formatValue(value: number, category: LeaderboardCategory): string {
     case 'weekly_distance':
       return formatDistance(value * 1000); // value in km from API
     case 'monthly_count':
-      return `${value}\uD68C`;
+      return `${value}${i18n.t('social.versus.countSuffix')}`;
     case 'pace':
       return formatPace(value);
     case 'course':
@@ -111,7 +112,7 @@ export default function LeaderboardRow({
               style={[s.name, entry.isCurrentUser && s.nameHighlighted]}
               numberOfLines={1}
             >
-              {entry.isCurrentUser ? '\uB098' : entry.nickname}
+              {entry.isCurrentUser ? i18n.t('common.me') : entry.nickname}
             </Text>
             <Text style={s.value}>{displayValue}</Text>
           </View>

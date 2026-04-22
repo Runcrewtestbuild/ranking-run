@@ -837,13 +837,13 @@ export default function RunResultScreen() {
         {/* Interval Segment Stats */}
         {runGoal?.type === 'interval' && intervalSegments.length > 0 && (
           <View style={styles.splitsSection}>
-            <Text style={styles.sectionTitle}>인터벌 구간 통계</Text>
+            <Text style={styles.sectionTitle}>{t('running.result.intervalStats')}</Text>
             <View style={styles.splitsTable}>
               <View style={styles.splitHeader}>
-                <Text style={[styles.splitHeaderText, { textAlign: 'left' }]}>구간</Text>
-                <Text style={styles.splitHeaderText}>거리</Text>
-                <Text style={styles.splitHeaderText}>페이스</Text>
-                <Text style={[styles.splitHeaderText, { textAlign: 'right' }]}>시간</Text>
+                <Text style={[styles.splitHeaderText, { textAlign: 'left' }]}>{t('running.result.splitLap')}</Text>
+                <Text style={styles.splitHeaderText}>{t('running.metrics.distance')}</Text>
+                <Text style={styles.splitHeaderText}>{t('running.metrics.pace')}</Text>
+                <Text style={[styles.splitHeaderText, { textAlign: 'right' }]}>{t('running.metrics.time')}</Text>
               </View>
               {intervalSegments.map((seg, index) => (
                 <View
@@ -862,7 +862,7 @@ export default function RunResultScreen() {
                       marginRight: 4,
                     }} />
                     <Text style={styles.splitKm}>{seg.set}</Text>
-                    <Text style={styles.splitKmUnit}>{seg.phase === 'run' ? '달리기' : '걷기'}</Text>
+                    <Text style={styles.splitKmUnit}>{seg.phase === 'run' ? t('running.interval.run') : t('running.interval.walk')}</Text>
                   </View>
                   <Text style={styles.splitPace}>{formatDistance(seg.distanceMeters)}</Text>
                   <Text style={styles.splitPace}>

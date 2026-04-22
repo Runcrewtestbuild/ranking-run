@@ -145,7 +145,7 @@ export default function RunDetailScreen() {
       } catch (e) {
         console.warn('[RunDetail] API error:', e);
         setError(true);
-        useToastStore.getState().showToast('error', '러닝 기록을 불러올 수 없습니다');
+        useToastStore.getState().showToast('error', t('common.loadError'));
       } finally {
         setLoading(false);
       }

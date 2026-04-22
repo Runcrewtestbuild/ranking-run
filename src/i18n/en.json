@@ -12,6 +12,8 @@
     "notification": "Notice",
     "edit": "Edit",
     "close": "Close",
+    "me": "Me",
+    "monthSuffix": "",
     "seeMore": "More",
     "viewAll": "View All",
     "loading": "Loading...",
@@ -227,7 +229,13 @@
       "maxDeviation": "Max Deviation",
       "offCourseSegments": "Off-course segments",
       "pointsEarned": "Points earned",
-      "signalGap": "Signal gap segments"
+      "signalGap": "Signal gap segments",
+      "intervalStats": "Interval Segment Stats"
+    },
+    "splits": {
+      "title": "Splits",
+      "pace": "Pace",
+      "elevation": "Elev"
     }
   },
   "world": {
@@ -1056,6 +1064,18 @@
   },
   "social": {
     "title": "Social",
+    "tabs": {
+      "feed": "Feed",
+      "battle": "Battle",
+      "crew": "Crew",
+      "explore": "Explore",
+      "comingSoon": "Coming Soon",
+      "comingSoonHint": "Update coming soon"
+    },
+    "feed": {
+      "empty": "Your feed is empty",
+      "emptyHint": "Start running to see activity in your feed"
+    },
     "findCrew": "Find Crew",
     "createCrew": "Create Crew",
     "addFriend": "Add Friend",

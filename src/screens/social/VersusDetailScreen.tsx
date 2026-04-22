@@ -21,17 +21,18 @@ import { useTheme } from '../../hooks/useTheme';
 import type { ThemeColors } from '../../utils/constants';
 import { FONT_SIZES, SPACING, BORDER_RADIUS } from '../../utils/constants';
 import { formatDistance, formatPace, formatRelativeTime } from '../../utils/format';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../stores/authStore';
 
 type RouteParams = RouteProp<CommunityStackParamList, 'VersusDetail'>;
 type Nav = NativeStackNavigationProp<CommunityStackParamList, 'VersusDetail'>;
 
-function formatBattleValue(value: number, metric: 'distance' | 'count' | 'pace'): string {
+function formatBattleValue(value: number, metric: 'distance' | 'count' | 'pace', t: (key: string) => string): string {
   switch (metric) {
     case 'distance':
       return formatDistance(value * 1000);
     case 'count':
-      return `${value}\uD68C`;
+      return `${value}${t('social.versus.countSuffix')}`;
     case 'pace':
       return formatPace(value);
     default:
@@ -39,19 +40,20 @@ function formatBattleValue(value: number, metric: 'distance' | 'count' | 'pace')
   }
 }
 
-function formatRemainingTime(endsAt: string): string {
+function formatRemainingTime(endsAt: string, t: (key: string, opts?: Record<string, unknown>) => string): string {
   const end = new Date(endsAt).getTime();
   const now = Date.now();
   const diffMs = end - now;
-  if (diffMs <= 0) return '\uC885\uB8CC';
+  if (diffMs <= 0) return t('social.versus.ended');
   const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
   const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
   const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-  if (days > 0) return `${days}\uC77C ${hours}\uC2DC\uAC04`;
-  return `${hours}\uC2DC\uAC04 ${minutes}\uBD84`;
+  if (days > 0) return t('social.versus.daysHours', { days, hours });
+  return t('social.versus.hoursMinutes', { hours, minutes });
 }
 
 export default function VersusDetailScreen() {
+  const { t } = useTranslation();
   const colors = useTheme();
   const navigation = useNavigation<Nav>();
   const route = useRoute<RouteParams>();
@@ -91,7 +93,7 @@ export default function VersusDetailScreen() {
       const updated = await versusService.acceptBattle(battle.id);
       setBattle(updated);
     } catch {
-      Alert.alert('\uC624\uB958', '\uB300\uACB0 \uC218\uB77D\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.');
+      Alert.alert(t('social.versus.error'), t('social.versus.errorAccept'));
     } finally {
       setIsActioning(false);
     }
@@ -100,12 +102,12 @@ export default function VersusDetailScreen() {
   const handleDecline = useCallback(async () => {
     if (!battle) return;
     Alert.alert(
-      '\uB300\uACB0 \uAC70\uC808',
-      '\uC815\uB9D0 \uAC70\uC808\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?',
+      t('social.versus.declineTitle'),
+      t('social.versus.declineMsg'),
       [
-        { text: '\uCDE8\uC18C', style: 'cancel' },
+        { text: t('social.versus.cancel'), style: 'cancel' },
         {
-          text: '\uAC70\uC808',
+          text: t('social.versus.decline'),
           style: 'destructive',
           onPress: async () => {
             setIsActioning(true);
@@ -113,7 +115,7 @@ export default function VersusDetailScreen() {
               await versusService.declineBattle(battle.id);
               navigation.goBack();
             } catch {
-              Alert.alert('\uC624\uB958', '\uB300\uACB0 \uAC70\uC808\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.');
+              Alert.alert(t('social.versus.error'), t('social.versus.errorDecline'));
             } finally {
               setIsActioning(false);
             }
@@ -144,7 +146,7 @@ export default function VersusDetailScreen() {
     return (
       <SafeAreaView style={[s.safe, { backgroundColor: colors.background }]}>
         <View style={s.loader}>
-          <Text style={s.errorText}>{'\uB300\uACB0\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.'}</Text>
+          <Text style={s.errorText}>{t('social.versus.battleNotFound')}</Text>
         </View>
       </SafeAreaView>
     );
@@ -161,7 +163,7 @@ export default function VersusDetailScreen() {
         <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7}>
           <Ionicons name="chevron-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={s.headerTitle}>{'\uB300\uACB0 \uC0C1\uC138'}</Text>
+        <Text style={s.headerTitle}>{t('social.versus.battleDetail')}</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -221,10 +223,10 @@ export default function VersusDetailScreen() {
               {battle.challenger.nickname}
             </Text>
             <Text style={[s.participantValue, chalLeading && { color: colors.primary }]}>
-              {formatBattleValue(battle.challenger.currentValue, battle.metric)}
+              {formatBattleValue(battle.challenger.currentValue, battle.metric, t)}
             </Text>
             <Text style={s.runCount}>
-              {battle.challenger.runCount}\uD68C \uB7EC\uB2DD
+              {t('social.versus.runCount', { count: battle.challenger.runCount })}
             </Text>
           </TouchableOpacity>
 
@@ -253,10 +255,10 @@ export default function VersusDetailScreen() {
               {battle.opponent.nickname}
             </Text>
             <Text style={[s.participantValue, !chalLeading && { color: colors.primary }]}>
-              {formatBattleValue(battle.opponent.currentValue, battle.metric)}
+              {formatBattleValue(battle.opponent.currentValue, battle.metric, t)}
             </Text>
             <Text style={s.runCount}>
-              {battle.opponent.runCount}\uD68C \uB7EC\uB2DD
+              {t('social.versus.runCount', { count: battle.opponent.runCount })}
             </Text>
           </TouchableOpacity>
         </View>
@@ -280,8 +282,8 @@ export default function VersusDetailScreen() {
           <View style={s.infoCard}>
             <Ionicons name="time-outline" size={18} color={colors.textSecondary} />
             <Text style={s.infoText}>
-              {'\uB0A8\uC740 \uC2DC\uAC04: '}
-              {formatRemainingTime(battle.endsAt)}
+              {t('social.versus.remainingTime')}
+              {formatRemainingTime(battle.endsAt, t)}
             </Text>
           </View>
         )}
@@ -294,7 +296,7 @@ export default function VersusDetailScreen() {
               {battle.winnerId === battle.challenger.userId
                 ? battle.challenger.nickname
                 : battle.opponent.nickname}
-              {' \uC2B9\uB9AC!'}
+              {t('social.versus.victory')}
             </Text>
           </View>
         )}
@@ -302,12 +304,12 @@ export default function VersusDetailScreen() {
         {/* Timestamps */}
         <View style={s.metaSection}>
           <Text style={s.metaText}>
-            {'\uC2E0\uCCAD\uC77C: '}
+            {t('social.versus.requestedAt')}
             {formatRelativeTime(battle.createdAt)}
           </Text>
           {battle.startedAt && (
             <Text style={s.metaText}>
-              {'\uC2DC\uC791\uC77C: '}
+              {t('social.versus.startedAt')}
               {formatRelativeTime(battle.startedAt)}
             </Text>
           )}
@@ -322,7 +324,7 @@ export default function VersusDetailScreen() {
               disabled={isActioning}
               activeOpacity={0.7}
             >
-              <Text style={s.declineText}>{'\uAC70\uC808'}</Text>
+              <Text style={s.declineText}>{t('social.versus.decline')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={s.acceptButton}
@@ -333,7 +335,7 @@ export default function VersusDetailScreen() {
               {isActioning ? (
                 <ActivityIndicator color="#FFF" size="small" />
               ) : (
-                <Text style={s.acceptText}>{'\uC218\uB77D'}</Text>
+                <Text style={s.acceptText}>{t('social.versus.accept')}</Text>
               )}
             </TouchableOpacity>
           </View>
