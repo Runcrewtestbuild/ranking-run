@@ -26,7 +26,9 @@
     "social": "Social",
     "preparing": "Coming Soon",
     "endOfList": "You've seen everything",
-    "tapToExpand": "Tap to view map"
+    "tapToExpand": "Tap to view map",
+    "minuteShort": " minutes ",
+    "secondShort": " seconds"
   },
   "tabs": {
     "home": "Home",

@@ -86,18 +86,23 @@ export function useIntervalSegmentTracker({
       const prev = phaseStartRef.current;
       const segDistance = Math.max(0, store.distanceMeters - prev.distanceMeters);
       const segDuration = Math.max(0, store.durationSeconds - prev.durationSeconds);
-      const avgPace = segDistance > 0 && segDuration > 0
-        ? (segDuration / segDistance) * 1000
-        : 0;
 
-      const segment: IntervalSegment = {
-        set: prev.set,
-        phase: prev.phase,
-        distanceMeters: segDistance,
-        durationSeconds: segDuration,
-        avgPaceSecondsPerKm: Math.round(avgPace),
-      };
-      addIntervalSegment(segment);
+      // Only record meaningful segments — avoid phantom zero-length segments
+      // when completion coincides with a phase transition
+      if (segDistance > 10 || segDuration > 5) {
+        const avgPace = segDistance > 0 && segDuration > 0
+          ? (segDuration / segDistance) * 1000
+          : 0;
+
+        const segment: IntervalSegment = {
+          set: prev.set,
+          phase: prev.phase,
+          distanceMeters: segDistance,
+          durationSeconds: segDuration,
+          avgPaceSecondsPerKm: Math.round(avgPace),
+        };
+        addIntervalSegment(segment);
+      }
       phaseStartRef.current = null;
     }
 

@@ -64,9 +64,11 @@ function classifyStatus(timeDelta: number): PaceStatus {
 function formatDeltaForTTS(totalSeconds: number): string {
   const mins = Math.floor(totalSeconds / 60);
   const secs = totalSeconds % 60;
-  if (mins > 0 && secs > 0) return `${mins}분 ${secs}초`;
-  if (mins > 0) return `${mins}분`;
-  return `${secs}초`;
+  const minUnit = i18n.t('common.minuteShort');
+  const secUnit = i18n.t('common.secondShort');
+  if (mins > 0 && secs > 0) return `${mins}${minUnit}${secs}${secUnit}`;
+  if (mins > 0) return `${mins}${minUnit}`;
+  return `${secs}${secUnit}`;
 }
 
 function getCoachingMessage(status: PaceStatus, timeDelta: number): string {
@@ -113,12 +115,20 @@ function speak(message: string) {
   gps?.configureAudioForSpeech?.().catch((err: any) => {
     console.warn('[usePaceCoaching] 오디오 세션 설정 실패:', err);
   });
+
+  // Safety timeout to restore audio session even if onDone never fires
+  // (e.g. speech interrupted by phone call, Siri, or system alert)
+  const restoreTimeout = setTimeout(() => {
+    gps?.restoreAudioAfterSpeech?.().catch(() => {});
+  }, 10000);
+
   Speech.speak(message, {
     language: getTTSLocale(),
     rate: 1.0,
     pitch: 1.0,
     voice: getCachedVoiceId(),
     onDone: () => {
+      clearTimeout(restoreTimeout);
       gps?.restoreAudioAfterSpeech?.().catch((err: any) => {
         console.warn('[usePaceCoaching] 오디오 세션 복원 실패:', err);
       });

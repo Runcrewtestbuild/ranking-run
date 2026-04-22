@@ -65,8 +65,9 @@ class MetronomeModule: NSObject {
     // MARK: - Public API
 
     @objc func start(_ bpm: Double) {
-        guard bpm > 0 else {
-            stop()
+        guard bpm >= 40 && bpm <= 240 else {
+            if bpm <= 0 { stop() }
+            NSLog("[Metronome] BPM out of range (40–240): %.0f", bpm)
             return
         }
 

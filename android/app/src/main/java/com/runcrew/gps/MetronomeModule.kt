@@ -8,6 +8,7 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.Promise
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.exp
 import kotlin.math.sin
 
@@ -30,6 +31,7 @@ class MetronomeModule(reactContext: ReactApplicationContext) :
     @Volatile private var isRunning = false
     @Volatile private var currentBPM = 0.0
     @Volatile private var pendingBeatBuffer: ShortArray? = null
+    private val beepPlaying = AtomicBoolean(false)
 
     companion object {
         private const val TAG = "Metronome"
@@ -69,8 +71,9 @@ class MetronomeModule(reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun start(bpm: Double) {
-        if (bpm <= 0) {
-            stop()
+        if (bpm < 40 || bpm > 240) {
+            if (bpm <= 0) stop()
+            Log.w(TAG, "BPM out of range (40–240): ${bpm.toInt()}")
             return
         }
         if (isRunning && currentBPM == bpm) return
@@ -166,8 +169,9 @@ class MetronomeModule(reactContext: ReactApplicationContext) :
         isRunning = false
 
         audioThread?.let { t ->
+            t.interrupt()  // Interrupt blocking AudioTrack.write
             try {
-                t.join(500) // Wait up to 500ms for thread to finish
+                t.join(2000) // Wait longer to ensure thread finishes
             } catch (_: InterruptedException) {}
         }
         audioThread = null
@@ -207,9 +211,14 @@ class MetronomeModule(reactContext: ReactApplicationContext) :
      */
     @ReactMethod
     fun playBeep(count: Int) {
+        if (!beepPlaying.compareAndSet(false, true)) return // Skip if already playing
         Thread({
-            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO)
-            playBeepSync(count)
+            try {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO)
+                playBeepSync(count)
+            } finally {
+                beepPlaying.set(false)
+            }
         }, "beep-audio").start()
     }
 
