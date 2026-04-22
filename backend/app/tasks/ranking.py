@@ -5,6 +5,7 @@ from datetime import timedelta
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.db.session import async_session_factory
 from app.models.crew import CrewMember
@@ -85,14 +86,33 @@ async def recalculate_course_ranking(
             prev_entry = prev_ranking_result.scalar_one_or_none()
             prev_best_duration = prev_entry.best_duration_seconds if prev_entry else None
 
-            await ranking_service.upsert_ranking(
-                db=db,
-                course_id=course_id,
-                user_id=user_id,
-                duration_seconds=run_record.duration_seconds,
-                pace_seconds_per_km=pace,
-                achieved_at=run_record.finished_at,
-            )
+            try:
+                await ranking_service.upsert_ranking(
+                    db=db,
+                    course_id=course_id,
+                    user_id=user_id,
+                    duration_seconds=run_record.duration_seconds,
+                    pace_seconds_per_km=pace,
+                    achieved_at=run_record.finished_at,
+                )
+            except IntegrityError:
+                await db.rollback()
+                logger.warning(
+                    "Duplicate ranking entry for course=%s user=%s, retrying as update",
+                    course_id, user_id,
+                )
+                # Re-fetch and update: the row was already created by a concurrent task
+                prev_ranking_result = await db.execute(
+                    select(RankingModel).where(
+                        RankingModel.course_id == course_id,
+                        RankingModel.user_id == user_id,
+                    )
+                )
+                prev_entry = prev_ranking_result.scalar_one_or_none()
+                if prev_entry and run_record.duration_seconds < (prev_entry.best_duration_seconds or float('inf')):
+                    prev_entry.best_duration_seconds = run_record.duration_seconds
+                    prev_entry.best_pace_seconds_per_km = pace
+                    prev_entry.achieved_at = run_record.finished_at
 
             await ranking_service.recalculate_ranks(db, course_id)
 

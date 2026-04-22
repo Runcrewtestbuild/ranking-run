@@ -54,10 +54,10 @@ class Event(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     # Map display
     badge_color: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="'#FF5252'"
+        String(20), nullable=False, server_default="#FF5252"
     )
     badge_icon: Mapped[str] = mapped_column(
-        String(30), nullable=False, server_default="'trophy'"
+        String(30), nullable=False, server_default="trophy"
     )
 
     # Participation

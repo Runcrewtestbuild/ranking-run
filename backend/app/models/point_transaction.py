@@ -18,7 +18,7 @@ class PointTransaction(Base, UUIDPrimaryKeyMixin):
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id"),
+        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
     amount: Mapped[int] = mapped_column(Integer, nullable=False)

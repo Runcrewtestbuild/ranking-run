@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import List
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -81,6 +81,16 @@ class Settings(BaseSettings):
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000
+
+    @model_validator(mode='after')
+    def validate_secrets(self):
+        if self.JWT_SECRET_KEY == "your-super-secret-key-change-in-production":
+            import warnings
+            warnings.warn(
+                "WARNING: Using default JWT secret key! Set JWT_SECRET_KEY in production.",
+                stacklevel=2,
+            )
+        return self
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod

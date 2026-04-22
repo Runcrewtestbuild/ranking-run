@@ -46,10 +46,10 @@ class Crew(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         Boolean, default=True, server_default="true"
     )
     badge_color: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="'#FF7A33'"
+        String(20), nullable=False, server_default="#FF7A33"
     )
     badge_icon: Mapped[str] = mapped_column(
-        String(50), nullable=False, server_default="'people'"
+        String(50), nullable=False, server_default="people"
     )
     recurring_schedule: Mapped[str | None] = mapped_column(
         String(200), nullable=True
@@ -102,7 +102,7 @@ class CrewMember(Base, UUIDPrimaryKeyMixin):
         nullable=False,
     )
     role: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="'member'"
+        String(20), nullable=False, server_default="member"
     )
     grade_level: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="1"

@@ -19,8 +19,11 @@ final class WatchSessionManager: NSObject, WCSessionDelegate {
         didSet {
             // Flush any standalone runs that arrived before the callback was set
             guard onStandaloneRunReceived != nil else { return }
-            let buffered = pendingStandaloneRuns
-            pendingStandaloneRuns.removeAll()
+            let buffered = pendingRunsQueue.sync { () -> [[String: Any]] in
+                let runs = pendingStandaloneRuns
+                pendingStandaloneRuns.removeAll()
+                return runs
+            }
             for run in buffered {
                 NSLog("[WatchSessionMgr] Flushing buffered standalone run to callback")
                 onStandaloneRunReceived?(run)
@@ -30,6 +33,8 @@ final class WatchSessionManager: NSObject, WCSessionDelegate {
 
     /// Buffer standalone runs received before WatchBridgeModule sets its callback
     private var pendingStandaloneRuns: [[String: Any]] = []
+    /// Serial queue for thread-safe access to pendingStandaloneRuns
+    private let pendingRunsQueue = DispatchQueue(label: "com.runcrew.watchsession.pendingRuns")
 
     private var lastSendTime: TimeInterval = 0
     private let throttleInterval: TimeInterval = 1.0  // 1 second minimum between location updates
@@ -494,8 +499,10 @@ final class WatchSessionManager: NSObject, WCSessionDelegate {
         if let callback = onStandaloneRunReceived {
             callback(data)
         } else {
-            NSLog("[WatchSessionMgr] Buffering standalone run (callback not set yet)")
-            pendingStandaloneRuns.append(data)
+            pendingRunsQueue.sync {
+                NSLog("[WatchSessionMgr] Buffering standalone run (callback not set yet)")
+                pendingStandaloneRuns.append(data)
+            }
         }
     }
 

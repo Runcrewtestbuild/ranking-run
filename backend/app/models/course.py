@@ -29,10 +29,10 @@ class Course(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         Index("idx_courses_creator", "creator_id"),
     )
 
-    creator_id: Mapped[uuid.UUID] = mapped_column(
+    creator_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id"),
-        nullable=False,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
     )
     run_record_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -69,7 +69,7 @@ class Course(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     checkpoint_interval_meters: Mapped[int | None] = mapped_column(Integer, nullable=True, default=500)
 
     # Relationships
-    creator: Mapped["User"] = relationship("User", lazy="joined")
+    creator: Mapped["User | None"] = relationship("User", lazy="joined")
     stats: Mapped["CourseStats | None"] = relationship(
         back_populates="course",
         uselist=False,

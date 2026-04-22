@@ -2,7 +2,7 @@
  * Android: Plain View for layout + invisible RectButton for tap detection.
  * For long-press buttons (onPressIn/onPressOut), uses responder system instead.
  */
-import React from 'react';
+import React, { useRef } from 'react';
 import { View, ViewStyle, StyleProp, StyleSheet } from 'react-native';
 import { RectButton } from 'react-native-gesture-handler';
 
@@ -32,14 +32,41 @@ export function TouchableOpacity({
   ...rest
 }: TouchableOpacityProps) {
   // Long-press buttons (stop, lock unlock): use responder system
+  const wasLongPressRef = useRef(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   if (onPressIn || onPressOut) {
     return (
       <View
         style={style}
         onStartShouldSetResponder={() => true}
-        onResponderGrant={() => onPressIn?.()}
-        onResponderRelease={() => { onPressOut?.(); onPress?.(); }}
-        onResponderTerminate={() => onPressOut?.()}
+        onResponderGrant={() => {
+          wasLongPressRef.current = false;
+          onPressIn?.();
+          if (onLongPress) {
+            longPressTimerRef.current = setTimeout(() => {
+              wasLongPressRef.current = true;
+              onLongPress();
+            }, 500);
+          }
+        }}
+        onResponderRelease={() => {
+          if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+          }
+          onPressOut?.();
+          if (!wasLongPressRef.current) {
+            onPress?.();
+          }
+          wasLongPressRef.current = false;
+        }}
+        onResponderTerminate={() => {
+          if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+          }
+          onPressOut?.();
+        }}
         hitSlop={hitSlop}
         {...rest}
       >

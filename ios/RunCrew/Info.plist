@@ -57,13 +57,6 @@
       <true/>
       <key>NSExceptionDomains</key>
       <dict>
-        <key>13.125.244.10</key>
-        <dict>
-          <key>NSExceptionAllowsInsecureHTTPLoads</key>
-          <true/>
-          <key>NSIncludesSubdomains</key>
-          <true/>
-        </dict>
       </dict>
     </dict>
     <key>NSFaceIDUsageDescription</key>
