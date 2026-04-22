@@ -23,6 +23,7 @@ import BlurredBackground from '../../components/common/BlurredBackground';
 import type { HomeStackParamList } from '../../types/navigation';
 import type { CrewItem, CrewManagementStats, CrewJoinRequestItem } from '../../types/api';
 import { crewService } from '../../services/crewService';
+import { useToastStore } from '../../stores/toastStore';
 import { FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '../../utils/constants';
 import type { ThemeColors } from '../../utils/constants';
 import { useTheme } from '../../hooks/useTheme';
@@ -37,6 +38,7 @@ export default function CrewManageScreen() {
   const route = useRoute<Route>();
   const colors = useTheme();
   const { t } = useTranslation();
+  const showToast = useToastStore((s) => s.showToast);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { crewId } = route.params;
 
@@ -94,11 +96,11 @@ export default function CrewManageScreen() {
         } catch { /* ignore */ }
       }
     } catch {
-      // silent
+      showToast('error', t('common.loadError'));
     } finally {
       setIsLoading(false);
     }
-  }, [crewId]);
+  }, [crewId, showToast, t]);
 
   useFocusEffect(
     useCallback(() => {

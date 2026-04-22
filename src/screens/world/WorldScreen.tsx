@@ -65,6 +65,7 @@ import { savePendingRunRecord, removePendingRunRecord } from '../../services/pen
 import api, { performTokenRefresh } from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../stores/authStore';
+import { useToastStore } from '../../stores/toastStore';
 import { MAPBOX_ACCESS_TOKEN } from '../../config/env';
 
 type WorldNav = NativeStackNavigationProp<WorldStackParamList, 'World'>;
@@ -1888,6 +1889,7 @@ export default function WorldScreen() {
           animateRouteDraw(routePoints);
         }, 800);
       } catch {
+        useToastStore.getState().showToast('error', t('common.loadError'));
         mapRef.current?.animateCamera(
           { center: { latitude: marker.start_lat, longitude: marker.start_lng }, pitch: 50, heading: 0, zoom: 15.5 },
           1200,

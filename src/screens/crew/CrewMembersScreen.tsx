@@ -26,6 +26,7 @@ import BlurredBackground from '../../components/common/BlurredBackground';
 import type { HomeStackParamList } from '../../types/navigation';
 import type { CrewItem, CrewMemberItem } from '../../types/api';
 import { crewService } from '../../services/crewService';
+import { useToastStore } from '../../stores/toastStore';
 import { FONT_SIZES, SPACING, BORDER_RADIUS } from '../../utils/constants';
 import type { ThemeColors } from '../../utils/constants';
 import { useTheme } from '../../hooks/useTheme';
@@ -42,6 +43,7 @@ export default function CrewMembersScreen() {
   const { crewId } = route.params;
   const colors = useTheme();
   const { t } = useTranslation();
+  const showToast = useToastStore((s) => s.showToast);
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [crew, setCrew] = useState<CrewItem | null>(null);
@@ -63,11 +65,11 @@ export default function CrewMembersScreen() {
       setCrew(crewData);
       setMembers(membersData.data);
     } catch {
-      // silent
+      showToast('error', t('common.loadError'));
     } finally {
       setIsLoading(false);
     }
-  }, [crewId]);
+  }, [crewId, showToast, t]);
 
   useEffect(() => {
     loadData();

@@ -21,6 +21,7 @@ import BlurredBackground from '../../components/common/BlurredBackground';
 import type { CommunityStackParamList } from '../../types/navigation';
 import type { FriendItem, FriendRequestItem } from '../../types/api';
 import { friendService } from '../../services/friendService';
+import { useToastStore } from '../../stores/toastStore';
 import { FONT_SIZES, SPACING, BORDER_RADIUS } from '../../utils/constants';
 import type { ThemeColors } from '../../utils/constants';
 import { useTheme } from '../../hooks/useTheme';
@@ -34,6 +35,7 @@ export default function FriendsScreen() {
   const navigation = useNavigation<Nav>();
   const colors = useTheme();
   const { t } = useTranslation();
+  const showToast = useToastStore((s) => s.showToast);
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   const [activeTab, setActiveTab] = useState<TabType>('friends');
@@ -57,11 +59,11 @@ export default function FriendsScreen() {
       setSent(sentRes.data);
       setPendingCount(receivedRes.total_count);
     } catch {
-      // silent
+      showToast('error', t('common.loadError'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showToast, t]);
 
   useFocusEffect(
     useCallback(() => {

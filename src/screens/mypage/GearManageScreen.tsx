@@ -23,6 +23,7 @@ import { Ionicons } from '../../lib/icons';
 import ScreenHeader from '../../components/common/ScreenHeader';
 import { useTheme } from '../../hooks/useTheme';
 import { gearService } from '../../services/gearService';
+import { useToastStore } from '../../stores/toastStore';
 import { formatDistance } from '../../utils/format';
 import { FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '../../utils/constants';
 import type { ThemeColors } from '../../utils/constants';
@@ -52,6 +53,7 @@ export default function GearManageScreen() {
   const { t } = useTranslation();
   const colors = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const showToast = useToastStore((s) => s.showToast);
   const BRANDS = useMemo(() => [...BRAND_NAMES, t('gear.other')], [t]);
 
   const [gearList, setGearList] = useState<GearItem[]>([]);
@@ -89,11 +91,11 @@ export default function GearManageScreen() {
       const data = await gearService.getMyGear();
       setGearList(data);
     } catch {
-      // Silent failure
+      showToast('error', t('common.loadError'));
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [showToast, t]);
 
   const resetForm = useCallback(() => {
     setSelectedBrand(null);
