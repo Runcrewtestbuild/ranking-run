@@ -379,10 +379,15 @@ export const useRunningStore = create<RunningState>((set, get) => ({
     // Append GPS point via mutable push — O(1) instead of O(n) concat.
     // The backing array (_routePoints) is shared by reference; bumping
     // routePointsVersion in the store signals subscribers to re-read.
-    const MAX_ROUTE_POINTS = 10_000;
+    const MAX_ROUTE_POINTS = 50_000;
     _routePoints.push(currentPos);
     if (_routePoints.length > MAX_ROUTE_POINTS) {
-      _routePoints = _routePoints.slice(-MAX_ROUTE_POINTS);
+      // Downsample: keep every 3rd point from old data, keep last 10k intact
+      const keepRecent = 10_000;
+      const oldPart = _routePoints.slice(0, -keepRecent);
+      const recentPart = _routePoints.slice(-keepRecent);
+      const downsampled = oldPart.filter((_, i) => i % 3 === 0);
+      _routePoints = [...downsampled, ...recentPart];
     }
 
     // Build filtered location for chunk upload (rich GPS data for server)
