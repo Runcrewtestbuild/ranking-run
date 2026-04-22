@@ -78,6 +78,7 @@ class GPSForegroundService : Service() {
 
     private val binder = LocalBinder()
     private var isRunning = false
+    @Volatile var isTracking = false
     private var wakeLock: PowerManager.WakeLock? = null
 
     // Re-acquire wake lock every 3.5 hours to prevent 4-hour timeout
@@ -136,9 +137,13 @@ class GPSForegroundService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        // Clean up to prevent orphaned service draining battery
-        stopForegroundTracking()
-        stopSelf()
+        // Only stop if NOT actively tracking — user might swipe app from recents during a run
+        if (!isTracking) {
+            stopForegroundTracking()
+            stopSelf()
+        } else {
+            Log.i(TAG, "onTaskRemoved: tracking active, keeping service alive")
+        }
     }
 
     override fun onDestroy() {
@@ -154,6 +159,7 @@ class GPSForegroundService : Service() {
     private fun startForegroundTracking() {
         if (isRunning) return
         isRunning = true
+        isTracking = true
 
         // Acquire partial wake lock to keep CPU alive during background GPS tracking.
         // Without this, the CPU may sleep and stop processing GPS callbacks.
@@ -188,6 +194,7 @@ class GPSForegroundService : Service() {
 
     private fun stopForegroundTracking() {
         isRunning = false
+        isTracking = false
         // Cancel wake lock renewal
         wakeLockHandler.removeCallbacks(wakeLockRenewalRunnable)
         // Release wake lock

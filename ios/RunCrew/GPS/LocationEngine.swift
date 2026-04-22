@@ -892,7 +892,7 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
 
             silentAudioPlayer = try AVAudioPlayer(data: Self.silentWavData)
             silentAudioPlayer?.numberOfLoops = -1
-            silentAudioPlayer?.volume = 0.0
+            silentAudioPlayer?.volume = 0.01  // Near-zero but nonzero — some iOS versions deprioritize 0-volume audio
             silentAudioPlayer?.play()
             audioRetryCount = 0
             NSLog("[LocationEngine] Silent audio session started for background GPS")
