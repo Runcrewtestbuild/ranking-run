@@ -597,20 +597,28 @@ class LocationEngine(
 
         session.addFilteredLocation(filteredLocation)
 
-        // Emit to listener (listener adds distanceSource via the event builder)
-        listener?.onFilteredLocationUpdate(filteredLocation, session)
+        // Emit to listener on main thread. emitPedometerUpdate() runs on the
+        // PedometerFallback HandlerThread, but sendEvent (called by the listener)
+        // must be invoked on the main thread for the RN bridge.
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            listener?.onFilteredLocationUpdate(filteredLocation, session)
+        }
 
         // Milestone detection — loop for GPS jump safety
+        // Also posted to main thread (same reason as location update above).
         val prevKm = (previousMilestoneDistance / 1000).toInt()
         val currentKm = (newCumulativeDistance / 1000).toInt()
         if (currentKm > prevKm && currentKm > 0) {
+            val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
             for (km in (prevKm + 1)..currentKm) {
                 val elapsedMs = session.getElapsedTime()
                 val elapsedSec = (elapsedMs / 1000).toInt()
                 val splitSeconds = ((elapsedMs - previousMilestoneTime) / 1000).toInt()
                 val splitPace = if (splitSeconds > 0) splitSeconds else 0
                 previousMilestoneTime = elapsedMs
-                listener?.onMilestoneReached(km, splitPace, elapsedSec)
+                mainHandler.post {
+                    listener?.onMilestoneReached(km, splitPace, elapsedSec)
+                }
             }
         }
         previousMilestoneDistance = newCumulativeDistance

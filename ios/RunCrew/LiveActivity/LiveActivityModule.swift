@@ -43,6 +43,21 @@ class LiveActivityModule: NSObject {
                 timerStartDate: Date().addingTimeInterval(-Double(durationSeconds))
             )
 
+            // Guard against duplicate Live Activities — reuse existing if present
+            let existingActivities = Activity<RunningActivityAttributes>.activities
+            if !existingActivities.isEmpty {
+                let activity = existingActivities.first!
+                self?.activityId = activity.id
+                Task {
+                    await activity.update(
+                        .init(state: initialState, staleDate: Date().addingTimeInterval(300)),
+                        alertConfiguration: nil
+                    )
+                }
+                DispatchQueue.main.async { resolve(activity.id) }
+                return
+            }
+
             do {
                 let activity = try Activity.request(
                     attributes: attributes,

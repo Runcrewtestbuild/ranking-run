@@ -91,17 +91,46 @@ class GPSTrackerModule(
         super.onCatalystInstanceDestroy()
     }
 
+    // --- Event buffering for when JS listener is not yet registered ---
+    // Matches iOS pattern: keep only the latest location event, preserve all milestone events.
+    private data class BufferedEvent(val eventName: String, val params: WritableMap)
+    private val eventBuffer = mutableListOf<BufferedEvent>()
+    private val EVENT_BUFFER_MAX = 50
+
     // --- Event listener management for RN EventEmitter ---
 
     @ReactMethod
     fun addListener(eventName: String) {
         listenerCount++
+        // Flush buffered events when JS listener is (re-)attached
+        if (listenerCount == 1 && eventBuffer.isNotEmpty()) {
+            flushEventBuffer()
+        }
     }
 
     @ReactMethod
     fun removeListeners(count: Int) {
         listenerCount -= count
         if (listenerCount < 0) listenerCount = 0
+    }
+
+    /**
+     * Flush buffered events: send only the latest location event + all milestone events.
+     * This avoids flooding JS with stale location data while preserving critical milestones.
+     */
+    private fun flushEventBuffer() {
+        val milestones = eventBuffer.filter { it.eventName == EVENT_MILESTONE_REACHED }
+        val latestLocation = eventBuffer.lastOrNull { it.eventName == EVENT_LOCATION_UPDATE }
+
+        eventBuffer.clear()
+
+        // Send milestones first (in order), then latest location
+        for (milestone in milestones) {
+            emitToJS(milestone.eventName, milestone.params)
+        }
+        if (latestLocation != null) {
+            emitToJS(latestLocation.eventName, latestLocation.params)
+        }
     }
 
     // --- Tracking control methods ---
@@ -407,7 +436,9 @@ class GPSTrackerModule(
     // --- LocationEngine.Listener implementation ---
 
     // Rolling cadence window: track recent step timestamps for real-time SPM
-    private val recentStepTimestamps = ArrayDeque<Long>(120)
+    // ConcurrentLinkedDeque: accessed from sensor callback thread (step listener)
+    // and main thread (onFilteredLocationUpdate) — must be thread-safe.
+    private val recentStepTimestamps = java.util.concurrent.ConcurrentLinkedDeque<Long>()
     private val CADENCE_WINDOW_MS = 15_000L  // 15-second rolling window
 
     override fun onFilteredLocationUpdate(location: FilteredLocation, session: RunSession) {
@@ -423,9 +454,14 @@ class GPSTrackerModule(
             // Add steps to rolling window based on total step count delta
             val currentTotal = stepDetector.totalSteps
             val windowCutoff = now - CADENCE_WINDOW_MS
-            // Prune old entries
-            while (recentStepTimestamps.isNotEmpty() && recentStepTimestamps.first() < windowCutoff) {
-                recentStepTimestamps.removeFirst()
+            // Prune old entries (thread-safe: peekFirst/pollFirst won't throw on concurrent modification)
+            while (true) {
+                val oldest = recentStepTimestamps.peekFirst() ?: break
+                if (oldest < windowCutoff) {
+                    recentStepTimestamps.pollFirst()
+                } else {
+                    break
+                }
             }
             // Calculate cadence from steps in the rolling window
             val stepsInWindow = recentStepTimestamps.size
@@ -495,7 +531,32 @@ class GPSTrackerModule(
     // --- Private helpers ---
 
     private fun sendEvent(eventName: String, params: WritableMap) {
-        if (listenerCount <= 0) return
+        if (listenerCount <= 0) {
+            // Buffer critical events so they aren't lost during JS listener gaps.
+            // Keep only latest location + all milestones (matching iOS pattern).
+            if (eventName == EVENT_LOCATION_UPDATE) {
+                // Replace any existing buffered location with the latest one
+                eventBuffer.removeAll { it.eventName == EVENT_LOCATION_UPDATE }
+                eventBuffer.add(BufferedEvent(eventName, params))
+            } else if (eventName == EVENT_MILESTONE_REACHED) {
+                eventBuffer.add(BufferedEvent(eventName, params))
+            }
+            // Cap total buffer size
+            while (eventBuffer.size > EVENT_BUFFER_MAX) {
+                // Remove oldest non-milestone events first, then oldest milestones
+                val nonMilestoneIdx = eventBuffer.indexOfFirst { it.eventName != EVENT_MILESTONE_REACHED }
+                if (nonMilestoneIdx >= 0) {
+                    eventBuffer.removeAt(nonMilestoneIdx)
+                } else {
+                    eventBuffer.removeAt(0)
+                }
+            }
+            return
+        }
+        emitToJS(eventName, params)
+    }
+
+    private fun emitToJS(eventName: String, params: WritableMap) {
         try {
             reactApplicationContext
                 .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)

@@ -335,7 +335,6 @@ export default function WorldScreen() {
     cadence,
     elevationGainMeters,
     watchConnected,
-    currentLocation,
     isAutoPaused,
     isApproachingStart,
     isNearStart,
@@ -357,7 +356,6 @@ export default function WorldScreen() {
     cadence: s.cadence,
     elevationGainMeters: s.elevationGainMeters,
     watchConnected: s.watchConnected,
-    currentLocation: s.currentLocation,
     isAutoPaused: s.isAutoPaused,
     isApproachingStart: s.isApproachingStart,
     isNearStart: s.isNearStart,
@@ -369,6 +367,10 @@ export default function WorldScreen() {
     splits: s.splits,
     intervalSegments: s.intervalSegments,
   })));
+
+  // currentLocation changes on every GPS tick — subscribe separately to
+  // prevent the entire 2600-line component from re-rendering on each update.
+  const currentLocation = useRunningStore((s) => s.currentLocation);
 
   // Actions don't change — subscribe outside useShallow to avoid object recreation
   const startSession = useRunningStore((s) => s.startSession);
@@ -544,6 +546,14 @@ export default function WorldScreen() {
     updateLocation: updateCheckpointLocation,
     resetTracker,
   } = useCheckpointTracker(courseCheckpoints);
+
+  // Continuously sync checkpoint passes to the store so RunningScreen
+  // (pushed on top) can read them when the user taps Stop.
+  useEffect(() => {
+    if (checkpointPasses.length > 0) {
+      useRunningStore.getState().setCheckpointPasses(checkpointPasses);
+    }
+  }, [checkpointPasses]);
 
   // Panel height for map bottom inset
   const [panelHeight, setPanelHeight] = useState(0);

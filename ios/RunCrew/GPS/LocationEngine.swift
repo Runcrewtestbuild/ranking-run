@@ -355,6 +355,12 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         }
     }
 
+    func locationManagerDidPauseLocationUpdates(_ manager: CLLocationManager) {
+        NSLog("[LocationEngine] iOS paused location updates — resuming immediately")
+        manager.stopUpdatingLocation()
+        manager.startUpdatingLocation()
+    }
+
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         switch manager.authorizationStatus {
         case .authorizedWhenInUse, .authorizedAlways:
@@ -407,7 +413,7 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         // Uses DispatchSourceTimer instead of Timer.scheduledTimer so it fires
         // reliably even when the app is backgrounded (not tied to RunLoop).
         gpsLostTimer?.cancel()
-        let lostTimer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+        let lostTimer = DispatchSource.makeTimerSource(queue: .main)
         lostTimer.schedule(deadline: .now() + 10.0)
         lostTimer.setEventHandler { [weak self] in
             guard let self = self, self.session.state == .running else { return }
@@ -659,7 +665,7 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         NSLog("[LocationEngine] Starting pedometer fallback (base: \(pedometerBaseDistance)m, gpsDist: \(gpsDistanceAtFallbackStart)m)")
 
         // Uses DispatchSourceTimer for reliable background firing (not tied to RunLoop).
-        let fallbackTimer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+        let fallbackTimer = DispatchSource.makeTimerSource(queue: .main)
         fallbackTimer.schedule(deadline: .now() + 2.0, repeating: 2.0)
         fallbackTimer.setEventHandler { [weak self] in
             self?.emitPedometerUpdate()

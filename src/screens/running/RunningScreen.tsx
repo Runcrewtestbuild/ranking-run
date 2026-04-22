@@ -20,10 +20,6 @@ import * as Haptics from 'expo-haptics';
 import { useRunningStore, RunningPhase } from '../../stores/runningStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../../stores/settingsStore';
-import { useGPSTracker } from '../../hooks/useGPSTracker';
-import { useRunTimer } from '../../hooks/useRunTimer';
-import { useWatchCompanion } from '../../hooks/useWatchCompanion';
-import { useCourseNavigation } from '../../hooks/useCourseNavigation';
 import { useVoiceGuidance, getCachedVoiceId, getTTSLocale } from '../../hooks/useVoiceGuidance';
 import * as Speech from 'expo-speech';
 import { turnDirectionIcon, formatTurnInstruction } from '../../utils/navigationHelpers';
@@ -32,11 +28,7 @@ import { runService } from '../../services/runService';
 import RouteMapView from '../../components/map/RouteMapView';
 import type { RouteMapViewHandle } from '../../components/map/RouteMapView';
 import { useCompassHeading } from '../../hooks/useCompassHeading';
-import { useCheckpointTracker } from '../../hooks/useCheckpointTracker';
-import { useLiveActivity } from '../../hooks/useLiveActivity';
-import { useRunningChunkUpload } from '../../hooks/useRunningChunkUpload';
-import { useRunningSessionPersistence } from '../../hooks/useRunningSessionPersistence';
-import { usePaceCoaching } from '../../hooks/usePaceCoaching';
+import { useCourseNavigation } from '../../hooks/useCourseNavigation';
 import { useTheme } from '../../hooks/useTheme';
 import SplitHistoryPanel from '../../components/running/SplitHistoryPanel';
 import i18n from '../../i18n';
@@ -121,10 +113,6 @@ export default function RunningScreen() {
   const complete = useRunningStore((s) => s.complete);
   const reset = useRunningStore((s) => s.reset);
   const setPhase = useRunningStore((s) => s.setPhase);
-  const setCheckpointPasses = useRunningStore((s) => s.setCheckpointPasses);
-  const addDeviationPoint = useRunningStore((s) => s.addDeviationPoint);
-  const addSnappedPoint = useRunningStore((s) => s.addSnappedPoint);
-
   // Only use GPS course heading when actually moving. When stationary, magnetometer
   // heading shows PHONE direction (not user direction), so hide the cone entirely.
   const isMoving = (currentLocation?.speed ?? 0) > 0.5; // > 0.5 m/s
@@ -143,24 +131,47 @@ export default function RunningScreen() {
   const countdownSeconds = useSettingsStore((s) => s.countdownSeconds);
   const voiceGuidance = useSettingsStore((s) => s.voiceGuidance);
   const setVoiceGuidance = useSettingsStore((s) => s.setVoiceGuidance);
-  const { startTracking, stopTracking, pauseTracking, resumeTracking } =
-    useGPSTracker();
-  useRunTimer();
-  useLiveActivity();
-  useRunningChunkUpload();
-  useRunningSessionPersistence();
 
-  // Pace coaching (program goal only)
-  const paceCoaching = usePaceCoaching({
-    enabled: runGoal?.type === 'program',
-    targetDistance: runGoal?.type === 'program' ? (runGoal.value ?? 0) : 0,
-    targetTime: runGoal?.type === 'program' ? (runGoal.targetTime ?? 0) : 0,
-    currentDistance: distanceMeters,
-    elapsedTime: durationSeconds,
-    avgPace: avgPaceSecondsPerKm,
-    phase,
-    splits,
-  });
+  // GPS control — WorldScreen runs useGPSTracker (event subscription + store updates).
+  // Here we only need start/stop/pause/resume commands via NativeModules.
+  const GPSTrackerModule = NativeModules.GPSTrackerModule;
+  const startTracking = useCallback(async () => {
+    if (!GPSTrackerModule) return;
+    try { await GPSTrackerModule.startTracking(); } catch (e) { console.error('[GPS] start failed:', e); throw e; }
+  }, [GPSTrackerModule]);
+  const stopTracking = useCallback(async () => {
+    if (!GPSTrackerModule) return;
+    try { await GPSTrackerModule.stopTracking(); } catch (e) { console.error('[GPS] stop failed:', e); }
+  }, [GPSTrackerModule]);
+  const pauseTracking = useCallback(async () => {
+    if (!GPSTrackerModule) return;
+    try { await GPSTrackerModule.pauseTracking(); } catch (e) { console.error('[GPS] pause failed:', e); }
+  }, [GPSTrackerModule]);
+  const resumeTracking = useCallback(async () => {
+    if (!GPSTrackerModule) return;
+    try { await GPSTrackerModule.resumeTracking(); } catch (e) { console.error('[GPS] resume failed:', e); }
+  }, [GPSTrackerModule]);
+
+  // NOTE: useRunTimer, useLiveActivity, useRunningChunkUpload,
+  // useRunningSessionPersistence, usePaceCoaching are ALL run by WorldScreen
+  // (which stays mounted underneath). Removed here to prevent 2x listeners.
+
+  // Pace coaching — read from WorldScreen's hook output is not possible,
+  // so compute display-only paceCoaching from store values (no side effects).
+  const paceCoaching = useMemo(() => {
+    if (runGoal?.type !== 'program') return null;
+    const targetDist = runGoal.value ?? 0;
+    const targetTime = runGoal.targetTime ?? 0;
+    if (targetDist <= 0 || targetTime <= 0 || distanceMeters < 100) return null;
+    const projectedFinish = (targetDist / distanceMeters) * durationSeconds;
+    const timeDelta = targetTime - projectedFinish;
+    const requiredPace = distanceMeters > 0 ? ((targetTime - durationSeconds) / ((targetDist - distanceMeters) / 1000)) : 0;
+    const currentPace = avgPaceSecondsPerKm;
+    const absDelta = Math.abs(timeDelta);
+    const status: 'ahead' | 'on_pace' | 'behind' | 'critical' =
+      timeDelta > 30 ? 'ahead' : timeDelta >= -15 ? 'on_pace' : timeDelta >= -60 ? 'behind' : 'critical';
+    return { status, timeDelta, requiredPace: requiredPace > 0 ? requiredPace : 0, currentPace };
+  }, [runGoal, distanceMeters, durationSeconds, avgPaceSecondsPerKm]);
 
   // Interval training — handled by WorldScreen (beep/TTS/haptic).
   // Only compute display state here, no side effects.
@@ -339,44 +350,9 @@ export default function RunningScreen() {
     gpsAccuracy,
   );
 
-  // Checkpoint tracker
-  const {
-    passedCount: cpPassedCount,
-    totalCount: cpTotalCount,
-    checkpointPasses,
-    markerData: cpMarkerData,
-    justPassed: cpJustPassed,
-    updateLocation: cpUpdateLocation,
-  } = useCheckpointTracker(courseCheckpoints);
-
-  // Feed GPS updates to checkpoint tracker
-  useEffect(() => {
-    if (currentLocation && phase === 'running' && courseId) {
-      cpUpdateLocation(currentLocation.latitude, currentLocation.longitude);
-    }
-  }, [currentLocation, phase, courseId, cpUpdateLocation]);
-
-  // Log deviation for result screen visualization
-  const routePointsLen = useRunningStore((s) => s.routePoints.length);
-  useEffect(() => {
-    if (courseNavigation && courseId && phase === 'running') {
-      addDeviationPoint(routePointsLen - 1, courseNavigation.deviationMeters);
-    }
-  }, [courseNavigation, routePointsLen, courseId, phase, addDeviationPoint]);
-
-  // Collect snapped route points during course running
-  useEffect(() => {
-    if (courseNavigation && courseId && phase === 'running') {
-      const pos = courseNavigation.snappedPosition;
-      if (pos) {
-        // On-course: use snapped position
-        addSnappedPoint(pos);
-      } else if (currentLocation) {
-        // Off-course: fall back to real GPS
-        addSnappedPoint({ latitude: currentLocation.latitude, longitude: currentLocation.longitude });
-      }
-    }
-  }, [courseNavigation, currentLocation, courseId, phase, addSnappedPoint]);
+  // NOTE: useCheckpointTracker, deviation logging, and snapped route collection
+  // are all handled by WorldScreen (which stays mounted). WorldScreen continuously
+  // syncs checkpointPasses to the store. Removed here to prevent duplicate haptics.
 
   // Countdown before starting
   const handleStart = useCallback(async () => {
@@ -484,10 +460,7 @@ export default function RunningScreen() {
         text: t('running.controls.stop'),
         style: 'destructive',
         onPress: async () => {
-          // Save checkpoint passes before completing
-          if (checkpointPasses.length > 0) {
-            setCheckpointPasses(checkpointPasses);
-          }
+          // Checkpoint passes are continuously synced by WorldScreen's tracker.
           await stopTracking();
 
           // Read sessionId BEFORE complete() to navigate immediately
@@ -507,13 +480,11 @@ export default function RunningScreen() {
         },
       },
     ]);
-  }, [stopTracking, complete, hapticFeedback, navigation, checkpointPasses, setCheckpointPasses, t]);
+  }, [stopTracking, complete, hapticFeedback, navigation, t]);
 
   // Watch stop (no confirmation — user already tapped stop on Watch)
   const handleWatchStop = useCallback(async () => {
-    if (checkpointPasses.length > 0) {
-      setCheckpointPasses(checkpointPasses);
-    }
+    // Checkpoint passes are continuously synced by WorldScreen's tracker.
     await stopTracking();
     complete();
     if (hapticFeedback) {
@@ -524,18 +495,11 @@ export default function RunningScreen() {
     if (currentSessionId) {
       navigation.replace('RunResult', { sessionId: currentSessionId });
     }
-  }, [stopTracking, complete, hapticFeedback, navigation, checkpointPasses, setCheckpointPasses]);
+  }, [stopTracking, complete, hapticFeedback, navigation]);
 
-  // Watch companion
-  useWatchCompanion({
-    onPauseCommand: handlePause,
-    onResumeCommand: handleResume,
-    onStopCommand: handleWatchStop,
-  }, courseNavigation, {
-    passedCount: cpPassedCount,
-    totalCount: cpTotalCount,
-    justPassed: !!cpJustPassed,
-  });
+  // NOTE: useWatchCompanion removed — WorldScreen handles watch communication.
+  // Watch stop/pause/resume commands reach the store directly; WorldScreen
+  // forwards them. No duplicate WCSession listeners.
 
   // Auto-finish when goal is reached (distance or time)
   const goalAutoFinishedRef = useRef(false);
@@ -561,9 +525,7 @@ export default function RunningScreen() {
       }
       // Goal running: auto-finish immediately (no "continue" option)
       (async () => {
-        if (checkpointPasses.length > 0) {
-          setCheckpointPasses(checkpointPasses);
-        }
+        // Checkpoint passes are continuously synced by WorldScreen's tracker.
         await stopTracking();
         complete();
         const currentSessionId = useRunningStore.getState().sessionId;
@@ -572,7 +534,7 @@ export default function RunningScreen() {
         }
       })();
     }
-  }, [phase, runGoal, distanceMeters, durationSeconds, hapticFeedback, stopTracking, complete, navigation, checkpointPasses, setCheckpointPasses, t, intervalState?.isCompleted]);
+  }, [phase, runGoal, distanceMeters, durationSeconds, hapticFeedback, stopTracking, complete, navigation, t, intervalState?.isCompleted]);
 
   // Voice guidance for course navigation + program goal pace coaching
   const paceCoachingTTSMessage: string | null = paceCoaching
@@ -693,9 +655,8 @@ export default function RunningScreen() {
     return courseId && snappedRoutePoints.length > 0 ? snappedRoutePoints : undefined;
   }, [courseId, snappedRoutePoints]);
 
-  const mapCheckpoints = useMemo(() => {
-    return cpMarkerData.length > 0 ? cpMarkerData : undefined;
-  }, [cpMarkerData]);
+  // Checkpoint markers — WorldScreen tracks these; no local tracker.
+  const mapCheckpoints = undefined;
 
   // Don't change camera when phase='completed' — screen replaces immediately,
   // changing follow/pitch causes visible zoom/tilt jerk during transition.
@@ -897,15 +858,7 @@ export default function RunningScreen() {
           </View>
         )}
 
-        {/* Checkpoint pass toast */}
-        {cpJustPassed && (
-          <View style={styles.checkpointBanner}>
-            <Ionicons name="flag" size={16} color={colors.background} />
-            <Text style={styles.checkpointBannerText}>
-              {t('running.status.checkpointPassed', { order: cpJustPassed.order, total: cpJustPassed.total })}
-            </Text>
-          </View>
-        )}
+        {/* Checkpoint pass toast — handled by WorldScreen's checkpoint tracker */}
 
         {/* Loop detection banners (free running only, after 300m) */}
         {!courseId && loopDetected && distanceMeters >= 300 && (

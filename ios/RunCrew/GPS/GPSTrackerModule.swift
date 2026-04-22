@@ -214,8 +214,25 @@ class GPSTrackerModule: RCTEventEmitter {
         pendingEvents.removeAll()
         eventLock.unlock()
 
+        // Only send the latest location event to prevent JS thread saturation
+        var latestLocation: (name: String, body: Any?)?
+        var otherEvents: [(name: String, body: Any?)] = []
+
         for event in events {
+            if event.name == "GPSTracker_onLocationUpdate" {
+                latestLocation = event  // Keep overwriting — last one wins
+            } else {
+                otherEvents.append(event)  // Keep milestones, status changes etc.
+            }
+        }
+
+        // Send non-location events first
+        for event in otherEvents {
             sendEvent(withName: event.name, body: event.body)
+        }
+        // Send only the latest location
+        if let loc = latestLocation {
+            sendEvent(withName: loc.name, body: loc.body)
         }
     }
 
@@ -417,7 +434,7 @@ class GPSTrackerModule: RCTEventEmitter {
                                   rejecter reject: @escaping RCTPromiseRejectBlock) {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .voicePrompt, options: [.duckOthers])
+            try session.setCategory(.playback, mode: .voicePrompt, options: [.mixWithOthers, .duckOthers])
             try session.setActive(true)
             resolve(nil)
         } catch {

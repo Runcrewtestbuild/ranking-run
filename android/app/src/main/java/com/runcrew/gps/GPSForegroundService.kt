@@ -134,6 +134,13 @@ class GPSForegroundService : Service() {
         return START_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        // Clean up to prevent orphaned service draining battery
+        stopForegroundTracking()
+        stopSelf()
+    }
+
     override fun onDestroy() {
         isRunning = false
         wakeLockHandler.removeCallbacks(wakeLockRenewalRunnable)
