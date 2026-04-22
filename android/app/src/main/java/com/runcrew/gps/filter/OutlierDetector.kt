@@ -49,9 +49,11 @@ class OutlierDetector {
             return OutlierResult.Rejected("Invalid coordinates: ${point.latitude}, ${point.longitude}")
         }
 
-        if (point.horizontalAccuracy > MAX_ACCURACY_METERS) {
+        // Don't discard low-accuracy GPS — let Kalman filter handle it with
+        // higher measurement noise. Only reject truly unusable (>100m = cell tower).
+        if (point.horizontalAccuracy > 100f) {
             return OutlierResult.Rejected(
-                "Accuracy too low: ${point.horizontalAccuracy}m > ${MAX_ACCURACY_METERS}m"
+                "Accuracy too low: ${point.horizontalAccuracy}m > 100m (cell tower)"
             )
         }
 

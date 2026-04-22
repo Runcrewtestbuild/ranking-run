@@ -28,7 +28,10 @@ class OutlierDetector {
     func validate(_ location: CLLocation) -> CLLocation? {
         // Layer 1: Basic validity checks
         guard location.horizontalAccuracy >= 0 else { return nil }
-        guard location.horizontalAccuracy <= maxHorizontalAccuracy else { return nil }
+        // Don't discard low-accuracy GPS — let Kalman filter handle it with
+        // higher measurement noise. Discarding means zero data in urban canyons.
+        // Only reject truly unusable readings (>100m = likely cell tower).
+        guard location.horizontalAccuracy <= 100.0 else { return nil }
 
         // Timestamp validation
         let currentTime = Date().timeIntervalSince1970
