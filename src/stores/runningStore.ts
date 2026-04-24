@@ -109,6 +109,16 @@ interface RunningState {
   // Checkpoint passes (course running)
   checkpointPasses: CheckpointPass[];
 
+  // Native course navigation state (iOS background-capable)
+  nativeCourseProgress: {
+    deviationMeters: number;
+    isOffCourse: boolean;
+    progressPercent: number;
+    remainingMeters: number;
+  } | null;
+  nativeCheckpointPasses: Array<{ order: number; elapsedSeconds: number }>;
+  nativeCourseFinished: boolean;
+
   // Stop location (captured when user taps stop)
   stopLocation: { latitude: number; longitude: number } | null;
 
@@ -157,6 +167,9 @@ interface RunningState {
   updateHeartRate: (bpm: number) => void;
   setWatchConnected: (connected: boolean) => void;
   setCheckpointPasses: (passes: CheckpointPass[]) => void;
+  setNativeCourseProgress: (progress: { deviationMeters: number; isOffCourse: boolean; progressPercent: number; remainingMeters: number }) => void;
+  addNativeCheckpointPass: (pass: { order: number; elapsedSeconds: number }) => void;
+  setNativeCourseFinished: (finished: boolean) => void;
   setAutoPaused: (paused: boolean) => void;
   setRunGoal: (goal: { type: 'distance' | 'time' | 'pace' | 'program' | 'interval' | null; value: number | null; targetTime?: number | null; cadenceBPM?: number | null; adaptiveMetronome?: boolean; intervalRunSeconds?: number; intervalWalkSeconds?: number; intervalSets?: number }) => void;
   addIntervalSegment: (segment: IntervalSegment) => void;
@@ -242,6 +255,9 @@ export const useRunningStore = create<RunningState>((set, get) => ({
   lapCount: 0,
 
   checkpointPasses: [],
+  nativeCourseProgress: null,
+  nativeCheckpointPasses: [],
+  nativeCourseFinished: false,
   stopLocation: null,
 
   startTime: null,
@@ -305,6 +321,9 @@ export const useRunningStore = create<RunningState>((set, get) => ({
       loopDetectedAt: null,
       lapCount: 0,
       checkpointPasses: [],
+      nativeCourseProgress: null,
+      nativeCheckpointPasses: [],
+      nativeCourseFinished: false,
       stopLocation: null,
       isAutoPaused: false,
       speedAnomalyDetected: false,
@@ -660,6 +679,9 @@ export const useRunningStore = create<RunningState>((set, get) => ({
       loopDetectedAt: null,
       lapCount: 0,
       checkpointPasses: [],
+      nativeCourseProgress: null,
+      nativeCheckpointPasses: [],
+      nativeCourseFinished: false,
       stopLocation: null,
       startTime: null,
       elapsedBeforePause: 0,
@@ -721,6 +743,20 @@ export const useRunningStore = create<RunningState>((set, get) => ({
 
   setCheckpointPasses: (passes) => {
     set({ checkpointPasses: passes });
+  },
+
+  setNativeCourseProgress: (progress) => {
+    set({ nativeCourseProgress: progress });
+  },
+
+  addNativeCheckpointPass: (pass) => {
+    set((state) => ({
+      nativeCheckpointPasses: [...state.nativeCheckpointPasses, pass],
+    }));
+  },
+
+  setNativeCourseFinished: (finished) => {
+    set({ nativeCourseFinished: finished });
   },
 
   setAutoPaused: (paused) => {
@@ -804,6 +840,9 @@ export const useRunningStore = create<RunningState>((set, get) => ({
       loopDetectedAt: null,
       lapCount: 0,
       checkpointPasses: [],
+      nativeCourseProgress: null,
+      nativeCheckpointPasses: [],
+      nativeCourseFinished: false,
     });
   },
 }));

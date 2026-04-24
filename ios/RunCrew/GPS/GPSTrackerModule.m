@@ -5,6 +5,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface RCT_EXTERN_MODULE(GPSTrackerModule, RCTEventEmitter)
 
+RCT_EXTERN_METHOD(setCourseRoute:(NSDictionary *)data
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(startTracking:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 

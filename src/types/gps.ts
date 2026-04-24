@@ -19,6 +19,10 @@ export interface GPSTrackerModule {
   getFilteredRoute(): Promise<FilteredLocation[]>;
   getSmoothedRoute(): Promise<SmoothedRouteResult>;
   getCurrentStatus(): Promise<GPSStatus>;
+  setCourseRoute(data: {
+    route: Array<{ latitude: number; longitude: number }>;
+    checkpoints: Array<{ latitude: number; longitude: number; order: number }>;
+  }): Promise<void>;
 }
 
 // ---- Native -> JS Events ----
@@ -100,12 +104,29 @@ export const GPS_EVENTS = {
   GPS_STATUS_CHANGE: 'GPSTracker_onGPSStatusChange',
   RUNNING_STATE_CHANGE: 'GPSTracker_onRunningStateChange',
   MILESTONE_REACHED: 'GPSTracker_onMilestoneReached',
+  COURSE_DEVIATION: 'GPSTracker_onCourseDeviation',
+  CHECKPOINT_PASSED: 'GPSTracker_onCheckpointPassed',
+  COURSE_FINISHED: 'GPSTracker_onCourseFinished',
 } as const;
 
 export interface MilestoneReachedEvent {
   km: number;
   splitPaceSecondsPerKm: number;
   totalTimeSeconds: number;
+}
+
+/** Course deviation event — emitted on each GPS update when a course is set. */
+export interface CourseDeviationEvent {
+  deviationMeters: number;
+  isOffCourse: boolean;
+  progressPercent: number;
+  remainingMeters: number;
+}
+
+/** Checkpoint passed event — emitted when runner enters 30m radius of a checkpoint. */
+export interface CheckpointPassedEvent {
+  order: number;
+  elapsedSeconds: number;
 }
 
 /** Native summary event — emitted at 1Hz with all running metrics pre-computed natively. */

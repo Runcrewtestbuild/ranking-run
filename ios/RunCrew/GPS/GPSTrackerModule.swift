@@ -77,6 +77,24 @@ class GPSTrackerModule: RCTEventEmitter {
             self?.sendEventIfListening("GPSTracker_onHeadingUpdate", body: event)
         }
 
+        engine.onCourseDeviation = { [weak self] deviation, isOffCourse, progress, remaining in
+            self?.sendEventIfListening("GPSTracker_onCourseDeviation", body: [
+                "deviationMeters": deviation,
+                "isOffCourse": isOffCourse,
+                "progressPercent": progress,
+                "remainingMeters": remaining,
+            ])
+        }
+        engine.onCheckpointPassed = { [weak self] order, elapsed in
+            self?.sendEventIfListening("GPSTracker_onCheckpointPassed", body: [
+                "order": order,
+                "elapsedSeconds": elapsed,
+            ])
+        }
+        engine.onCourseFinished = { [weak self] in
+            self?.sendEventIfListening("GPSTracker_onCourseFinished", body: [:])
+        }
+
         locationEngine = engine
     }
 
@@ -161,7 +179,10 @@ class GPSTrackerModule: RCTEventEmitter {
             "GPSTracker_onRunningStateChange",
             "GPSTracker_onHeadingUpdate",
             "GPSTracker_onWatchStartRun",
-            "GPSTracker_onMilestoneReached"
+            "GPSTracker_onMilestoneReached",
+            "GPSTracker_onCourseDeviation",
+            "GPSTracker_onCheckpointPassed",
+            "GPSTracker_onCourseFinished"
         ]
     }
 
@@ -192,6 +213,7 @@ class GPSTrackerModule: RCTEventEmitter {
         "GPSTracker_onGPSStatusChange",
         "GPSTracker_onRunningStateChange",
         "GPSTracker_onHeadingUpdate",
+        "GPSTracker_onCourseDeviation",
     ]
 
     private func sendEventIfListening(_ name: String, body: Any?) {
@@ -299,6 +321,27 @@ class GPSTrackerModule: RCTEventEmitter {
             "calories": 0
         ])
         resolve(nil)
+    }
+
+    /// Set course route and checkpoints for native course navigation.
+    /// Called from JS before or after startTracking when running a course.
+    @objc
+    func setCourseRoute(_ data: NSDictionary,
+                         resolver resolve: @escaping RCTPromiseResolveBlock,
+                         rejecter reject: @escaping RCTPromiseRejectBlock) {
+        guard let routeArray = data["route"] as? [[Double]],
+              let checkpointsArray = data["checkpoints"] as? [[String: Any]] else {
+            reject("INVALID", "Invalid course data: expected route as [[Double]] and checkpoints as [[String: Any]]", nil)
+            return
+        }
+        let route = routeArray.map { (lat: $0[0], lon: $0[1]) }
+        let checkpoints = checkpointsArray.map {
+            (lat: $0["latitude"] as? Double ?? 0,
+             lon: $0["longitude"] as? Double ?? 0,
+             order: $0["order"] as? Int ?? 0)
+        }
+        locationEngine?.setCourseRoute(route, checkpoints: checkpoints)
+        resolve(true)
     }
 
     @objc

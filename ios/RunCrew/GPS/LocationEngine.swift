@@ -55,6 +55,24 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
     var onMilestoneReached: ((Int, Int, Int) -> Void)?  // (km, splitPaceSecPerKm, totalTimeSeconds)
     var onHeadingUpdate: (([String: Any]) -> Void)?
 
+    // Course navigation callbacks
+    var onCourseDeviation: ((_ deviationMeters: Double, _ isOffCourse: Bool, _ progressPercent: Double, _ remainingMeters: Double) -> Void)?
+    var onCheckpointPassed: ((_ order: Int, _ elapsedSeconds: Int) -> Void)?
+    var onCourseFinished: (() -> Void)?
+
+    // Course navigation state (set when starting a course run)
+    private var courseRoute: [(lat: Double, lon: Double)] = []
+    private var courseCheckpoints: [(lat: Double, lon: Double, order: Int)] = []
+    private var courseCumulativeDistances: [Double] = []  // pre-computed
+    private var courseTotalDistance: Double = 0
+    private var nearestSegmentIndex: Int = 0
+    private var nextCheckpointIndex: Int = 0
+    private var passedCheckpoints: Set<Int> = []
+    private var courseFinishEmitted: Bool = false
+    /// Minimum distance (meters) the runner must have traveled before finish can trigger.
+    /// Prevents immediate completion on round-trip courses where start == finish.
+    private let minDistanceForFinish: Double = 200
+
     private var headingOnly = false  // standalone heading mode (no GPS tracking)
 
     private var currentGPSStatus: String = "searching"
@@ -177,6 +195,7 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         stopBackgroundExecution()
         persistTimer?.cancel()
         persistTimer = nil
+        clearCourseData()
         LocationEngine.clearPersistedState()
 
         DispatchQueue.main.async { [weak self] in
@@ -245,6 +264,41 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
                 self?.locationManager.stopUpdatingHeading()
             }
         }
+    }
+
+    /// Set course route and checkpoints for native course navigation.
+    /// Call before or after startTracking — course processing activates when both
+    /// courseRoute is non-empty and the session is running.
+    func setCourseRoute(_ route: [(lat: Double, lon: Double)], checkpoints: [(lat: Double, lon: Double, order: Int)]) {
+        courseRoute = route
+        courseCheckpoints = checkpoints.sorted(by: { $0.order < $1.order })
+        nearestSegmentIndex = 0
+        nextCheckpointIndex = 0
+        passedCheckpoints = []
+        courseFinishEmitted = false
+
+        // Pre-compute cumulative distances for O(1) progress lookup
+        var cumDist: [Double] = [0]
+        for i in 1..<route.count {
+            let d = GeoMath.distance(lat1: route[i - 1].lat, lon1: route[i - 1].lon,
+                                      lat2: route[i].lat, lon2: route[i].lon)
+            cumDist.append(cumDist.last! + d)
+        }
+        courseCumulativeDistances = cumDist
+        courseTotalDistance = cumDist.last ?? 0
+        NSLog("[LocationEngine] Course set: \(route.count) points, \(checkpoints.count) checkpoints, total \(String(format: "%.0f", courseTotalDistance))m")
+    }
+
+    /// Clear course data (called on stopTracking or when course run ends).
+    private func clearCourseData() {
+        courseRoute = []
+        courseCheckpoints = []
+        courseCumulativeDistances = []
+        courseTotalDistance = 0
+        nearestSegmentIndex = 0
+        nextCheckpointIndex = 0
+        passedCheckpoints = []
+        courseFinishEmitted = false
     }
 
     func getRawGPSPoints() -> [[String: Any]] {
@@ -599,6 +653,11 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
             lastFilteredLocation = filteredLocation
         }
 
+        // Course navigation — runs natively so it works in background
+        if !courseRoute.isEmpty {
+            processCourseNavigation(lat: emitLat, lon: emitLon)
+        }
+
         // Cadence: use rolling 15s step timestamp buffer (matches Android).
         // This provides lower-latency cadence than CMPedometer.currentCadence
         // which can lag by several seconds.
@@ -670,6 +729,113 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
             }
         }
         previousCumulativeDistance = cumulativeDistance
+    }
+
+    // MARK: - Course Navigation (native, works in background)
+
+    /// Process course navigation: deviation, progress, checkpoint detection, finish.
+    /// Mirrors JS useCourseNavigation + useCheckpointTracker logic but runs natively
+    /// so it continues working when the app is backgrounded.
+    private func processCourseNavigation(lat: Double, lon: Double) {
+        guard courseRoute.count >= 2 else { return }
+
+        // 1. Find nearest point on course (windowed search around last known index)
+        //    Forward-biased window: look ahead more than behind to handle forward movement.
+        //    Limited backward regression prevents snapping to earlier segments on round-trip courses.
+        let searchStart = max(0, nearestSegmentIndex - 5)
+        let searchEnd = min(courseRoute.count - 2, nearestSegmentIndex + 30)
+
+        var minDist = Double.greatestFiniteMagnitude
+        var bestIdx = nearestSegmentIndex
+
+        for i in searchStart...searchEnd {
+            let a = courseRoute[i]
+            let b = courseRoute[i + 1]
+            let d = pointToSegmentDistance(lat: lat, lon: lon,
+                                            ax: a.lat, ay: a.lon,
+                                            bx: b.lat, by: b.lon)
+            if d < minDist {
+                minDist = d
+                bestIdx = i
+            }
+        }
+        nearestSegmentIndex = bestIdx
+
+        // 2. Deviation check
+        let deviationMeters = minDist
+        let isOffCourse = deviationMeters > 30  // 30m threshold (matches JS OFF_COURSE_THRESHOLD)
+
+        // 3. Progress calculation
+        let progressDist = courseCumulativeDistances[bestIdx] +
+            partialSegmentDistance(lat: lat, lon: lon, segIndex: bestIdx)
+        let progressPercent = courseTotalDistance > 0
+            ? min(100, max(0, progressDist / courseTotalDistance * 100))
+            : 0
+        let remainingMeters = max(0, courseTotalDistance - progressDist)
+
+        onCourseDeviation?(deviationMeters, isOffCourse, progressPercent, remainingMeters)
+
+        // 4. Checkpoint detection (30m radius, sequential order)
+        if nextCheckpointIndex < courseCheckpoints.count {
+            let cp = courseCheckpoints[nextCheckpointIndex]
+            let isFinish = nextCheckpointIndex == courseCheckpoints.count - 1
+            let radius: Double = isFinish ? 50 : 30  // larger radius for finish (matches JS FINISH_RADIUS_METERS)
+            let distToCP = GeoMath.distance(lat1: lat, lon1: lon, lat2: cp.lat, lon2: cp.lon)
+
+            // Guard: finish checkpoint requires minimum distance traveled
+            var canPass = distToCP <= radius
+            if canPass && isFinish && cumulativeDistance < minDistanceForFinish {
+                canPass = false
+            }
+
+            if canPass && !passedCheckpoints.contains(cp.order) {
+                passedCheckpoints.insert(cp.order)
+                let elapsed = Int(session.getCurrentElapsedTime())
+                onCheckpointPassed?(cp.order, elapsed)
+                nextCheckpointIndex += 1
+            }
+        }
+
+        // 5. Finish detection — last checkpoint passed or very close to course end
+        if !courseFinishEmitted {
+            let allCheckpointsPassed = !courseCheckpoints.isEmpty &&
+                nextCheckpointIndex >= courseCheckpoints.count
+            let nearEnd = progressPercent >= 95 && remainingMeters < 50 &&
+                cumulativeDistance >= minDistanceForFinish
+
+            if allCheckpointsPassed || nearEnd {
+                courseFinishEmitted = true
+                onCourseFinished?()
+            }
+        }
+    }
+
+    /// Distance from point to line segment (projected), in meters.
+    /// Uses equirectangular approximation (accurate enough at running scale).
+    private func pointToSegmentDistance(lat: Double, lon: Double,
+                                         ax: Double, ay: Double,
+                                         bx: Double, by: Double) -> Double {
+        let cosLat = cos((ax + lat) / 2 * .pi / 180)
+        let dx = (by - ay) * cosLat
+        let dy = bx - ax
+        let px = (lon - ay) * cosLat
+        let py = lat - ax
+        let segLen2 = dx * dx + dy * dy
+        guard segLen2 > 0 else {
+            return GeoMath.distance(lat1: lat, lon1: lon, lat2: ax, lon2: ay)
+        }
+        let t = max(0, min(1, (px * dx + py * dy) / segLen2))
+        let projLon = ay + t * (by - ay)
+        let projLat = ax + t * (bx - ax)
+        return GeoMath.distance(lat1: lat, lon1: lon, lat2: projLat, lon2: projLon)
+    }
+
+    /// Distance from segment start point to the runner's projection on that segment.
+    /// Used to compute fractional progress along the current segment.
+    private func partialSegmentDistance(lat: Double, lon: Double, segIndex: Int) -> Double {
+        guard segIndex < courseRoute.count else { return 0 }
+        let a = courseRoute[segIndex]
+        return GeoMath.distance(lat1: a.lat, lon1: a.lon, lat2: lat, lon2: lon)
     }
 
     // MARK: - Summary Timer (1-second JS event)

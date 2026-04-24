@@ -13,6 +13,7 @@ import {
   Alert,
   Platform,
   NativeModules,
+  NativeEventEmitter,
   Animated,
   LayoutAnimation,
   Image,
@@ -67,6 +68,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../stores/authStore';
 import { useToastStore } from '../../stores/toastStore';
 import { MAPBOX_ACCESS_TOKEN } from '../../config/env';
+import { GPS_EVENTS } from '../../types/gps';
 
 type WorldNav = NativeStackNavigationProp<WorldStackParamList, 'World'>;
 
@@ -847,6 +849,48 @@ export default function WorldScreen() {
     }
   }, [phase, runCourseId, navLat, navLng, updateCheckpointLocation]);
 
+  // Native course event listeners — these fire even when the app is backgrounded,
+  // unlike the JS useCourseNavigation / useCheckpointTracker hooks which depend on
+  // React state updates that are suspended in background.
+  useEffect(() => {
+    if (Platform.OS !== 'ios' || !NativeModules.GPSTrackerModule) return;
+    if (phase !== 'running' && phase !== 'paused') return;
+    if (!runCourseId) return;
+
+    const emitter = new NativeEventEmitter(NativeModules.GPSTrackerModule);
+
+    const deviationSub = emitter.addListener(
+      GPS_EVENTS.COURSE_DEVIATION,
+      (event: { deviationMeters: number; isOffCourse: boolean; progressPercent: number; remainingMeters: number }) => {
+        // Store native course progress for components that need it (RunningHUD, etc.)
+        useRunningStore.getState().setNativeCourseProgress?.(event);
+      },
+    );
+
+    const checkpointSub = emitter.addListener(
+      GPS_EVENTS.CHECKPOINT_PASSED,
+      (event: { order: number; elapsedSeconds: number }) => {
+        console.log('[WorldScreen] Native checkpoint passed: order', event.order);
+        // Store the checkpoint pass for submission
+        useRunningStore.getState().addNativeCheckpointPass?.(event);
+      },
+    );
+
+    const finishSub = emitter.addListener(
+      GPS_EVENTS.COURSE_FINISHED,
+      () => {
+        console.log('[WorldScreen] Native course finished');
+        useRunningStore.getState().setNativeCourseFinished?.(true);
+      },
+    );
+
+    return () => {
+      deviationSub.remove();
+      checkpointSub.remove();
+      finishSub.remove();
+    };
+  }, [phase, runCourseId]);
+
   // Competition start toast when start checkpoint (order=0) is passed
   const [competitionStartShown, setCompetitionStartShown] = useState(false);
   useEffect(() => {
@@ -1090,6 +1134,23 @@ export default function WorldScreen() {
           setCourseCheckpoints(cps);
         }
         setCourseElevationProfile(detail.elevation_profile?.length ? detail.elevation_profile : null);
+
+        // Send course data to native LocationEngine for background-capable
+        // course navigation (deviation detection, checkpoint passes, finish detection).
+        // This must happen before startTracking() so the engine is ready when GPS starts.
+        if (Platform.OS === 'ios' && NativeModules.GPSTrackerModule?.setCourseRoute) {
+          const routeCoords = geoJsonToLatLng(detail.route_geometry);
+          NativeModules.GPSTrackerModule.setCourseRoute({
+            route: routeCoords.map((p: { latitude: number; longitude: number }) => [p.latitude, p.longitude]),
+            checkpoints: cps?.map((cp: CourseCheckpoint) => ({
+              latitude: cp.lat,
+              longitude: cp.lng,
+              order: cp.order,
+            })) ?? [],
+          }).catch((err: any) => {
+            console.warn('[WorldScreen] Native setCourseRoute failed:', err);
+          });
+        }
 
         // Always enter navigate-to-start mode for course runs
         const startCp = cps?.find((cp) => cp.order === 0);

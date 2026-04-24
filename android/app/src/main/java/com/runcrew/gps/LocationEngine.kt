@@ -81,6 +81,9 @@ class LocationEngine(
         fun onGPSStatusChange(status: String, accuracy: Float?, satelliteCount: Int)
         fun onRunningStateChange(state: String, durationMs: Long)
         fun onMilestoneReached(km: Int, splitPaceSecondsPerKm: Int, totalTimeSeconds: Int)
+        fun onCourseDeviation(deviationMeters: Double, isOffCourse: Boolean, progressPercent: Double, remainingMeters: Double)
+        fun onCheckpointPassed(order: Int, elapsedSeconds: Int)
+        fun onCourseFinished()
         fun onError(code: String, message: String)
     }
 
@@ -155,6 +158,19 @@ class LocationEngine(
     @Volatile
     private var previousMilestoneTime = 0L  // elapsed ms at last km milestone
 
+    // --- Course navigation ---
+
+    private var courseRoute: List<Pair<Double, Double>> = emptyList() // (lat, lon)
+    private var courseCheckpoints: List<Triple<Double, Double, Int>> = emptyList() // (lat, lon, order)
+    private var courseCumulativeDistances: List<Double> = emptyList()
+    private var courseTotalDistance: Double = 0.0
+    private var nearestSegmentIndex: Int = 0
+    private var nextCheckpointIndex: Int = 0
+    private val passedCheckpoints: MutableSet<Int> = mutableSetOf()
+
+    @Volatile
+    private var courseFinished: Boolean = false
+
     // --- Indoor / pedometer fallback ---
     // Uses a dedicated HandlerThread instead of the main looper so callbacks
     // fire reliably even if the main thread is busy (e.g., during UI rendering).
@@ -222,6 +238,10 @@ class LocationEngine(
         previousMilestoneTime = 0L
         lastGPSAccuracy = 0f
         lastCadenceSPM = 0
+        nearestSegmentIndex = 0
+        nextCheckpointIndex = 0
+        passedCheckpoints.clear()
+        courseFinished = false
 
         // Start sensors
         sensorFusionManager?.start()
@@ -546,6 +566,11 @@ class LocationEngine(
         // Emit to listener
         listener?.onFilteredLocationUpdate(filteredLocation, session)
 
+        // Course navigation: deviation, checkpoint, and finish detection
+        if (courseRoute.isNotEmpty()) {
+            processCourseNavigation(emitLat, emitLng)
+        }
+
         // Milestone detection: emit split event at every km boundary.
         // Loop to emit ALL missed km boundaries when a GPS jump >1km occurs
         // (e.g. tunnel exit, background resume) so the split array stays complete.
@@ -562,6 +587,132 @@ class LocationEngine(
             }
         }
         previousMilestoneDistance = cumulativeDistance
+    }
+
+    // --- Course navigation ---
+
+    /**
+     * Set the course route for navigation and checkpoint detection.
+     * Pre-computes cumulative distances for progress calculation.
+     *
+     * @param route List of (latitude, longitude) pairs defining the course path
+     * @param checkpoints List of (latitude, longitude, order) triples for checkpoint detection
+     */
+    fun setCourseRoute(
+        route: List<Pair<Double, Double>>,
+        checkpoints: List<Triple<Double, Double, Int>>
+    ) {
+        courseRoute = route
+        courseCheckpoints = checkpoints.sortedBy { it.third }
+        nearestSegmentIndex = 0
+        nextCheckpointIndex = 0
+        passedCheckpoints.clear()
+        courseFinished = false
+
+        // Pre-compute cumulative distances along the route
+        val distances = mutableListOf(0.0)
+        for (i in 1 until route.size) {
+            val prev = route[i - 1]
+            val curr = route[i]
+            val segDist = GeoMath.haversineDistance(prev.first, prev.second, curr.first, curr.second)
+            distances.add(distances.last() + segDist)
+        }
+        courseCumulativeDistances = distances
+        courseTotalDistance = if (distances.isNotEmpty()) distances.last() else 0.0
+
+        Log.i(TAG, "Course set: ${route.size} points, ${checkpoints.size} checkpoints, total=${courseTotalDistance}m")
+    }
+
+    /**
+     * Process course navigation after each filtered GPS update.
+     * Finds nearest point on course, calculates deviation and progress,
+     * detects checkpoint passages and course finish.
+     */
+    private fun processCourseNavigation(lat: Double, lon: Double) {
+        if (courseRoute.size < 2 || courseFinished) return
+
+        // --- Nearest point search (windowed around last known index) ---
+        val searchStart = maxOf(0, nearestSegmentIndex - 5)
+        val searchEnd = minOf(courseRoute.size - 2, nearestSegmentIndex + 30)
+
+        var bestDist = Double.MAX_VALUE
+        var bestIndex = nearestSegmentIndex
+        var bestProjectionFraction = 0.0
+
+        for (i in searchStart..searchEnd) {
+            val a = courseRoute[i]
+            val b = courseRoute[i + 1]
+            val (dist, fraction) = pointToSegmentDistance(lat, lon, a.first, a.second, b.first, b.second)
+            if (dist < bestDist) {
+                bestDist = dist
+                bestIndex = i
+                bestProjectionFraction = fraction
+            }
+        }
+
+        nearestSegmentIndex = bestIndex
+
+        // --- Deviation detection ---
+        val deviationThreshold = 30.0 // meters
+        val isOffCourse = bestDist > deviationThreshold
+
+        // --- Progress calculation ---
+        val projectedDistance = courseCumulativeDistances[bestIndex] +
+            bestProjectionFraction * (courseCumulativeDistances[bestIndex + 1] - courseCumulativeDistances[bestIndex])
+        val progressPercent = if (courseTotalDistance > 0) {
+            (projectedDistance / courseTotalDistance * 100.0).coerceIn(0.0, 100.0)
+        } else 0.0
+        val remainingMeters = (courseTotalDistance - projectedDistance).coerceAtLeast(0.0)
+
+        listener?.onCourseDeviation(bestDist, isOffCourse, progressPercent, remainingMeters)
+
+        // --- Checkpoint detection (30m radius) ---
+        val checkpointRadius = 30.0
+        for (cp in courseCheckpoints) {
+            if (passedCheckpoints.contains(cp.third)) continue
+            val cpDist = GeoMath.haversineDistance(lat, lon, cp.first, cp.second)
+            if (cpDist <= checkpointRadius) {
+                passedCheckpoints.add(cp.third)
+                val elapsedSeconds = (session.getElapsedTime() / 1000).toInt()
+                listener?.onCheckpointPassed(cp.third, elapsedSeconds)
+            }
+        }
+
+        // --- Finish detection (95%+ progress, <50m remaining) ---
+        if (progressPercent >= 95.0 && remainingMeters < 50.0) {
+            courseFinished = true
+            listener?.onCourseFinished()
+        }
+    }
+
+    /**
+     * Calculate the distance from a point to a line segment, with cosine latitude correction.
+     * Returns (distance in meters, projection fraction 0..1 along segment).
+     */
+    private fun pointToSegmentDistance(
+        pLat: Double, pLon: Double,
+        aLat: Double, aLon: Double,
+        bLat: Double, bLon: Double
+    ): Pair<Double, Double> {
+        // Approximate meters using cosine latitude correction
+        val cosLat = kotlin.math.cos(Math.toRadians(pLat))
+        val dx = (bLon - aLon) * cosLat
+        val dy = bLat - aLat
+        val px = (pLon - aLon) * cosLat
+        val py = pLat - aLat
+
+        val segLenSq = dx * dx + dy * dy
+        if (segLenSq < 1e-12) {
+            // Degenerate segment — distance to point A
+            return Pair(GeoMath.haversineDistance(pLat, pLon, aLat, aLon), 0.0)
+        }
+
+        val t = ((px * dx + py * dy) / segLenSq).coerceIn(0.0, 1.0)
+        val projLat = aLat + t * (bLat - aLat)
+        val projLon = aLon + t * (bLon - aLon)
+
+        val dist = GeoMath.haversineDistance(pLat, pLon, projLat, projLon)
+        return Pair(dist, t)
     }
 
     // --- Summary timer (1-second cadence) ---

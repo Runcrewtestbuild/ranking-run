@@ -48,6 +48,9 @@ class GPSTrackerModule(
         private const val EVENT_MILESTONE_REACHED = "GPSTracker_onMilestoneReached"
         private const val EVENT_HEADING_UPDATE = "GPSTracker_onHeadingUpdate"
         private const val EVENT_SUMMARY = "GPSTracker_onSummary"
+        private const val EVENT_COURSE_DEVIATION = "GPSTracker_onCourseDeviation"
+        private const val EVENT_CHECKPOINT_PASSED = "GPSTracker_onCheckpointPassed"
+        private const val EVENT_COURSE_FINISHED = "GPSTracker_onCourseFinished"
 
         // Error codes matching shared-interfaces.md
         private const val ERROR_PERMISSION_DENIED = "PERMISSION_DENIED"
@@ -249,6 +252,46 @@ class GPSTrackerModule(
                 Log.e(TAG, "Error restarting tracking", e)
                 promise.reject(ERROR_SERVICE_UNAVAILABLE, "Failed to restart tracking: ${e.message}", e)
             }
+        }
+    }
+
+    // --- Course navigation ---
+
+    @ReactMethod
+    fun setCourseRoute(data: ReadableMap, promise: Promise) {
+        try {
+            val routeArray = data.getArray("route")
+            val checkpointsArray = data.getArray("checkpoints")
+
+            val route = mutableListOf<Pair<Double, Double>>()
+            if (routeArray != null) {
+                for (i in 0 until routeArray.size()) {
+                    val point = routeArray.getMap(i)
+                    if (point != null) {
+                        route.add(Pair(point.getDouble("latitude"), point.getDouble("longitude")))
+                    }
+                }
+            }
+
+            val checkpoints = mutableListOf<Triple<Double, Double, Int>>()
+            if (checkpointsArray != null) {
+                for (i in 0 until checkpointsArray.size()) {
+                    val cp = checkpointsArray.getMap(i)
+                    if (cp != null) {
+                        checkpoints.add(Triple(
+                            cp.getDouble("latitude"),
+                            cp.getDouble("longitude"),
+                            cp.getInt("order")
+                        ))
+                    }
+                }
+            }
+
+            locationEngine?.setCourseRoute(route, checkpoints)
+            promise.resolve(null)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting course route", e)
+            promise.reject(ERROR_SERVICE_UNAVAILABLE, "Failed to set course route: ${e.message}", e)
         }
     }
 
@@ -525,6 +568,29 @@ class GPSTrackerModule(
             putInt("totalTimeSeconds", totalTimeSeconds)
         }
         sendEvent(EVENT_MILESTONE_REACHED, params)
+    }
+
+    override fun onCourseDeviation(deviationMeters: Double, isOffCourse: Boolean, progressPercent: Double, remainingMeters: Double) {
+        val params = Arguments.createMap().apply {
+            putDouble("deviationMeters", deviationMeters)
+            putBoolean("isOffCourse", isOffCourse)
+            putDouble("progressPercent", progressPercent)
+            putDouble("remainingMeters", remainingMeters)
+        }
+        sendEvent(EVENT_COURSE_DEVIATION, params)
+    }
+
+    override fun onCheckpointPassed(order: Int, elapsedSeconds: Int) {
+        val params = Arguments.createMap().apply {
+            putInt("order", order)
+            putInt("elapsedSeconds", elapsedSeconds)
+        }
+        sendEvent(EVENT_CHECKPOINT_PASSED, params)
+    }
+
+    override fun onCourseFinished() {
+        val params = Arguments.createMap()
+        sendEvent(EVENT_COURSE_FINISHED, params)
     }
 
     override fun onError(code: String, message: String) {
