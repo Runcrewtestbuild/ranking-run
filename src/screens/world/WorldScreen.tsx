@@ -69,6 +69,9 @@ import { useAuthStore } from '../../stores/authStore';
 import { useToastStore } from '../../stores/toastStore';
 import { MAPBOX_ACCESS_TOKEN } from '../../config/env';
 import { GPS_EVENTS } from '../../types/gps';
+import { snapToRoads } from '../../utils/mapMatching';
+import { getRoutePoints } from '../../stores/runningStore';
+import { useNetworkStatus } from '../../hooks/useNetworkStatus';
 
 type WorldNav = NativeStackNavigationProp<WorldStackParamList, 'World'>;
 
@@ -390,6 +393,52 @@ export default function WorldScreen() {
   // useRunTimer removed — durationSeconds comes from native summary event
   useLiveActivity();
   useRunningSessionPersistence();
+
+  // ---- Real-time route snapping (Mapbox Map Matching) ----
+  // Accumulate GPS points and periodically snap to roads for a cleaner map display.
+  // Raw GPS data (routePoints, filteredLocations) is never modified — only the
+  // displayed polyline changes via snappedRouteOverride passed to RouteMapView.
+  const isOnline = useNetworkStatus();
+  const [snappedRoute, setSnappedRoute] = useState<Array<{ latitude: number; longitude: number }>>([]);
+  const lastSnapCountRef = useRef(0);
+  const snapInFlightRef = useRef(false);
+  const setSnappedRouteStore = useRunningStore((s) => s.setSnappedRoute);
+
+  // Subscribe to routePointsVersion to trigger snap checks without re-rendering on every GPS tick
+  const routePointsVersion = useRunningStore((s) => s.routePointsVersion);
+
+  useEffect(() => {
+    if (phase !== 'running' || !isOnline) return;
+
+    const currentRoutePoints = getRoutePoints();
+    const newPoints = currentRoutePoints.length - lastSnapCountRef.current;
+    if (newPoints < 10) return;
+    if (snapInFlightRef.current) return; // Don't stack concurrent API calls
+
+    lastSnapCountRef.current = currentRoutePoints.length;
+    snapInFlightRef.current = true;
+
+    // Send last 100 points for matching (Mapbox limit)
+    const recent = currentRoutePoints.slice(-100);
+    snapToRoads(recent).then((result) => {
+      if (result && result.confidence > 0.5) {
+        const snapped = result.coordinates.map(([lng, lat]) => ({
+          latitude: lat,
+          longitude: lng,
+        }));
+        setSnappedRoute((prev) => {
+          // Replace the last portion with the snapped version
+          const keepOld = prev.slice(0, Math.max(0, prev.length - 100));
+          const merged = [...keepOld, ...snapped];
+          return merged;
+        });
+        // Also persist to store for session recovery
+        setSnappedRouteStore(snapped);
+      }
+    }).catch(() => {}).finally(() => {
+      snapInFlightRef.current = false;
+    });
+  }, [phase, isOnline, routePointsVersion, setSnappedRouteStore]);
 
   // Pace coaching (program goal only)
   const paceCoachingEnabled = storeRunGoal?.type === 'program';
@@ -960,6 +1009,11 @@ export default function WorldScreen() {
 
     setPhase('countdown');
     setCountdown(countdownSeconds);
+
+    // Reset snapped route for new run
+    setSnappedRoute([]);
+    lastSnapCountRef.current = 0;
+    snapInFlightRef.current = false;
 
     // Ensure location permission during countdown (runs in parallel, not blocking)
     const permissionCheck = (async () => {
@@ -2024,6 +2078,7 @@ export default function WorldScreen() {
         ref={mapRef}
         markers={isInRun || navigatingToStart || is3DMode ? [] : mapMarkers}
         subscribeToRunningRoute={isInRun}
+        snappedRouteOverride={isInRun && snappedRoute.length > 0 ? snappedRoute : undefined}
         previewPolyline={
           isInRun
             ? (runCourseId && courseRoute ? courseRoute : undefined)

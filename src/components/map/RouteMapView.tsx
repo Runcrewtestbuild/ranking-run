@@ -135,6 +135,8 @@ interface RouteMapViewProps {
   lapCount?: number;
   /** When true, subscribe to routePoints from runningStore internally (avoids parent re-renders on GPS ticks) */
   subscribeToRunningRoute?: boolean;
+  /** Client-side snapped route points (Mapbox Map Matching). When provided & non-empty, displayed instead of raw GPS route. */
+  snappedRouteOverride?: Array<{ latitude: number; longitude: number }>;
 }
 
 export interface Camera {
@@ -358,15 +360,21 @@ const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function 
   useGradient = false,
   lapCount,
   subscribeToRunningRoute = false,
+  snappedRouteOverride,
 }, ref) {
   // When subscribeToRunningRoute is true, subscribe to version counter (number)
   // instead of the array reference. This avoids shallow-compare on large arrays.
   // Read the actual data from getRoutePoints() which returns the mutable backing array.
   const routeVersion = useRunningStore((s) => subscribeToRunningRoute ? s.routePointsVersion : -1);
-  const routePoints = useMemo(() => {
+  const rawRoutePoints = useMemo(() => {
     if (!subscribeToRunningRoute || routeVersion < 0) return routePointsProp;
     return useRunningStore.getState().routePoints;
   }, [subscribeToRunningRoute, routeVersion, routePointsProp]);
+
+  // Use client-side snapped route for display when available, fall back to raw GPS
+  const routePoints = (snappedRouteOverride && snappedRouteOverride.length > 0)
+    ? snappedRouteOverride
+    : rawRoutePoints;
 
   const cameraRef = useRef<Mapbox.Camera>(null);
   const mapViewRef = useRef<Mapbox.MapView>(null);
@@ -728,7 +736,8 @@ const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function 
     if (!isRouteMode || routePoints.length < 2) return null;
     const len = routePoints.length;
     // During live running (subscribeToRunningRoute), throttle updates
-    if (subscribeToRunningRoute && cachedRouteGeoJSONRef.current && len - lastGeoJSONLenRef.current < 10) {
+    // Skip throttle when using snapped route — snap calls already batch updates
+    if (subscribeToRunningRoute && !snappedRouteOverride?.length && cachedRouteGeoJSONRef.current && len - lastGeoJSONLenRef.current < 10) {
       return cachedRouteGeoJSONRef.current;
     }
     lastGeoJSONLenRef.current = len;
@@ -736,7 +745,7 @@ const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function 
     return cachedRouteGeoJSONRef.current;
   // routeVersion triggers rebuild when mutable backing array is updated
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRouteMode, routePoints, subscribeToRunningRoute, routeVersion]);
+  }, [isRouteMode, routePoints, subscribeToRunningRoute, routeVersion, snappedRouteOverride]);
 
   // Deviation overlay GeoJSON (red segments where runner went off-course)
   const deviationGeoJSON = useMemo<GeoJSON.Feature<GeoJSON.MultiLineString> | null>(() => {

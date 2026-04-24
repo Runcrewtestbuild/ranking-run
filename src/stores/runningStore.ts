@@ -174,6 +174,7 @@ interface RunningState {
   setRunGoal: (goal: { type: 'distance' | 'time' | 'pace' | 'program' | 'interval' | null; value: number | null; targetTime?: number | null; cadenceBPM?: number | null; adaptiveMetronome?: boolean; intervalRunSeconds?: number; intervalWalkSeconds?: number; intervalSets?: number }) => void;
   addIntervalSegment: (segment: IntervalSegment) => void;
   addSnappedPoint: (coord: { latitude: number; longitude: number }) => void;
+  setSnappedRoute: (points: Array<{ latitude: number; longitude: number }>) => void;
   restoreSession: (data: {
     sessionId: string;
     courseId: string | null;
@@ -788,6 +789,10 @@ export const useRunningStore = create<RunningState>((set, get) => ({
       const pts = state.snappedRoutePoints.concat(coord);
       return { snappedRoutePoints: pts.length > 10000 ? pts.slice(-8000) : pts };
     });
+  },
+
+  setSnappedRoute: (points) => {
+    set({ snappedRoutePoints: points.length > 10000 ? points.slice(-8000) : points });
   },
 
   restoreSession: (data) => {
