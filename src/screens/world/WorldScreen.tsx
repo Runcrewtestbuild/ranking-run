@@ -44,7 +44,7 @@ import type { RunGoal } from '../../components/running/RunGoalSheet';
 
 // Running hooks
 import { useGPSTracker } from '../../hooks/useGPSTracker';
-import { useRunTimer } from '../../hooks/useRunTimer';
+// useRunTimer removed — native GPS engine provides durationSeconds via summary event
 import { useWatchCompanion } from '../../hooks/useWatchCompanion';
 import { useCourseNavigation } from '../../hooks/useCourseNavigation';
 import { useCheckpointTracker } from '../../hooks/useCheckpointTracker';
@@ -387,7 +387,7 @@ export default function WorldScreen() {
 
   // GPS & timer hooks (always mounted, only active when phase is running/paused)
   const { startTracking, stopTracking, pauseTracking, resumeTracking } = useGPSTracker();
-  useRunTimer();
+  // useRunTimer removed — durationSeconds comes from native summary event
   useLiveActivity();
   useRunningSessionPersistence();
 

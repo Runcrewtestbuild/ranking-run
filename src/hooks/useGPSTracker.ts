@@ -33,6 +33,7 @@ export function useGPSTracker() {
   // the useEffect from re-subscribing on every store update).
   const phase = useRunningStore(s => s.phase);
   const updateLocation = useRunningStore(s => s.updateLocation);
+  const updateDuration = useRunningStore(s => s.updateDuration);
   const updateGPSStatus = useRunningStore(s => s.updateGPSStatus);
   const addSplit = useRunningStore(s => s.addSplit);
   const setAutoPaused = useRunningStore(s => s.setAutoPaused);
@@ -107,6 +108,8 @@ export function useGPSTracker() {
           cadence: summary.cadence,
         };
         updateLocation(event);
+        // Update duration from native timer (replaces JS useRunTimer)
+        updateDuration(summary.durationSeconds);
       },
     );
 
@@ -234,7 +237,7 @@ export function useGPSTracker() {
       }
       appStateSubscription.remove();
     };
-  }, [phase, updateLocation, updateGPSStatus, addSplit, setAutoPaused]);
+  }, [phase, updateLocation, updateDuration, updateGPSStatus, addSplit, setAutoPaused]);
 
   return {
     startTracking,
