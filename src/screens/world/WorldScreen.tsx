@@ -38,7 +38,7 @@ import type { RouteMapViewHandle, CourseMarkerData, Region } from '../../compone
 import type { WorldStackParamList } from '../../types/navigation';
 import type { GeoJSONLineString, CourseCheckpoint, RankingEntry } from '../../types/api';
 import type { CheckpointMarkerData } from '../../components/map/RouteMapView';
-import { RunStartOverlay, RunGoalSheet, RunSettingsSheet, WelcomeOverlay } from '../../components/running';
+import { RunStartOverlay, RunGoalSheet, RunSettingsSheet, WelcomeOverlay, RunMetricsGrid, HeroDistance, NavigateCompassArrow } from '../../components/running';
 import type { RunGoal } from '../../components/running/RunGoalSheet';
 
 // Running hooks
@@ -331,10 +331,6 @@ export default function WorldScreen() {
     durationSeconds,
     avgPaceSecondsPerKm,
     gpsStatus,
-    calories,
-    heartRate,
-    cadence,
-    elevationGainMeters,
     watchConnected,
     isAutoPaused,
     isApproachingStart,
@@ -352,10 +348,6 @@ export default function WorldScreen() {
     durationSeconds: s.durationSeconds,
     avgPaceSecondsPerKm: s.avgPaceSecondsPerKm,
     gpsStatus: s.gpsStatus,
-    calories: s.calories,
-    heartRate: s.heartRate,
-    cadence: s.cadence,
-    elevationGainMeters: s.elevationGainMeters,
     watchConnected: s.watchConnected,
     isAutoPaused: s.isAutoPaused,
     isApproachingStart: s.isApproachingStart,
@@ -369,9 +361,11 @@ export default function WorldScreen() {
     intervalSegments: s.intervalSegments,
   })));
 
-  // currentLocation changes on every GPS tick — subscribe separately to
-  // prevent the entire 2600-line component from re-rendering on each update.
-  const currentLocation = useRunningStore((s) => s.currentLocation);
+  // PERF: Do NOT subscribe to currentLocation here — it changes on every GPS
+  // tick and would cause a full re-render of this 4000-line component at 1Hz.
+  // Child components (RunMetricsGrid, HeroDistance, NavigateCompassArrow) and
+  // hooks (useCourseNavigation) subscribe independently.
+  // Use useRunningStore.getState().currentLocation in callbacks/effects.
 
   // Actions don't change — subscribe outside useShallow to avoid object recreation
   const startSession = useRunningStore((s) => s.startSession);
@@ -410,14 +404,7 @@ export default function WorldScreen() {
     splits,
   });
 
-  // DEBUG: remove after confirming pace coaching works
-  useEffect(() => {
-    if (phase === 'running' && paceCoachingEnabled) {
-      if (__DEV__) console.log('[PaceCoaching] enabled:', paceCoachingEnabled,
-        'targetDist:', paceCoachingTargetDist, 'targetTime:', paceCoachingTargetTime,
-        'dist:', distanceMeters, 'result:', paceCoaching ? paceCoaching.status : 'null');
-    }
-  }, [phase, distanceMeters, paceCoaching, paceCoachingEnabled, paceCoachingTargetDist, paceCoachingTargetTime]);
+  // PERF: Removed debug pace coaching console.log that fired on every GPS tick.
 
   // Metronome auto-start/stop
   const [metronomeMuted, setMetronomeMuted] = useState(false);
@@ -510,19 +497,25 @@ export default function WorldScreen() {
   const [courseCheckpoints, setCourseCheckpoints] = useState<CourseCheckpoint[] | null>(null);
   const [courseElevationProfile, setCourseElevationProfile] = useState<number[] | null>(null);
 
-  // Stabilize location coordinate reference for useCourseNavigation to avoid
-  // re-computing navigation on every render when lat/lng haven't changed.
+  // Subscribe to individual location primitives for course navigation.
+  // Zustand primitive selectors use === equality, so these only trigger
+  // re-renders when the actual coordinate values change (not on every tick
+  // if the location object is recreated but coords are identical).
+  const navLat = useRunningStore((s) => s.currentLocation?.latitude ?? null);
+  const navLng = useRunningStore((s) => s.currentLocation?.longitude ?? null);
+  const navBearing = useRunningStore((s) => s.currentLocation?.bearing ?? 0);
+  const navGpsAccuracy = useRunningStore((s) => s.gpsAccuracy);
   const stableNavLocation = useMemo(
-    () => currentLocation ? { latitude: currentLocation.latitude, longitude: currentLocation.longitude } : null,
-    [currentLocation?.latitude, currentLocation?.longitude],
+    () => navLat != null && navLng != null ? { latitude: navLat, longitude: navLng } : null,
+    [navLat, navLng],
   );
-  const stableNavBearing = currentLocation?.bearing ?? 0;
 
   // Course navigation & checkpoint tracking hooks
   const courseNavigation = useCourseNavigation(
     courseRoute,
     stableNavLocation,
-    stableNavBearing,
+    navBearing,
+    navGpsAccuracy,
   );
   const {
     checkpointPasses,
@@ -845,12 +838,14 @@ export default function WorldScreen() {
     })();
   }, []);
 
-  // Feed GPS to checkpoint tracker during course running
+  // Feed GPS to checkpoint tracker during course running.
+  // Uses navLat/navLng (already subscribed for course navigation) instead of
+  // currentLocation to avoid an additional full-object subscription.
   useEffect(() => {
-    if (phase === 'running' && runCourseId && currentLocation) {
-      updateCheckpointLocation(currentLocation.latitude, currentLocation.longitude);
+    if (phase === 'running' && runCourseId && navLat != null && navLng != null) {
+      updateCheckpointLocation(navLat, navLng);
     }
-  }, [phase, runCourseId, currentLocation, updateCheckpointLocation]);
+  }, [phase, runCourseId, navLat, navLng, updateCheckpointLocation]);
 
   // Competition start toast when start checkpoint (order=0) is passed
   const [competitionStartShown, setCompetitionStartShown] = useState(false);
@@ -867,12 +862,10 @@ export default function WorldScreen() {
     }
   }, [competitionStartTime, competitionStartShown, phase, hapticFeedback]);
 
-  // Track user location from store for custom map marker during running
-  useEffect(() => {
-    if (currentLocation && isInRun) {
-      setMyLocation({ latitude: currentLocation.latitude, longitude: currentLocation.longitude });
-    }
-  }, [currentLocation, isInRun]);
+  // PERF: Removed setMyLocation(currentLocation) effect that ran every GPS tick.
+  // myLocation is already updated via RouteMapView's onUserLocationChange callback
+  // (line ~1984), which fires from the native map's own location updates.
+  // This avoids a redundant state cascade (store change -> setMyLocation -> re-render).
 
   // Re-enable follow when auto-pause ends (moving again)
   // This ensures the map resumes tracking after auto-pause, even if follow
@@ -885,9 +878,11 @@ export default function WorldScreen() {
     prevAutoPausedRef.current = isAutoPaused;
   }, [isAutoPaused, phase]);
 
-  // Use GPS course heading when moving during running
-  const isMoving = isInRun && (currentLocation?.speed ?? 0) > 0.5;
-  const { heading: runHeadingValue } = useCompassHeading(100, isMoving ? (currentLocation?.bearing ?? null) : null);
+  // Use GPS course heading when moving during running.
+  // navBearing is already subscribed above for course navigation.
+  const navSpeed = useRunningStore((s) => s.currentLocation?.speed ?? 0);
+  const isMoving = isInRun && navSpeed > 0.5;
+  const { heading: runHeadingValue } = useCompassHeading(100, isMoving ? (navBearing || null) : null);
 
   // ============================================================
   // RUNNING HANDLERS
@@ -1207,11 +1202,13 @@ export default function WorldScreen() {
     }, 100);
   }, [stopTracking, myLocation]);
 
-  // Watch GPS during navigate-to-start — enable "경쟁 시작하기" when close enough
+  // Watch GPS during navigate-to-start — enable "경쟁 시작하기" when close enough.
+  // Uses myLocation (updated via onUserLocationChange) instead of currentLocation
+  // during navigate-to-start (before running starts, store currentLocation may be null).
   useEffect(() => {
-    if (!navigatingToStart || !startCheckpoint || !currentLocation) return;
+    if (!navigatingToStart || !startCheckpoint || !myLocation) return;
     const dist = haversineDistance(
-      { latitude: currentLocation.latitude, longitude: currentLocation.longitude },
+      myLocation,
       { latitude: startCheckpoint.lat, longitude: startCheckpoint.lng },
     );
     setDistanceToStartCP(dist);
@@ -1237,7 +1234,7 @@ export default function WorldScreen() {
       setPreviewRoute([]);
       setPreviewCheckpoints([{ id: 0, order: 0, lat: startCheckpoint.lat, lng: startCheckpoint.lng }]);
     }
-  }, [navigatingToStart, startCheckpoint, currentLocation, readyToStart, hapticFeedback, courseRoute, courseCheckpoints]);
+  }, [navigatingToStart, startCheckpoint, myLocation, readyToStart, hapticFeedback, courseRoute, courseCheckpoints]);
 
   // Sync navigate-to-start state to Apple Watch
   useEffect(() => {
@@ -1248,21 +1245,21 @@ export default function WorldScreen() {
       // Send idle when navigation cancelled
       return;
     }
-    const bearing = currentLocation
+    const bearingVal = myLocation
       ? geoBearing(
-          { latitude: currentLocation.latitude, longitude: currentLocation.longitude },
+          myLocation,
           { latitude: startCheckpoint.lat, longitude: startCheckpoint.lng },
         )
       : -1;
     WatchBridgeModule.sendRunState({
       phase: 'navigating',
-      navToStartBearing: bearing,
+      navToStartBearing: bearingVal,
       navToStartDistance: distanceToStartCP,
       navToStartReady: readyToStart,
     }).catch((err: any) => {
       console.warn('[WorldScreen] 워치 네비게이션 상태 전송 실패:', err);
     });
-  }, [navigatingToStart, startCheckpoint, currentLocation, distanceToStartCP, readyToStart]);
+  }, [navigatingToStart, startCheckpoint, myLocation, distanceToStartCP, readyToStart]);
 
   // Handle "경쟁 시작하기" button press
   const handleStartCompetition = useCallback(() => {
@@ -1970,8 +1967,8 @@ export default function WorldScreen() {
           isInRun
             ? (runCourseId && courseRoute ? courseRoute : undefined)
             : navigatingToStart && !readyToStart
-              ? (navRoute.length > 0 ? navRoute : (currentLocation && startCheckpoint ? [
-                  { latitude: currentLocation.latitude, longitude: currentLocation.longitude },
+              ? (navRoute.length > 0 ? navRoute : (myLocation && startCheckpoint ? [
+                  myLocation,
                   { latitude: startCheckpoint.lat, longitude: startCheckpoint.lng },
                 ] : undefined))
               : previewRoute
@@ -2553,52 +2550,15 @@ export default function WorldScreen() {
               </View>
             )}
 
-            {/* Metrics grid */}
-            <View style={styles.runMetricsGrid}>
-              <View style={styles.runMetricRow}>
-                <View style={styles.runMetricCell}>
-                  <Text style={styles.runMetricLabel}>
-                    {intervalState && !intervalState.isCompleted ? '남은 시간' : '시간'}
-                  </Text>
-                  <Text style={[styles.runMetricValue, (phase === 'paused' || isAutoPaused) && { color: '#FFD60A' }]}>
-                    {intervalState && !intervalState.isCompleted
-                      ? formatDuration(intervalState.totalRemainingSeconds)
-                      : formatDuration(durationSeconds)}
-                  </Text>
-                </View>
-                <View style={styles.runMetricDivider} />
-                <View style={styles.runMetricCell}>
-                  <Text style={styles.runMetricLabel}>평균 페이스</Text>
-                  <Text style={styles.runMetricValue}>{formatPace(avgPaceSecondsPerKm)}</Text>
-                </View>
-                <View style={styles.runMetricDivider} />
-                <View style={styles.runMetricCell}>
-                  <Text style={styles.runMetricLabel}>칼로리</Text>
-                  <Text style={styles.runMetricValue}>{calories}</Text>
-                </View>
-              </View>
-              <View style={styles.runMetricRowDivider} />
-              <View style={styles.runMetricRow}>
-                <View style={styles.runMetricCell}>
-                  <Text style={styles.runMetricLabel}>심박수</Text>
-                  <Text style={[styles.runMetricValue, heartRate > 0 && { color: colors.error }]}>
-                    {heartRate > 0 ? Math.round(heartRate) : '--'}
-                  </Text>
-                </View>
-                <View style={styles.runMetricDivider} />
-                <View style={styles.runMetricCell}>
-                  <Text style={styles.runMetricLabel}>케이던스</Text>
-                  <Text style={styles.runMetricValue}>{cadence > 0 ? cadence : '--'}</Text>
-                </View>
-                <View style={styles.runMetricDivider} />
-                <View style={styles.runMetricCell}>
-                  <Text style={styles.runMetricLabel}>고도(m)</Text>
-                  <Text style={styles.runMetricValue}>
-                    {elevationGainMeters > 0 ? `+${Math.round(elevationGainMeters)}` : '--'}
-                  </Text>
-                </View>
-              </View>
-            </View>
+            {/* Metrics grid — self-contained component that subscribes to the
+                store independently, avoiding WorldScreen re-renders for metrics */}
+            <RunMetricsGrid
+              timeOverride={intervalState && !intervalState.isCompleted
+                ? formatDuration(intervalState.totalRemainingSeconds)
+                : null}
+              timeLabelOverride={intervalState && !intervalState.isCompleted ? '남은 시간' : null}
+              highlightTime={phase === 'paused' || isAutoPaused}
+            />
 
             {/* Interval summary — after completion */}
             {phase === 'completed' && storeRunGoal?.type === 'interval' && (() => {
@@ -2746,7 +2706,7 @@ export default function WorldScreen() {
                             routePoints: useRunningStore.getState().routePoints,
                             distanceMeters: Math.round(distanceMeters),
                             durationSeconds: Math.round(durationSeconds),
-                            elevationGainMeters: Math.round(elevationGainMeters),
+                            elevationGainMeters: Math.round(useRunningStore.getState().elevationGainMeters),
                             isLoop: loopDetected,
                           },
                         });
@@ -2782,18 +2742,12 @@ export default function WorldScreen() {
 
           {!readyToStart && (
             <View style={styles.navFloatingBody}>
-              {currentLocation && (
-                <View style={{
-                  transform: [{
-                    rotate: `${((geoBearing(
-                      { latitude: currentLocation.latitude, longitude: currentLocation.longitude },
-                      { latitude: startCheckpoint.lat, longitude: startCheckpoint.lng },
-                    ) - (headingAnim ?? 0)) + 360) % 360}deg`,
-                  }],
-                }}>
-                  <Ionicons name="navigate" size={28} color={colors.primary} />
-                </View>
-              )}
+              <NavigateCompassArrow
+                targetLat={startCheckpoint.lat}
+                targetLng={startCheckpoint.lng}
+                heading={headingAnim ?? 0}
+                color={colors.primary}
+              />
               <Text style={styles.navFloatingDistance}>
                 {formatDistance(distanceToStartCP)}
               </Text>

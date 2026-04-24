@@ -8,3 +8,6 @@ export { default as RunningHUD } from './RunningHUD';
 export { default as RunSettingsSheet } from './RunSettingsSheet';
 export { default as SplitHistoryPanel } from './SplitHistoryPanel';
 export { default as WelcomeOverlay } from './WelcomeOverlay';
+export { default as RunMetricsGrid } from './RunMetricsGrid';
+export { default as HeroDistance } from './HeroDistance';
+export { default as NavigateCompassArrow } from './NavigateCompassArrow';
