@@ -9,6 +9,9 @@ import WatchConnectivity
 final class WatchSessionManager: NSObject, WCSessionDelegate {
     static let shared = WatchSessionManager()
 
+    /// Latest heart rate (BPM) from Apple Watch, readable by LocationEngine for Live Activity updates.
+    private(set) var lastHeartRateBPM: Int = 0
+
     // Callbacks for RN bridge
     var onWatchCommand: (([String: Any]) -> Void)?
     var onHeartRateUpdate: (([String: Any]) -> Void)?
@@ -448,6 +451,32 @@ final class WatchSessionManager: NSObject, WCSessionDelegate {
         session.transferUserInfo(message)
     }
 
+    // MARK: - Native Run Summary Push
+
+    /// Timestamp of last run summary sent to Watch (for throttling)
+    private var lastRunSummarySendTime: TimeInterval = 0
+
+    /// Send core running metrics to Watch from the native GPS engine.
+    /// Throttled to max 1 message per second. Uses sendMessage when reachable,
+    /// falls back to transferUserInfo for guaranteed delivery.
+    func sendRunSummary(_ data: [String: Any]) {
+        let now = Date().timeIntervalSince1970
+        guard now - lastRunSummarySendTime >= 1.0 else { return }
+        lastRunSummarySendTime = now
+
+        guard session.activationState == .activated, session.isPaired else { return }
+
+        var message = data
+        message["type"] = "runSummary"
+        message["timestamp"] = now * 1000
+
+        if session.isReachable {
+            session.sendMessage(message, replyHandler: nil, errorHandler: nil)
+        } else {
+            session.transferUserInfo(message)
+        }
+    }
+
     /// Send km milestone to Watch
     func sendMilestone(km: Int, splitPace: Int, totalTime: Int) {
         guard session.activationState == .activated, session.isPaired else { return }
@@ -512,6 +541,7 @@ final class WatchSessionManager: NSObject, WCSessionDelegate {
         case "command":
             handleWatchCommand(message)
         case "heartRate":
+            lastHeartRateBPM = (message["bpm"] as? NSNumber)?.intValue ?? lastHeartRateBPM
             onHeartRateUpdate?(message)
         case "standaloneRunComplete":
             NSLog("[WatchSessionMgr] Received standalone run data from watch")
@@ -558,6 +588,7 @@ final class WatchSessionManager: NSObject, WCSessionDelegate {
             handleWatchCommand(message)
             replyHandler(["status": "ok"])
         case "heartRate":
+            lastHeartRateBPM = (message["bpm"] as? NSNumber)?.intValue ?? lastHeartRateBPM
             onHeartRateUpdate?(message)
             replyHandler(["status": "ok"])
         case "standaloneRunComplete":

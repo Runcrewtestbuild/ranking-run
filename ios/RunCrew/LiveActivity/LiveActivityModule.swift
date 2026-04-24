@@ -192,6 +192,49 @@ class LiveActivityModule: NSObject {
         }
     }
 
+    // MARK: - Native update (called from LocationEngine at 1Hz)
+
+    /// Update all running Live Activities from the native GPS engine.
+    /// Called every second by LocationEngine.emitSummary() — no JS bridge dependency,
+    /// so the lock screen / Dynamic Island stays current even when JS is suspended.
+    @objc
+    static func updateFromNative(
+        distanceMeters: Double,
+        durationSeconds: Int,
+        currentPace: Int,
+        avgPace: Int,
+        calories: Int,
+        heartRate: Int,
+        cadence: Int,
+        isPaused: Bool
+    ) {
+        guard #available(iOS 16.2, *) else { return }
+
+        let activities = Activity<RunningActivityAttributes>.activities
+        guard !activities.isEmpty else { return }
+
+        let state = RunningActivityAttributes.ContentState(
+            distanceMeters: distanceMeters,
+            durationSeconds: durationSeconds,
+            currentPace: currentPace,
+            avgPace: avgPace,
+            calories: calories,
+            heartRate: heartRate,
+            cadence: cadence,
+            isPaused: isPaused,
+            timerStartDate: Date().addingTimeInterval(-Double(durationSeconds))
+        )
+
+        Task {
+            for activity in activities {
+                await activity.update(
+                    .init(state: state, staleDate: Date().addingTimeInterval(300)),
+                    alertConfiguration: nil
+                )
+            }
+        }
+    }
+
     // MARK: - Native cleanup (called from AppDelegate on terminate/force-quit)
 
     /// End all running Live Activities without going through JS bridge.

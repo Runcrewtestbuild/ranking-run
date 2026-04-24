@@ -43,6 +43,8 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
     private var summaryTimer: DispatchSourceTimer?
     private var lastGPSAccuracy: Double = 0
     private var lastCadenceSPM: Int = 0
+    // Crash recovery — persists run state to UserDefaults every 10s
+    private var persistTimer: DispatchSourceTimer?
 
     // Callbacks
     var onLocationUpdate: (([String: Any]) -> Void)?
@@ -76,6 +78,8 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         pedometerFallbackTimer = nil
         summaryTimer?.cancel()
         summaryTimer = nil
+        persistTimer?.cancel()
+        persistTimer = nil
     }
 
     private func setupLocationManager() {
@@ -149,6 +153,7 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         sensorFusion.startAll()
         startBackgroundExecution()
         startSummaryTimer()
+        startPersistTimer()
 
         DispatchQueue.main.async { [weak self] in
             self?.locationManager.startUpdatingLocation()
@@ -170,6 +175,9 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         stopPedometerFallback()
         stopSummaryTimer()
         stopBackgroundExecution()
+        persistTimer?.cancel()
+        persistTimer = nil
+        LocationEngine.clearPersistedState()
 
         DispatchQueue.main.async { [weak self] in
             self?.locationManager.stopUpdatingLocation()
@@ -714,6 +722,70 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
             "cadence": lastCadenceSPM,
         ]
         onSummaryUpdate?(summary)
+
+        // Update Live Activity directly from native — no JS bridge dependency.
+        // This ensures lock screen / Dynamic Island stays current even when JS is suspended.
+        LiveActivityModule.updateFromNative(
+            distanceMeters: distance,
+            durationSeconds: Int(elapsed),
+            currentPace: Int(currentPace),
+            avgPace: Int(avgPace),
+            calories: calories,
+            heartRate: WatchSessionManager.shared.lastHeartRateBPM,
+            cadence: lastCadenceSPM,
+            isPaused: session.state == .paused
+        )
+
+        // Push core metrics to Apple Watch via native WatchSessionManager
+        WatchSessionManager.shared.sendRunSummary([
+            "distance": distance,
+            "duration": Int(elapsed),
+            "pace": Int(avgPace),
+            "currentPace": Int(currentPace),
+            "calories": calories,
+            "heartRate": WatchSessionManager.shared.lastHeartRateBPM,
+            "cadence": lastCadenceSPM,
+            "isPaused": session.state == .paused,
+            "isRunning": session.state == .running,
+        ])
+    }
+
+    // MARK: - Crash Recovery Persistence
+
+    /// Start persisting critical run state to UserDefaults every 10 seconds.
+    /// Enables recovery after app crash or OS termination.
+    private func startPersistTimer() {
+        persistTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + 10.0, repeating: 10.0)
+        timer.setEventHandler { [weak self] in
+            self?.persistRunState()
+        }
+        persistTimer = timer
+        timer.resume()
+    }
+
+    /// Persist current run state to UserDefaults for crash recovery.
+    private func persistRunState() {
+        guard session.state == .running || session.state == .paused else { return }
+        let state: [String: Any] = [
+            "distance": cumulativeDistance,
+            "duration": session.getCurrentElapsedTime(),
+            "startTime": session.startTime?.timeIntervalSince1970 ?? 0,
+            "phase": session.state == .running ? "running" : "paused",
+            "savedAt": Date().timeIntervalSince1970,
+        ]
+        UserDefaults.standard.set(state, forKey: "runvs_native_run_state")
+    }
+
+    /// Load persisted run state after crash recovery.
+    static func loadPersistedState() -> [String: Any]? {
+        return UserDefaults.standard.dictionary(forKey: "runvs_native_run_state")
+    }
+
+    /// Clear persisted run state (called on normal stop).
+    static func clearPersistedState() {
+        UserDefaults.standard.removeObject(forKey: "runvs_native_run_state")
     }
 
     // MARK: - Indoor / Pedometer Fallback

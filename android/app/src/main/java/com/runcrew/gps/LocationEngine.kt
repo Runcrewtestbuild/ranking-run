@@ -47,6 +47,30 @@ class LocationEngine(
 
         // GPS status: if no update for this duration, GPS is "lost"
         private const val GPS_LOST_TIMEOUT_MS = 10_000L
+
+        /**
+         * Load persisted run state after crash recovery.
+         */
+        fun loadPersistedState(context: Context): Map<String, Any>? {
+            val prefs = context.getSharedPreferences("runvs_run_state", Context.MODE_PRIVATE)
+            val savedAt = prefs.getLong("savedAt", 0)
+            if (savedAt == 0L) return null
+            return mapOf(
+                "distance" to prefs.getFloat("distance", 0f).toDouble(),
+                "duration" to prefs.getLong("duration", 0),
+                "startTime" to prefs.getLong("startTime", 0),
+                "phase" to (prefs.getString("phase", "running") ?: "running"),
+                "savedAt" to savedAt,
+            )
+        }
+
+        /**
+         * Clear persisted run state (static version for use without engine instance).
+         */
+        fun clearPersistedState(context: Context) {
+            context.getSharedPreferences("runvs_run_state", Context.MODE_PRIVATE)
+                .edit().clear().apply()
+        }
     }
 
     // --- Public listener interface ---
@@ -112,6 +136,10 @@ class LocationEngine(
     private var lastGPSAccuracy: Float = 0f
     @Volatile
     var lastCadenceSPM: Int = 0
+
+    // --- Crash recovery persistence ---
+    @Volatile
+    private var lastPersistTime = 0L
 
     // --- Previous filtered location for distance calculation ---
 
@@ -222,6 +250,7 @@ class LocationEngine(
         unregisterGnssStatusCallback()
         sensorFusionManager?.stop()
         session.stop()
+        clearPersistedState()
 
         if (currentGpsStatus != "disabled") {
             currentGpsStatus = "disabled"
@@ -587,6 +616,39 @@ class LocationEngine(
             "isPaused" to (s.state == RunSession.State.PAUSED),
             "cadence" to lastCadenceSPM,
         ))
+
+        // Persist run state every 10 seconds for crash recovery
+        if (System.currentTimeMillis() - lastPersistTime > 10_000) {
+            lastPersistTime = System.currentTimeMillis()
+            persistRunState()
+        }
+    }
+
+    // --- Crash Recovery Persistence ---
+
+    /**
+     * Persist critical run state to SharedPreferences for crash recovery.
+     * Called every 10 seconds from emitSummary().
+     */
+    private fun persistRunState() {
+        val s = session
+        if (s.state != RunSession.State.TRACKING && s.state != RunSession.State.PAUSED) return
+        val prefs = context.getSharedPreferences("runvs_run_state", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putFloat("distance", s.totalDistance.toFloat())
+            .putLong("duration", s.getElapsedTime())
+            .putLong("startTime", s.startTime)
+            .putString("phase", if (s.state == RunSession.State.TRACKING) "running" else "paused")
+            .putLong("savedAt", System.currentTimeMillis())
+            .apply()
+    }
+
+    /**
+     * Clear persisted run state (called on normal stop).
+     */
+    fun clearPersistedState() {
+        context.getSharedPreferences("runvs_run_state", Context.MODE_PRIVATE)
+            .edit().clear().apply()
     }
 
     // --- Indoor / Pedometer Fallback ---
