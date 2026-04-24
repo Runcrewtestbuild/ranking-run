@@ -94,6 +94,8 @@ export enum GPSErrorCode {
 // ---- Event Names ----
 
 export const GPS_EVENTS = {
+  SUMMARY: 'GPSTracker_onSummary',
+  /** @deprecated Use SUMMARY instead — kept for backward compatibility */
   LOCATION_UPDATE: 'GPSTracker_onLocationUpdate',
   GPS_STATUS_CHANGE: 'GPSTracker_onGPSStatusChange',
   RUNNING_STATE_CHANGE: 'GPSTracker_onRunningStateChange',
@@ -104,4 +106,22 @@ export interface MilestoneReachedEvent {
   km: number;
   splitPaceSecondsPerKm: number;
   totalTimeSeconds: number;
+}
+
+/** Native summary event — emitted at 1Hz with all running metrics pre-computed natively. */
+export interface SummaryUpdateEvent {
+  distanceMeters: number;
+  durationSeconds: number;
+  avgPaceSecondsPerKm: number;
+  currentPaceSecondsPerKm: number;
+  calories: number;
+  latitude: number;
+  longitude: number;
+  altitude: number;
+  speed: number;
+  bearing: number;
+  gpsAccuracy: number;
+  isMoving: boolean;
+  isPaused: boolean;
+  cadence: number;
 }

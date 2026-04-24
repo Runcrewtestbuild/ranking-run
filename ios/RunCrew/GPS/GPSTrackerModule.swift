@@ -43,8 +43,12 @@ class GPSTrackerModule: RCTEventEmitter {
     private func setupEngine() {
         let engine = LocationEngine()
 
-        engine.onLocationUpdate = { [weak self] event in
-            self?.sendEventIfListening("GPSTracker_onLocationUpdate", body: event)
+        // onLocationUpdate stays native-only (route points, chunk data) — no JS event.
+        // JS receives aggregated metrics via onSummaryUpdate at 1-second intervals.
+        engine.onLocationUpdate = nil
+
+        engine.onSummaryUpdate = { [weak self] summary in
+            self?.sendEventIfListening("GPSTracker_onSummary", body: summary)
         }
 
         engine.onGPSStatusChange = { [weak self] event in
@@ -151,6 +155,7 @@ class GPSTrackerModule: RCTEventEmitter {
 
     override func supportedEvents() -> [String]! {
         return [
+            "GPSTracker_onSummary",
             "GPSTracker_onLocationUpdate",
             "GPSTracker_onGPSStatusChange",
             "GPSTracker_onRunningStateChange",
@@ -183,7 +188,7 @@ class GPSTrackerModule: RCTEventEmitter {
     /// Events that should only keep the latest value when buffered (deduplicated).
     /// Prevents state jitter when JS bridge resumes and processes a burst of stale events.
     private static let deduplicatedEvents: Set<String> = [
-        "GPSTracker_onLocationUpdate",
+        "GPSTracker_onSummary",
         "GPSTracker_onGPSStatusChange",
         "GPSTracker_onRunningStateChange",
         "GPSTracker_onHeadingUpdate",
@@ -214,25 +219,25 @@ class GPSTrackerModule: RCTEventEmitter {
         pendingEvents.removeAll()
         eventLock.unlock()
 
-        // Only send the latest location event to prevent JS thread saturation
-        var latestLocation: (name: String, body: Any?)?
+        // Only send the latest summary event to prevent JS thread saturation
+        var latestSummary: (name: String, body: Any?)?
         var otherEvents: [(name: String, body: Any?)] = []
 
         for event in events {
-            if event.name == "GPSTracker_onLocationUpdate" {
-                latestLocation = event  // Keep overwriting — last one wins
+            if event.name == "GPSTracker_onSummary" {
+                latestSummary = event  // Keep overwriting — last one wins
             } else {
                 otherEvents.append(event)  // Keep milestones, status changes etc.
             }
         }
 
-        // Send non-location events first
+        // Send non-summary events first
         for event in otherEvents {
             sendEvent(withName: event.name, body: event.body)
         }
-        // Send only the latest location
-        if let loc = latestLocation {
-            sendEvent(withName: loc.name, body: loc.body)
+        // Send only the latest summary
+        if let summary = latestSummary {
+            sendEvent(withName: summary.name, body: summary.body)
         }
     }
 

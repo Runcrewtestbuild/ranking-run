@@ -47,6 +47,7 @@ class GPSTrackerModule(
 
         private const val EVENT_MILESTONE_REACHED = "GPSTracker_onMilestoneReached"
         private const val EVENT_HEADING_UPDATE = "GPSTracker_onHeadingUpdate"
+        private const val EVENT_SUMMARY = "GPSTracker_onSummary"
 
         // Error codes matching shared-interfaces.md
         private const val ERROR_PERMISSION_DENIED = "PERMISSION_DENIED"
@@ -115,21 +116,21 @@ class GPSTrackerModule(
     }
 
     /**
-     * Flush buffered events: send only the latest location event + all milestone events.
-     * This avoids flooding JS with stale location data while preserving critical milestones.
+     * Flush buffered events: send only the latest summary event + all milestone events.
+     * This avoids flooding JS with stale data while preserving critical milestones.
      */
     private fun flushEventBuffer() {
         val milestones = eventBuffer.filter { it.eventName == EVENT_MILESTONE_REACHED }
-        val latestLocation = eventBuffer.lastOrNull { it.eventName == EVENT_LOCATION_UPDATE }
+        val latestSummary = eventBuffer.lastOrNull { it.eventName == EVENT_SUMMARY }
 
         eventBuffer.clear()
 
-        // Send milestones first (in order), then latest location
+        // Send milestones first (in order), then latest summary
         for (milestone in milestones) {
             emitToJS(milestone.eventName, milestone.params)
         }
-        if (latestLocation != null) {
-            emitToJS(latestLocation.eventName, latestLocation.params)
+        if (latestSummary != null) {
+            emitToJS(latestSummary.eventName, latestSummary.params)
         }
     }
 
@@ -442,17 +443,12 @@ class GPSTrackerModule(
     private val CADENCE_WINDOW_MS = 15_000L  // 15-second rolling window
 
     override fun onFilteredLocationUpdate(location: FilteredLocation, session: RunSession) {
+        // Native-only: update cadence for summary timer, update notification.
+        // Location data is no longer sent to JS per-tick; the 1-second summary replaces it.
         val sensorFusion = locationEngine?.sensorFusionManager
-        // Use real-time stationary state from SensorFusionManager rather than
-        // session.isMoving (which only updates on state transitions via listener).
-        // This ensures isMoving accurately reflects the current movement state
-        // for every GPS update, critical for auto-pause in JS.
         val isCurrentlyMoving = sensorFusion?.let { !it.isStationary() } ?: session?.isMoving ?: true
         val cadenceSPM = if (isCurrentlyMoving && sensorFusion != null) {
-            val stepDetector = sensorFusion.stepDetector
             val now = System.currentTimeMillis()
-            // Add steps to rolling window based on total step count delta
-            val currentTotal = stepDetector.totalSteps
             val windowCutoff = now - CADENCE_WINDOW_MS
             // Prune old entries (thread-safe: peekFirst/pollFirst won't throw on concurrent modification)
             while (true) {
@@ -469,12 +465,9 @@ class GPSTrackerModule(
                 (stepsInWindow.toDouble() / (CADENCE_WINDOW_MS / 1000.0) * 60).toInt()
             } else 0
         } else 0
-        val elevGain = sensorFusion?.barometerTracker?.totalElevationGain ?: 0.0
-        val elevLoss = sensorFusion?.barometerTracker?.totalElevationLoss ?: 0.0
 
-        val distSource = if (location.isInterpolated) "pedometer" else "gps"
-        val eventData = location.toLocationUpdateEvent(isCurrentlyMoving, cadenceSPM, elevGain, elevLoss, distSource)
-        sendEvent(EVENT_LOCATION_UPDATE, eventData)
+        // Store cadence for the summary timer to read
+        locationEngine?.lastCadenceSPM = cadenceSPM
 
         // Update notification periodically (every 5th update to avoid excessive overhead)
         notificationUpdateCounter++
@@ -485,6 +478,21 @@ class GPSTrackerModule(
                 session.getElapsedTime()
             )
         }
+    }
+
+    override fun onSummaryUpdate(summary: Map<String, Any>) {
+        val params = Arguments.createMap().apply {
+            for ((key, value) in summary) {
+                when (value) {
+                    is Double -> putDouble(key, value)
+                    is Int -> putInt(key, value)
+                    is Boolean -> putBoolean(key, value)
+                    is Float -> putDouble(key, value.toDouble())
+                    is String -> putString(key, value)
+                }
+            }
+        }
+        sendEvent(EVENT_SUMMARY, params)
     }
 
     override fun onGPSStatusChange(status: String, accuracy: Float?, satelliteCount: Int) {
@@ -533,10 +541,10 @@ class GPSTrackerModule(
     private fun sendEvent(eventName: String, params: WritableMap) {
         if (listenerCount <= 0) {
             // Buffer critical events so they aren't lost during JS listener gaps.
-            // Keep only latest location + all milestones (matching iOS pattern).
-            if (eventName == EVENT_LOCATION_UPDATE) {
-                // Replace any existing buffered location with the latest one
-                eventBuffer.removeAll { it.eventName == EVENT_LOCATION_UPDATE }
+            // Keep only latest summary + all milestones (matching iOS pattern).
+            if (eventName == EVENT_SUMMARY) {
+                // Replace any existing buffered summary with the latest one
+                eventBuffer.removeAll { it.eventName == EVENT_SUMMARY }
                 eventBuffer.add(BufferedEvent(eventName, params))
             } else if (eventName == EVENT_MILESTONE_REACHED) {
                 eventBuffer.add(BufferedEvent(eventName, params))

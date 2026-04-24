@@ -3,6 +3,7 @@ import { NativeModules, NativeEventEmitter, AppState } from 'react-native';
 import { useRunningStore } from '../stores/runningStore';
 import type {
   LocationUpdateEvent,
+  SummaryUpdateEvent,
   GPSStatusChangeEvent,
   MilestoneReachedEvent,
 } from '../types/gps';
@@ -83,50 +84,29 @@ export function useGPSTracker() {
 
     const emitter = new NativeEventEmitter(GPSTrackerModule);
 
-    // Throttle location updates to prevent OOM on foreground resume.
-    // When app returns from background, the JS bridge flushes ALL queued native
-    // events SYNCHRONOUSLY in a tight loop. Time-based throttle doesn't work
-    // because Date.now() barely changes during synchronous flush.
-    // Solution: count-based skip — only process every Nth event during burst,
-    // plus always process the LAST event via a microtask.
-    let eventCount = 0;
-    let lastEvent: LocationUpdateEvent | null = null;
-    let flushScheduled = false;
+    // Native summary events arrive at 1Hz with all metrics pre-computed.
+    // No throttling needed — the native timer already limits frequency.
+    // Convert summary to LocationUpdateEvent format for backward-compatible
+    // store consumption (route points, chunk upload, loop detection, auto-pause).
+    const summarySub = emitter.addListener(
+      GPS_EVENTS.SUMMARY,
+      (summary: SummaryUpdateEvent) => {
+        lastUpdateTimeRef.current = Date.now();
 
-    const processEvent = (event: LocationUpdateEvent) => {
-      lastUpdateTimeRef.current = Date.now();
-      updateLocation(event);
-    };
-
-    const locationSub = emitter.addListener(
-      GPS_EVENTS.LOCATION_UPDATE,
-      (event: LocationUpdateEvent) => {
-        eventCount++;
-        lastEvent = event;
-
-        // During normal 1Hz GPS: eventCount resets via the flush below,
-        // so every event is processed (count % 1 === 0 after reset).
-        // During burst flush (1000+ events in <100ms): only every 50th
-        // event is processed synchronously, preventing OOM.
-        // The final event is ALWAYS processed via the scheduled flush.
-        if (eventCount <= 3 || eventCount % 50 === 0) {
-          processEvent(event);
-        }
-
-        // Schedule a microtask to process the very last event after
-        // the synchronous flush loop completes. This ensures we never
-        // miss the final (most recent) GPS position.
-        if (!flushScheduled) {
-          flushScheduled = true;
-          Promise.resolve().then(() => {
-            if (lastEvent) {
-              processEvent(lastEvent);
-              lastEvent = null;
-            }
-            eventCount = 0;
-            flushScheduled = false;
-          });
-        }
+        // Bridge summary → LocationUpdateEvent for existing store logic
+        const event: LocationUpdateEvent = {
+          latitude: summary.latitude,
+          longitude: summary.longitude,
+          altitude: summary.altitude,
+          speed: summary.speed,
+          bearing: summary.bearing,
+          accuracy: summary.gpsAccuracy,
+          timestamp: Date.now(),
+          distanceFromStart: summary.distanceMeters,
+          isMoving: summary.isMoving,
+          cadence: summary.cadence,
+        };
+        updateLocation(event);
       },
     );
 
@@ -167,7 +147,7 @@ export function useGPSTracker() {
       },
     );
 
-    subscriptionsRef.current = [locationSub, statusSub, milestoneSub, runningStateSub];
+    subscriptionsRef.current = [summarySub, statusSub, milestoneSub, runningStateSub];
 
     // Fetch current GPS status in case we missed the initial event
     gpsLockedRef.current = false;

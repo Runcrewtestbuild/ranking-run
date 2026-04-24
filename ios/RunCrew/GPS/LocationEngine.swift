@@ -39,8 +39,14 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
     private var backgroundTaskRenewalCount: Int = 0
     private let maxBackgroundTaskRenewals: Int = 50
 
+    // Summary timer — fires every 1s to emit aggregated metrics to JS
+    private var summaryTimer: DispatchSourceTimer?
+    private var lastGPSAccuracy: Double = 0
+    private var lastCadenceSPM: Int = 0
+
     // Callbacks
     var onLocationUpdate: (([String: Any]) -> Void)?
+    var onSummaryUpdate: (([String: Any]) -> Void)?
     var onGPSStatusChange: (([String: Any]) -> Void)?
     var onRunningStateChange: (([String: Any]) -> Void)?
     var onWatchLocationUpdate: (([String: Any]) -> Void)?
@@ -68,6 +74,8 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         gpsLostTimer = nil
         pedometerFallbackTimer?.cancel()
         pedometerFallbackTimer = nil
+        summaryTimer?.cancel()
+        summaryTimer = nil
     }
 
     private func setupLocationManager() {
@@ -140,6 +148,7 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         backgroundTaskRenewalCount = 0
         sensorFusion.startAll()
         startBackgroundExecution()
+        startSummaryTimer()
 
         DispatchQueue.main.async { [weak self] in
             self?.locationManager.startUpdatingLocation()
@@ -159,6 +168,7 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
         gpsLostTimer?.cancel()
         gpsLostTimer = nil
         stopPedometerFallback()
+        stopSummaryTimer()
         stopBackgroundExecution()
 
         DispatchQueue.main.async { [weak self] in
@@ -406,6 +416,7 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
 
         // Send live accuracy while running
         if session.state == .running {
+            lastGPSAccuracy = location.horizontalAccuracy
             updateGPSStatus("locked", accuracy: location.horizontalAccuracy)
         }
 
@@ -613,6 +624,7 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
                 ? Int(Double(stepTimestamps.count) / windowDuration * 60)
                 : Int(sensorFusion.pedometerTracker.currentCadence * 60)
         }
+        lastCadenceSPM = cadenceSPM
         let event: [String: Any] = [
             "latitude": filteredLocation.latitude,
             "longitude": filteredLocation.longitude,
@@ -650,6 +662,58 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
             }
         }
         previousCumulativeDistance = cumulativeDistance
+    }
+
+    // MARK: - Summary Timer (1-second JS event)
+
+    /// Start emitting aggregated running metrics to JS at 1-second intervals.
+    /// Replaces per-tick GPS events to reduce JS thread saturation.
+    private func startSummaryTimer() {
+        summaryTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + 1.0, repeating: 1.0)
+        timer.setEventHandler { [weak self] in
+            self?.emitSummary()
+        }
+        summaryTimer = timer
+        timer.resume()
+    }
+
+    private func stopSummaryTimer() {
+        summaryTimer?.cancel()
+        summaryTimer = nil
+    }
+
+    /// Emit a summary of all running metrics calculated natively.
+    /// Timer, distance, pace, calories — all computed here, not in JS.
+    private func emitSummary() {
+        guard session.state == .running || session.state == .paused else { return }
+
+        let elapsed = session.getCurrentElapsedTime()
+        let distance = cumulativeDistance
+        let avgPace = distance > 0 ? (elapsed / (distance / 1000)) : 0
+        // Current pace from GPS speed; fall back to avg pace when stationary/slow
+        let speed = lastFilteredLocation?.speed ?? 0
+        let currentPace = speed > 0.3 ? (1000 / speed) : avgPace
+        let calories = Int(distance / 1000 * 60)
+
+        let summary: [String: Any] = [
+            "distanceMeters": distance,
+            "durationSeconds": Int(elapsed),
+            "avgPaceSecondsPerKm": Int(avgPace),
+            "currentPaceSecondsPerKm": Int(currentPace),
+            "calories": calories,
+            "latitude": lastFilteredLocation?.latitude ?? 0,
+            "longitude": lastFilteredLocation?.longitude ?? 0,
+            "altitude": lastFilteredLocation?.altitude ?? 0,
+            "speed": speed,
+            "bearing": lastFilteredLocation?.bearing ?? 0,
+            "gpsAccuracy": lastGPSAccuracy,
+            "isMoving": !stationaryDetector.isStationary,
+            "isPaused": session.state == .paused,
+            "cadence": lastCadenceSPM,
+        ]
+        onSummaryUpdate?(summary)
     }
 
     // MARK: - Indoor / Pedometer Fallback

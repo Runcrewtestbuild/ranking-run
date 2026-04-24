@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.location.GnssStatus
 import android.location.LocationManager
 import android.os.Build
+import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.util.Log
@@ -52,6 +53,7 @@ class LocationEngine(
 
     interface Listener {
         fun onFilteredLocationUpdate(location: FilteredLocation, session: RunSession)
+        fun onSummaryUpdate(summary: Map<String, Any>)
         fun onGPSStatusChange(status: String, accuracy: Float?, satelliteCount: Int)
         fun onRunningStateChange(state: String, durationMs: Long)
         fun onMilestoneReached(km: Int, splitPaceSecondsPerKm: Int, totalTimeSeconds: Int)
@@ -100,6 +102,16 @@ class LocationEngine(
     private var usedSatelliteCount = 0
 
     private var gnssStatusCallback: GnssStatus.Callback? = null
+
+    // --- Summary timer (1-second cadence, emits aggregated metrics to JS) ---
+
+    private var summaryHandler: Handler? = null
+    private var summaryRunnable: Runnable? = null
+
+    @Volatile
+    private var lastGPSAccuracy: Float = 0f
+    @Volatile
+    var lastCadenceSPM: Int = 0
 
     // --- Previous filtered location for distance calculation ---
 
@@ -180,12 +192,17 @@ class LocationEngine(
         previousFilteredLng = 0.0
         previousMilestoneDistance = 0.0
         previousMilestoneTime = 0L
+        lastGPSAccuracy = 0f
+        lastCadenceSPM = 0
 
         // Start sensors
         sensorFusionManager?.start()
 
         // Start satellite tracking
         registerGnssStatusCallback()
+
+        // Start 1-second summary timer for JS metrics
+        startSummaryTimer()
 
         // Start GPS
         requestLocationUpdates()
@@ -195,6 +212,7 @@ class LocationEngine(
      * Stop all GPS updates and sensor listeners.
      */
     fun stop() {
+        stopSummaryTimer()
         stopPedometerFallback()
         // Quit the pedometer thread only on full tracking stop
         pedometerHandlerThread?.quitSafely()
@@ -324,6 +342,7 @@ class LocationEngine(
      */
     private fun processRawLocation(location: android.location.Location) {
         lastGpsUpdateTime = System.currentTimeMillis()
+        lastGPSAccuracy = location.accuracy
 
         // Reject stale/cached locations from FusedLocationProvider.
         // Android can return a cached cell-tower position with decent accuracy (~15m)
@@ -514,6 +533,60 @@ class LocationEngine(
             }
         }
         previousMilestoneDistance = cumulativeDistance
+    }
+
+    // --- Summary timer (1-second cadence) ---
+
+    private fun startSummaryTimer() {
+        summaryHandler = Handler(Looper.getMainLooper())
+        summaryRunnable = object : Runnable {
+            override fun run() {
+                emitSummary()
+                summaryHandler?.postDelayed(this, 1000)
+            }
+        }
+        summaryHandler?.postDelayed(summaryRunnable!!, 1000)
+    }
+
+    private fun stopSummaryTimer() {
+        summaryRunnable?.let { summaryHandler?.removeCallbacks(it) }
+        summaryHandler = null
+        summaryRunnable = null
+    }
+
+    /**
+     * Emit a 1-second summary of running metrics to JS.
+     * Matches the iOS summary format exactly.
+     */
+    private fun emitSummary() {
+        val s = session
+        if (s.state != RunSession.State.TRACKING && s.state != RunSession.State.PAUSED) return
+
+        val elapsed = s.getElapsedTime() / 1000.0 // seconds
+        val distance = s.totalDistance
+        val avgPace = if (distance > 0) elapsed / (distance / 1000.0) else 0.0
+        val lastLoc = s.filteredLocations.lastOrNull()
+        val speed = lastLoc?.speed ?: 0.0
+        val currentPace = if (speed > 0.3) 1000.0 / speed else avgPace
+        val calories = (distance / 1000.0 * 60).toInt()
+        val isStationary = sensorFusionManager?.isStationary() ?: false
+
+        listener?.onSummaryUpdate(mapOf(
+            "distanceMeters" to distance,
+            "durationSeconds" to elapsed.toInt(),
+            "avgPaceSecondsPerKm" to avgPace.toInt(),
+            "currentPaceSecondsPerKm" to currentPace.toInt(),
+            "calories" to calories,
+            "latitude" to (lastLoc?.latitude ?: 0.0),
+            "longitude" to (lastLoc?.longitude ?: 0.0),
+            "altitude" to (lastLoc?.altitude ?: 0.0),
+            "speed" to speed,
+            "bearing" to (lastLoc?.bearing ?: 0.0),
+            "gpsAccuracy" to lastGPSAccuracy.toDouble(),
+            "isMoving" to !isStationary,
+            "isPaused" to (s.state == RunSession.State.PAUSED),
+            "cadence" to lastCadenceSPM,
+        ))
     }
 
     // --- Indoor / Pedometer Fallback ---
