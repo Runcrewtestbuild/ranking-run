@@ -112,6 +112,7 @@ const CardHeader = memo(function CardHeader({
   }, [activity.userId, onUserPress]);
 
   const initial = activity.userNickname.charAt(0).toUpperCase();
+  const activityTitle = getActivityTitle(activity, t);
 
   return (
     <TouchableOpacity
@@ -133,11 +134,17 @@ const CardHeader = memo(function CardHeader({
           </Text>
         </View>
       )}
-      <View style={s.headerText}>
-        <Text style={s.nickname} numberOfLines={1}>
-          {activity.userNickname}
-        </Text>
-        <Text style={s.timestamp}>{formatRelativeTime(activity.createdAt, t)}</Text>
+      <View style={s.headerTextColumn}>
+        <View style={s.headerTopRow}>
+          <Text style={s.nickname} numberOfLines={1}>
+            {activity.userNickname}
+          </Text>
+          <Text style={s.headerDot}>{'\u00B7'}</Text>
+          <Text style={s.timestamp}>{formatRelativeTime(activity.createdAt, t)}</Text>
+        </View>
+        {activity.activityType !== 'post' && activityTitle !== '' && (
+          <Text style={s.headerSubtitle}>{activityTitle}</Text>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -149,34 +156,40 @@ interface RunStatsProps {
   colors: ThemeColors;
 }
 
-const RunStats = memo(function RunStats({ runRecord, styles: s, t }: RunStatsProps & { t: TFunction }) {
+const RunStats = memo(function RunStats({ runRecord, styles: s, colors, t }: RunStatsProps & { t: TFunction }) {
   return (
     <View style={s.runStatsContainer}>
-      {runRecord.thumbnailUrl && (
+      {runRecord.thumbnailUrl ? (
         <Image
           source={{ uri: runRecord.thumbnailUrl }}
           style={s.routeMapPreview}
           resizeMode="cover"
         />
+      ) : (
+        <View style={s.routeMapPlaceholder}>
+          <Ionicons name="map-outline" size={36} color={colors.textTertiary} />
+        </View>
       )}
       <View style={s.statsRow}>
         <View style={s.statItem}>
-          <Text style={s.statValue}>
+          <Text style={s.statValueHero}>
             {formatDistanceKm(runRecord.distanceMeters)}
           </Text>
           <Text style={s.statLabel}>km</Text>
         </View>
+        <View style={s.statDivider} />
         <View style={s.statItem}>
           <Text style={s.statValue}>
             {formatDuration(runRecord.durationSeconds)}
           </Text>
           <Text style={s.statLabel}>{t('social.activity.statTime')}</Text>
         </View>
+        <View style={s.statDivider} />
         <View style={s.statItem}>
           <Text style={s.statValue}>
             {formatPace(runRecord.avgPaceSecondsPerKm)}
           </Text>
-          <Text style={s.statLabel}>{t('social.activity.statPace')}</Text>
+          <Text style={s.statLabel}>/km</Text>
         </View>
       </View>
     </View>
@@ -197,14 +210,19 @@ const PRContent = memo(function PRContent({ activity, styles: s, t }: PRContentP
 
   return (
     <View style={s.prContainer}>
-      <Text style={s.prMainText}>
-        {distanceLabel} — {newTime}
-      </Text>
-      {prevTime ? (
-        <Text style={s.prSubText}>
-          ({t('social.activity.prPrevious')}: {prevTime}) {'\u26A1'} {improvement}
+      <View style={s.prBadge}>
+        <Text style={s.prBadgeText}>PR</Text>
+      </View>
+      <View style={s.prTextGroup}>
+        <Text style={s.prMainText}>
+          {distanceLabel} — {newTime}
         </Text>
-      ) : null}
+        {prevTime ? (
+          <Text style={s.prSubText}>
+            {t('social.activity.prPrevious')}: {prevTime} {'\u26A1'} {improvement}
+          </Text>
+        ) : null}
+      </View>
     </View>
   );
 });
@@ -285,40 +303,60 @@ function ActivityCardInner({
     onCommentPress?.(activity.id);
   }, [activity.id, onCommentPress]);
 
-  const activityTitle = getActivityTitle(activity, t);
+  const [contentExpanded, setContentExpanded] = useState(false);
+
+  const handleExpandContent = useCallback(() => {
+    setContentExpanded(true);
+  }, []);
 
   return (
     <View style={s.card}>
-      <CardHeader
-        activity={activity}
-        styles={s}
-        colors={colors}
-        onUserPress={onUserPress}
-        t={t}
-      />
+      {/* Header with avatar, name, time, subtitle */}
+      <View style={s.cardInner}>
+        <CardHeader
+          activity={activity}
+          styles={s}
+          colors={colors}
+          onUserPress={onUserPress}
+          t={t}
+        />
+      </View>
 
-      {/* Activity title (for non-post types) */}
-      {activity.activityType !== 'post' && activityTitle !== '' && (
-        <Text style={s.activityTitle}>{activityTitle}</Text>
-      )}
-
-      {/* Run completed — stats card */}
+      {/* Run completed — route map (full-width, no side padding) + stats */}
       {activity.activityType === 'run_completed' && activity.runRecord && (
         <RunStats runRecord={activity.runRecord} styles={s} colors={colors} t={t} />
       )}
 
-      {/* PR achieved — special display */}
+      {/* PR achieved — badge display */}
       {activity.activityType === 'pr_achieved' && (
-        <PRContent activity={activity} styles={s} t={t} />
+        <View style={s.cardInner}>
+          <PRContent activity={activity} styles={s} t={t} />
+        </View>
       )}
 
-      {/* Content text */}
-      {activity.content ? (
-        <Text style={s.contentText}>{activity.content}</Text>
-      ) : null}
-
       {/* Photo grid */}
-      <PhotoGrid imageUrls={activity.imageUrls} styles={s} />
+      {activity.imageUrls.length > 0 && (
+        <PhotoGrid imageUrls={activity.imageUrls} styles={s} />
+      )}
+
+      {/* Stats row (inside card padding for run) */}
+
+      {/* Content text with truncation */}
+      {activity.content ? (
+        <View style={s.cardInner}>
+          <Text
+            style={s.contentText}
+            numberOfLines={contentExpanded ? undefined : 3}
+          >
+            {activity.content}
+          </Text>
+          {!contentExpanded && activity.content.length > 120 && (
+            <TouchableOpacity onPress={handleExpandContent} activeOpacity={0.6}>
+              <Text style={s.contentMore}>{t('social.activity.readMore', { defaultValue: '\uB354\uBCF4\uAE30' })}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : null}
 
       {/* Like + Comment action row */}
       <View style={s.actionRow}>
@@ -356,25 +394,34 @@ function ActivityCardInner({
 
 const createStyles = (colors: ThemeColors) =>
   StyleSheet.create({
+    // ---- Card container ----
     card: {
       backgroundColor: colors.card,
       borderRadius: BORDER_RADIUS.lg,
-      borderWidth: 1,
-      borderColor: colors.border,
-      padding: SPACING.lg,
-      marginHorizontal: SPACING.lg,
+      marginHorizontal: SPACING.md,
       marginBottom: SPACING.md,
+      overflow: 'hidden',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.08,
+      shadowRadius: 4,
+      elevation: 2,
     },
-    // Header
+    cardInner: {
+      paddingHorizontal: SPACING.lg,
+      paddingTop: SPACING.md,
+    },
+
+    // ---- Header ----
     header: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: SPACING.md,
+      gap: SPACING.sm,
     },
     avatar: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
     },
     avatarPlaceholder: {
       backgroundColor: colors.primary,
@@ -383,68 +430,108 @@ const createStyles = (colors: ThemeColors) =>
     },
     avatarPlaceholderText: {
       color: colors.white,
-      fontSize: FONT_SIZES.md,
+      fontSize: FONT_SIZES.sm,
       fontWeight: '700',
     },
-    headerText: {
+    headerTextColumn: {
       flex: 1,
+    },
+    headerTopRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: SPACING.sm,
+      gap: SPACING.xs,
     },
     nickname: {
       fontSize: FONT_SIZES.md,
       fontWeight: '700',
       color: colors.text,
     },
+    headerDot: {
+      fontSize: FONT_SIZES.md,
+      color: colors.textTertiary,
+      fontWeight: '700',
+    },
     timestamp: {
       fontSize: FONT_SIZES.xs,
       color: colors.textTertiary,
     },
-    // Activity title
-    activityTitle: {
-      fontSize: FONT_SIZES.md,
-      fontWeight: '600',
-      color: colors.text,
-      marginTop: SPACING.md,
+    headerSubtitle: {
+      fontSize: FONT_SIZES.xs,
+      fontWeight: '500',
+      color: colors.textSecondary,
+      marginTop: 1,
     },
-    // Run stats
+
+    // ---- Run stats ----
     runStatsContainer: {
-      marginTop: SPACING.md,
-      borderRadius: BORDER_RADIUS.md,
       overflow: 'hidden',
-      backgroundColor: colors.surface,
     },
     routeMapPreview: {
       width: '100%',
-      height: 180,
+      height: 220,
+      backgroundColor: colors.surface,
+    },
+    routeMapPlaceholder: {
+      width: '100%',
+      height: 220,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     statsRow: {
       flexDirection: 'row',
-      justifyContent: 'space-around',
-      paddingVertical: SPACING.md,
+      alignItems: 'center',
+      paddingVertical: SPACING.lg,
       paddingHorizontal: SPACING.lg,
     },
     statItem: {
+      flex: 1,
       alignItems: 'center',
-      gap: 2,
+    },
+    statValueHero: {
+      fontSize: 22,
+      fontWeight: '800',
+      fontVariant: ['tabular-nums'],
+      color: colors.text,
     },
     statValue: {
       fontSize: FONT_SIZES.xl,
       fontWeight: '800',
+      fontVariant: ['tabular-nums'],
       color: colors.text,
     },
     statLabel: {
       fontSize: FONT_SIZES.xs,
       fontWeight: '500',
       color: colors.textTertiary,
+      marginTop: 2,
     },
-    // PR
+    statDivider: {
+      width: StyleSheet.hairlineWidth,
+      height: 28,
+      backgroundColor: colors.border,
+    },
+
+    // ---- PR ----
     prContainer: {
-      marginTop: SPACING.md,
-      padding: SPACING.md,
-      borderRadius: BORDER_RADIUS.sm,
-      backgroundColor: colors.accent + '1A',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.md,
+      marginTop: SPACING.sm,
+    },
+    prBadge: {
+      backgroundColor: colors.accent ?? colors.primary,
+      borderRadius: BORDER_RADIUS.xs,
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: SPACING.xs,
+    },
+    prBadgeText: {
+      fontSize: FONT_SIZES.xs,
+      fontWeight: '800',
+      color: '#FFF',
+    },
+    prTextGroup: {
+      flex: 1,
     },
     prMainText: {
       fontSize: FONT_SIZES.lg,
@@ -454,46 +541,49 @@ const createStyles = (colors: ThemeColors) =>
     prSubText: {
       fontSize: FONT_SIZES.sm,
       color: colors.textSecondary,
-      marginTop: SPACING.xs,
+      marginTop: 2,
     },
-    // Content
+
+    // ---- Content ----
     contentText: {
       fontSize: FONT_SIZES.md,
       color: colors.text,
       lineHeight: 22,
-      marginTop: SPACING.md,
     },
-    // Photos
+    contentMore: {
+      fontSize: FONT_SIZES.sm,
+      fontWeight: '600',
+      color: colors.textTertiary,
+      marginTop: SPACING.xs,
+    },
+
+    // ---- Photos ----
     singlePhoto: {
       width: '100%',
       height: 240,
-      borderRadius: BORDER_RADIUS.md,
-      marginTop: SPACING.md,
     },
     photoGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: SPACING.xs,
-      marginTop: SPACING.md,
+      gap: 2,
     },
     gridPhoto: {
-      borderRadius: BORDER_RADIUS.xs,
+      borderRadius: 0,
     },
     gridPhotoHalf: {
-      width: '49%',
+      width: '49.5%',
       height: 160,
     },
     gridPhotoQuarter: {
-      width: '48%',
+      width: '49.5%',
       height: 120,
     },
     morePhotosOverlay: {
       position: 'absolute',
       right: 0,
       bottom: 0,
-      width: '48%',
+      width: '49.5%',
       height: 120,
-      borderRadius: BORDER_RADIUS.xs,
       backgroundColor: 'rgba(0,0,0,0.5)',
       alignItems: 'center',
       justifyContent: 'center',
@@ -503,24 +593,24 @@ const createStyles = (colors: ThemeColors) =>
       fontSize: FONT_SIZES.xl,
       fontWeight: '700',
     },
-    // Action row (like + comment)
+
+    // ---- Action row ----
     actionRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: SPACING.lg,
-      marginTop: SPACING.md,
+      gap: SPACING.xl,
+      marginTop: SPACING.xs,
       paddingTop: SPACING.sm,
+      paddingBottom: SPACING.md,
+      paddingHorizontal: SPACING.lg,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
     actionButton: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 4,
+      gap: SPACING.xs,
       paddingVertical: SPACING.xs,
-    },
-    actionEmoji: {
-      fontSize: 20,
     },
     actionCount: {
       fontSize: FONT_SIZES.sm,
