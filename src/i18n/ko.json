@@ -1413,7 +1413,9 @@
     "crewJoinRequest": "님이 {{crew}}에 가입을 신청했습니다",
     "followed": "님이 팔로우했습니다",
     "friendRequest": "님이 친구 요청을 보냈습니다",
-    "runCompleted": "님이 러닝을 완료했습니다"
+    "runCompleted": "님이 러닝을 완료했습니다",
+    "feedComment": "님이 회원님의 활동에 댓글을 달았습니다",
+    "feedReply": "님이 회원님의 댓글에 답글을 달았습니다"
   },
   "feed": {
     "title": "팔로잉 피드",

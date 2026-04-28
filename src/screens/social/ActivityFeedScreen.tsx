@@ -164,6 +164,13 @@ export default function ActivityFeedScreen() {
     navigation.navigate('CommunityPostCreate');
   }, [navigation]);
 
+  const handleCommentPress = useCallback(
+    (activityId: string) => {
+      navigation.navigate('FeedDetail', { activityId });
+    },
+    [navigation],
+  );
+
   // ---- Render helpers ----
 
   const renderItem = useCallback(
@@ -172,9 +179,10 @@ export default function ActivityFeedScreen() {
         activity={item}
         onToggleReaction={handleToggleReaction}
         onUserPress={handleUserPress}
+        onCommentPress={handleCommentPress}
       />
     ),
-    [handleToggleReaction, handleUserPress],
+    [handleToggleReaction, handleUserPress, handleCommentPress],
   );
 
   const keyExtractor = useCallback((item: FeedActivity) => item.id, []);

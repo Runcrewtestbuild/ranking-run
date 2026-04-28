@@ -1413,7 +1413,9 @@
     "crewJoinRequest": " requested to join {{crew}}",
     "followed": " started following you",
     "friendRequest": " sent you a friend request",
-    "runCompleted": " completed a run"
+    "runCompleted": " completed a run",
+    "feedComment": " commented on your activity",
+    "feedReply": " replied to your comment"
   },
   "feed": {
     "title": "Following Feed",

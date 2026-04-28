@@ -1413,7 +1413,9 @@
     "crewJoinRequest": "が{{crew}}への参加を申請しました",
     "followed": "がフォローしました",
     "friendRequest": "が友達リクエストを送りました",
-    "runCompleted": "がランニングを完了しました"
+    "runCompleted": "がランニングを完了しました",
+    "feedComment": "があなたのアクティビティにコメントしました",
+    "feedReply": "があなたのコメントに返信しました"
   },
   "feed": {
     "title": "フォロー中のフィード",

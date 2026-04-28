@@ -47,6 +47,7 @@ class ActivityResponse(BaseModel):
     run_summary: RunSummary | None = None
     reactions_summary: dict[str, int] = {}
     user_reactions: list[str] = []
+    comment_count: int = 0
     created_at: datetime
 
 
@@ -62,7 +63,7 @@ class ActivityFeedPaginatedResponse(BaseModel):
 # Reaction
 # ---------------------------------------------------------------------------
 
-VALID_REACTION_TYPES = {"clap", "fire", "muscle", "party", "lightning"}
+VALID_REACTION_TYPES = {"clap", "fire", "muscle", "party", "lightning", "heart"}
 
 
 class AddReactionRequest(BaseModel):
@@ -86,3 +87,34 @@ class ReactionsAggregateResponse(BaseModel):
     activity_id: str
     counts: dict[str, int]
     user_reacted: list[str]
+
+
+# ---------------------------------------------------------------------------
+# Feed Comments
+# ---------------------------------------------------------------------------
+
+class CreateFeedCommentRequest(BaseModel):
+    """Create a comment on a feed activity."""
+    content: str = Field(..., min_length=1, max_length=500)
+
+
+class FeedCommentResponse(BaseModel):
+    """Single comment entry."""
+    id: str
+    activity_id: str
+    user_id: str
+    user_nickname: str | None
+    user_avatar_url: str | None
+    parent_id: str | None = None
+    content: str
+    replies: list["FeedCommentResponse"] = []
+    reply_count: int = 0
+    created_at: datetime
+
+
+class FeedCommentPaginatedResponse(BaseModel):
+    """Paginated comment list."""
+    data: list[FeedCommentResponse]
+    total_count: int
+    page: int
+    per_page: int

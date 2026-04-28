@@ -23,6 +23,7 @@ import CrewMemberSettingsScreen from '../screens/crew/CrewMemberSettingsScreen';
 import VersusDetailScreen from '../screens/social/VersusDetailScreen';
 import VersusCreateScreen from '../screens/social/VersusCreateScreen';
 import GroupRunDetailScreen from '../screens/social/GroupRunDetailScreen';
+import FeedDetailScreen from '../screens/social/FeedDetailScreen';
 import { useTheme } from '../hooks/useTheme';
 
 const Stack = createNativeStackNavigator<CommunityStackParamList>();
@@ -59,6 +60,7 @@ export default function CommunityStack() {
       <Stack.Screen name="VersusDetail" component={VersusDetailScreen} />
       <Stack.Screen name="VersusCreate" component={VersusCreateScreen} />
       <Stack.Screen name="GroupRunDetail" component={GroupRunDetailScreen} />
+      <Stack.Screen name="FeedDetail" component={FeedDetailScreen} />
     </Stack.Navigator>
   );
 }

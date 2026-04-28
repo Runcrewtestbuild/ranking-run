@@ -30,6 +30,7 @@ from app.services.crew_challenge_service import CrewChallengeService
 from app.services.crew_ranking_service import CrewRankingService
 from app.services.live_group_run_service import LiveGroupRunService
 from app.services.feed_service import FeedService
+from app.services.feed_comment_service import FeedCommentService
 from app.services.reaction_service import ReactionService
 from app.services.leaderboard_service import LeaderboardService
 from app.services.season_service import SeasonService
@@ -96,6 +97,7 @@ class Container(containers.DeclarativeContainer):
     crew_join_request_service = providers.Factory(CrewJoinRequestService)
     crew_service = providers.Factory(CrewService)
     feed_service = providers.Factory(FeedService)
+    feed_comment_service = providers.Factory(FeedCommentService)
     event_service = providers.Factory(EventService)
     follow_service = providers.Factory(FollowService)
     friend_request_service = providers.Factory(FriendRequestService)

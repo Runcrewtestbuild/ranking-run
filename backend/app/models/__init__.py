@@ -30,6 +30,7 @@ from app.models.challenge import Challenge, ChallengeParticipant
 from app.models.error_log import ErrorLog
 from app.models.live_group_run import LiveGroupRun, LiveGroupRunParticipant
 from app.models.activity_feed import ActivityFeed
+from app.models.feed_comment import FeedComment
 from app.models.reaction import Reaction
 from app.models.versus import VersusMatch
 from app.models.crew_post import CrewPost, CrewPostLike
@@ -82,6 +83,7 @@ __all__ = [
     "LiveGroupRunParticipant",
     "ErrorLog",
     "ActivityFeed",
+    "FeedComment",
     "Reaction",
     "VersusMatch",
     "CrewPost",

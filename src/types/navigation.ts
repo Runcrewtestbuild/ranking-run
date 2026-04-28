@@ -40,6 +40,7 @@ export type HomeStackParamList = {
   Home: undefined;
   ActivityFeed: undefined;
   NotificationInbox: undefined;
+  FeedDetail: { activityId: string };
   CourseDetail: { courseId: string; selectForRaid?: string };
   RunHistory: undefined;
   RunDetail: { runId: string };
@@ -109,6 +110,7 @@ export type CommunityStackParamList = {
   VersusDetail: { battleId: string };
   VersusCreate: undefined;
   GroupRunDetail: { groupRunId: string };
+  FeedDetail: { activityId: string };
 };
 
 export type MyPageStackParamList = {

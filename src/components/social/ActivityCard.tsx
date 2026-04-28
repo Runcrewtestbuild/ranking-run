@@ -8,11 +8,12 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
+import * as Haptics from 'expo-haptics';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { useTheme } from '../../hooks/useTheme';
 import type { ThemeColors } from '../../utils/constants';
 import { FONT_SIZES, SPACING, BORDER_RADIUS } from '../../utils/constants';
 import type { FeedActivity, ReactionType } from '../../types/feed';
-import ReactionBar from './ReactionBar';
 
 // ---- Helpers ----
 
@@ -254,23 +255,34 @@ interface ActivityCardProps {
   activity: FeedActivity;
   onToggleReaction: (activityId: string, type: ReactionType) => void;
   onUserPress?: (userId: string) => void;
+  onCommentPress?: (activityId: string) => void;
 }
 
 function ActivityCardInner({
   activity,
   onToggleReaction,
   onUserPress,
+  onCommentPress,
 }: ActivityCardProps) {
   const colors = useTheme();
   const { t } = useTranslation();
+  const hapticEnabled = useSettingsStore((s) => s.hapticFeedback);
   const s = useMemo(() => createStyles(colors), [colors]);
 
-  const handleToggleReaction = useCallback(
-    (type: ReactionType) => {
-      onToggleReaction(activity.id, type);
-    },
-    [activity.id, onToggleReaction],
-  );
+  const isLiked = activity.userReactions.includes('heart');
+  const likeCount = activity.reactions.heart ?? 0;
+  const commentCount = activity.commentCount ?? 0;
+
+  const handleToggleLike = useCallback(() => {
+    if (hapticEnabled) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    onToggleReaction(activity.id, 'heart');
+  }, [activity.id, onToggleReaction, hapticEnabled]);
+
+  const handleCommentPress = useCallback(() => {
+    onCommentPress?.(activity.id);
+  }, [activity.id, onCommentPress]);
 
   const activityTitle = getActivityTitle(activity, t);
 
@@ -307,12 +319,32 @@ function ActivityCardInner({
       {/* Photo grid */}
       <PhotoGrid imageUrls={activity.imageUrls} styles={s} />
 
-      {/* Reactions */}
-      <ReactionBar
-        reactions={activity.reactions}
-        userReactions={activity.userReactions}
-        onToggleReaction={handleToggleReaction}
-      />
+      {/* Like + Comment action row */}
+      <View style={s.actionRow}>
+        <TouchableOpacity
+          style={s.actionButton}
+          onPress={handleToggleLike}
+          activeOpacity={0.7}
+        >
+          <Text style={s.actionEmoji}>{isLiked ? '\u2764\uFE0F' : '\uD83E\uDE76'}</Text>
+          {likeCount > 0 && (
+            <Text style={[s.actionCount, isLiked && s.actionCountActive]}>
+              {likeCount}
+            </Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={s.actionButton}
+          onPress={handleCommentPress}
+          activeOpacity={0.7}
+        >
+          <Text style={s.actionEmoji}>{'\uD83D\uDCAC'}</Text>
+          {commentCount > 0 && (
+            <Text style={s.actionCount}>{commentCount}</Text>
+          )}
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -465,6 +497,33 @@ const createStyles = (colors: ThemeColors) =>
       color: '#FFF',
       fontSize: FONT_SIZES.xl,
       fontWeight: '700',
+    },
+    // Action row (like + comment)
+    actionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.lg,
+      marginTop: SPACING.md,
+      paddingTop: SPACING.sm,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    actionButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingVertical: SPACING.xs,
+    },
+    actionEmoji: {
+      fontSize: 20,
+    },
+    actionCount: {
+      fontSize: FONT_SIZES.sm,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    actionCountActive: {
+      color: '#E53E3E',
     },
   });
 

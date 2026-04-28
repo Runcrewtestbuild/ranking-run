@@ -246,6 +246,62 @@ class NotificationService:
         await db.flush()
 
     # ------------------------------------------------------------------
+    # Feed comment / reply notifications
+    # ------------------------------------------------------------------
+
+    async def send_feed_comment_notification(
+        self,
+        db: AsyncSession,
+        activity_author_id: UUID,
+        actor_id: UUID,
+        actor_nickname: str,
+        activity_id: str,
+    ) -> None:
+        """Notify the activity author when someone comments on their activity.
+
+        Skips notification if the commenter is the activity author.
+        """
+        if activity_author_id == actor_id:
+            return
+
+        await self.create_and_send(
+            db=db,
+            user_id=activity_author_id,
+            notification_type="feed_comment",
+            actor_id=actor_id,
+            title=actor_nickname or "누군가",
+            body="님이 회원님의 활동에 댓글을 달았습니다",
+            target_id=activity_id,
+            target_type="activity",
+        )
+
+    async def send_feed_reply_notification(
+        self,
+        db: AsyncSession,
+        parent_comment_author_id: UUID,
+        actor_id: UUID,
+        actor_nickname: str,
+        activity_id: str,
+    ) -> None:
+        """Notify the parent comment author when someone replies to their comment.
+
+        Skips notification if the replier is the parent comment author.
+        """
+        if parent_comment_author_id == actor_id:
+            return
+
+        await self.create_and_send(
+            db=db,
+            user_id=parent_comment_author_id,
+            notification_type="feed_reply",
+            actor_id=actor_id,
+            title=actor_nickname or "누군가",
+            body="님이 회원님의 댓글에 답글을 달았습니다",
+            target_id=activity_id,
+            target_type="activity",
+        )
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 

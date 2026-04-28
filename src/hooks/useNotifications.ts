@@ -53,6 +53,12 @@ function navigateFromNotification(
         return;
       }
       break;
+    case 'feed_comment':
+    case 'feed_reply':
+      if (!targetId) return;
+      screen = 'FeedDetail';
+      params = { activityId: targetId };
+      break;
     case 'crew_chat':
       if (!targetId) return;
       screen = 'CrewDetail';

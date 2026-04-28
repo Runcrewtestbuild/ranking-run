@@ -1,17 +1,23 @@
-"""Feed endpoints: activity feed, user activities, and reactions."""
+"""Feed endpoints: activity feed, user activities, reactions, and comments."""
 
+import logging
 from uuid import UUID
 
 from dependency_injector.wiring import inject, Provide
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func as sa_func, select
 
 from app.core.container import Container
 from app.core.deps import CurrentUser, DbSession
+from app.models.feed_comment import FeedComment
 from app.schemas.feed import (
     ActivityFeedPaginatedResponse,
     ActivityResponse,
     AddReactionRequest,
     CreateActivityRequest,
+    CreateFeedCommentRequest,
+    FeedCommentPaginatedResponse,
+    FeedCommentResponse,
     FeedUserInfo,
     ReactionResponse,
     ReactionsAggregateResponse,
@@ -19,7 +25,11 @@ from app.schemas.feed import (
     VALID_REACTION_TYPES,
 )
 from app.services.feed_service import FeedService
+from app.services.feed_comment_service import FeedCommentService
+from app.services.notification_service import NotificationService
 from app.services.reaction_service import ReactionService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/feed", tags=["feed"])
 
@@ -34,6 +44,24 @@ def _build_user_info(user) -> FeedUserInfo:
         nickname=user.nickname,
         avatar_url=user.avatar_url,
     )
+
+
+async def _get_comment_counts_batch(
+    db,
+    activity_ids: list[UUID],
+) -> dict[UUID, int]:
+    """Batch-fetch comment counts for a list of activity IDs."""
+    if not activity_ids:
+        return {}
+    result = await db.execute(
+        select(
+            FeedComment.activity_id,
+            sa_func.count().label("cnt"),
+        )
+        .where(FeedComment.activity_id.in_(activity_ids))
+        .group_by(FeedComment.activity_id)
+    )
+    return {row.activity_id: row.cnt for row in result.all()}
 
 
 def _build_run_summary(run_record) -> RunSummary | None:
@@ -55,6 +83,7 @@ def _build_run_summary(run_record) -> RunSummary | None:
 def _build_activity_response(
     activity,
     reactions_data: dict | None = None,
+    comment_count: int = 0,
 ) -> ActivityResponse:
     counts = {}
     user_reacted: list[str] = []
@@ -72,6 +101,7 @@ def _build_activity_response(
         run_summary=_build_run_summary(activity.run_record),
         reactions_summary=counts,
         user_reactions=user_reacted,
+        comment_count=comment_count,
         created_at=activity.created_at,
     )
 
@@ -97,17 +127,20 @@ async def get_feed(
         per_page=per_page,
     )
 
-    # Batch-fetch reaction summaries
+    # Batch-fetch reaction summaries and comment counts
     activity_ids = [a.id for a in activities]
     reactions_map = await feed_service.get_reactions_summary_batch(
         db=db,
         activity_ids=activity_ids,
         current_user_id=current_user.id,
     )
+    comment_counts = await _get_comment_counts_batch(db, activity_ids)
 
     return ActivityFeedPaginatedResponse(
         data=[
-            _build_activity_response(a, reactions_map.get(a.id))
+            _build_activity_response(
+                a, reactions_map.get(a.id), comment_counts.get(a.id, 0),
+            )
             for a in activities
         ],
         total_count=total_count,
@@ -140,10 +173,13 @@ async def get_user_activities(
         activity_ids=activity_ids,
         current_user_id=current_user.id,
     )
+    comment_counts = await _get_comment_counts_batch(db, activity_ids)
 
     return ActivityFeedPaginatedResponse(
         data=[
-            _build_activity_response(a, reactions_map.get(a.id))
+            _build_activity_response(
+                a, reactions_map.get(a.id), comment_counts.get(a.id, 0),
+            )
             for a in activities
         ],
         total_count=total_count,
@@ -245,4 +281,172 @@ async def get_reactions(
         activity_id=str(activity_id),
         counts=data["counts"],
         user_reacted=data["user_reacted"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Comment Endpoints
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/activities/{activity_id}/comments",
+    response_model=FeedCommentPaginatedResponse,
+)
+@inject
+async def get_comments(
+    activity_id: UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+    page: int = Query(0, ge=0),
+    per_page: int = Query(20, ge=1, le=50),
+    feed_comment_service: FeedCommentService = Depends(
+        Provide[Container.feed_comment_service]
+    ),
+) -> FeedCommentPaginatedResponse:
+    """Get paginated comments for an activity."""
+    comments, total_count = await feed_comment_service.get_comments(
+        db=db, activity_id=activity_id, page=page, per_page=per_page,
+    )
+    return FeedCommentPaginatedResponse(
+        data=[FeedCommentResponse(**c) for c in comments],
+        total_count=total_count,
+        page=page,
+        per_page=per_page,
+    )
+
+
+@router.post(
+    "/activities/{activity_id}/comments",
+    response_model=FeedCommentResponse,
+    status_code=201,
+)
+@inject
+async def create_comment(
+    activity_id: UUID,
+    body: CreateFeedCommentRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+    feed_comment_service: FeedCommentService = Depends(
+        Provide[Container.feed_comment_service]
+    ),
+    notification_service: NotificationService = Depends(
+        Provide[Container.notification_service]
+    ),
+) -> FeedCommentResponse:
+    """Create a top-level comment on an activity."""
+    comment = await feed_comment_service.create_comment(
+        db=db,
+        activity_id=activity_id,
+        user_id=current_user.id,
+        content=body.content,
+    )
+
+    # Notify activity author (skip self-comment)
+    activity_author_id = comment.get("activity_author_id")
+    if activity_author_id and str(activity_author_id) != str(current_user.id):
+        try:
+            await notification_service.send_feed_comment_notification(
+                db=db,
+                activity_author_id=activity_author_id,
+                actor_id=current_user.id,
+                actor_nickname=current_user.nickname or "누군가",
+                activity_id=str(activity_id),
+            )
+        except Exception:
+            logger.error(
+                "Failed to send feed_comment notification for activity %s",
+                activity_id, exc_info=True,
+            )
+
+    return FeedCommentResponse(**{k: v for k, v in comment.items()
+                                  if k not in ("activity_author_id", "parent_author_id")})
+
+
+@router.post(
+    "/activities/{activity_id}/comments/{parent_id}/replies",
+    response_model=FeedCommentResponse,
+    status_code=201,
+)
+@inject
+async def create_reply(
+    activity_id: UUID,
+    parent_id: UUID,
+    body: CreateFeedCommentRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+    feed_comment_service: FeedCommentService = Depends(
+        Provide[Container.feed_comment_service]
+    ),
+    notification_service: NotificationService = Depends(
+        Provide[Container.notification_service]
+    ),
+) -> FeedCommentResponse:
+    """Create a reply to an existing comment."""
+    comment = await feed_comment_service.create_comment(
+        db=db,
+        activity_id=activity_id,
+        user_id=current_user.id,
+        content=body.content,
+        parent_id=parent_id,
+    )
+
+    # Notify parent comment author (skip self-reply)
+    parent_author_id = comment.get("parent_author_id")
+    if parent_author_id and str(parent_author_id) != str(current_user.id):
+        try:
+            await notification_service.send_feed_reply_notification(
+                db=db,
+                parent_comment_author_id=parent_author_id,
+                actor_id=current_user.id,
+                actor_nickname=current_user.nickname or "누군가",
+                activity_id=str(activity_id),
+            )
+        except Exception:
+            logger.error(
+                "Failed to send feed_reply notification for activity %s",
+                activity_id, exc_info=True,
+            )
+
+    # Also notify activity author if different from parent comment author
+    activity_author_id = comment.get("activity_author_id")
+    if (
+        activity_author_id
+        and str(activity_author_id) != str(current_user.id)
+        and str(activity_author_id) != str(parent_author_id or "")
+    ):
+        try:
+            await notification_service.send_feed_comment_notification(
+                db=db,
+                activity_author_id=activity_author_id,
+                actor_id=current_user.id,
+                actor_nickname=current_user.nickname or "누군가",
+                activity_id=str(activity_id),
+            )
+        except Exception:
+            logger.error(
+                "Failed to send feed_comment notification for activity %s",
+                activity_id, exc_info=True,
+            )
+
+    return FeedCommentResponse(**{k: v for k, v in comment.items()
+                                  if k not in ("activity_author_id", "parent_author_id")})
+
+
+@router.delete(
+    "/activities/{activity_id}/comments/{comment_id}",
+    status_code=204,
+)
+@inject
+async def delete_comment(
+    activity_id: UUID,
+    comment_id: UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+    feed_comment_service: FeedCommentService = Depends(
+        Provide[Container.feed_comment_service]
+    ),
+) -> None:
+    """Delete a comment (author only)."""
+    await feed_comment_service.delete_comment(
+        db=db, comment_id=comment_id, user_id=current_user.id,
     )

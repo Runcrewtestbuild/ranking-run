@@ -10,7 +10,7 @@ export type ActivityType =
   | 'streak_milestone'
   | 'post';
 
-export type ReactionType = 'clap' | 'fire' | 'muscle' | 'party' | 'lightning';
+export type ReactionType = 'clap' | 'fire' | 'muscle' | 'party' | 'lightning' | 'heart';
 
 export const REACTION_EMOJIS: Record<ReactionType, string> = {
   clap: '\uD83D\uDC4F',
@@ -18,6 +18,7 @@ export const REACTION_EMOJIS: Record<ReactionType, string> = {
   muscle: '\uD83D\uDCAA',
   party: '\uD83C\uDF89',
   lightning: '\u26A1',
+  heart: '\u2764\uFE0F',
 };
 
 export const REACTION_TYPES: ReactionType[] = [
@@ -26,6 +27,7 @@ export const REACTION_TYPES: ReactionType[] = [
   'muscle',
   'party',
   'lightning',
+  'heart',
 ];
 
 export interface ReactionSummary {
@@ -34,6 +36,7 @@ export interface ReactionSummary {
   muscle: number;
   party: number;
   lightning: number;
+  heart: number;
   total: number;
 }
 
@@ -58,5 +61,19 @@ export interface FeedActivity {
   metadata: Record<string, unknown>;
   reactions: ReactionSummary;
   userReactions: ReactionType[];
+  commentCount: number;
+  createdAt: string;
+}
+
+export interface FeedComment {
+  id: string;
+  activityId: string;
+  userId: string;
+  userNickname: string;
+  userAvatarUrl: string | null;
+  parentId: string | null;
+  content: string;
+  replies?: FeedComment[];
+  replyCount: number;
   createdAt: string;
 }

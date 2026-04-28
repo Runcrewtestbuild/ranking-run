@@ -39,6 +39,8 @@ const NOTIFICATION_ICONS: Record<string, { name: string; color: string }> = {
   follow: { name: 'person-add-outline', color: '#10B981' },
   friend_request: { name: 'people', color: '#8B5CF6' },
   run_completed: { name: 'footsteps', color: '#FF7A33' },
+  feed_comment: { name: 'chatbubble-ellipses', color: '#3B82F6' },
+  feed_reply: { name: 'chatbubble-ellipses', color: '#6366F1' },
 };
 
 function getNotificationMessage(item: NotificationItem, t: (key: string, opts?: Record<string, unknown>) => string): string {
@@ -58,6 +60,10 @@ function getNotificationMessage(item: NotificationItem, t: (key: string, opts?: 
       return `${name}${t('notification.friendRequest')}`;
     case 'run_completed':
       return `${name}${t('notification.runCompleted')}`;
+    case 'feed_comment':
+      return `${name}${t('notification.feedComment')}`;
+    case 'feed_reply':
+      return `${name}${t('notification.feedReply')}`;
     default:
       return name;
   }
@@ -166,6 +172,12 @@ export default function NotificationInboxScreen() {
             navigation.navigate('RunDetail', { runId: item.target_id });
           } else {
             navigation.navigate('UserProfile', { userId: item.actor.id });
+          }
+          break;
+        case 'feed_comment':
+        case 'feed_reply':
+          if (item.target_id) {
+            navigation.navigate('FeedDetail', { activityId: item.target_id });
           }
           break;
       }

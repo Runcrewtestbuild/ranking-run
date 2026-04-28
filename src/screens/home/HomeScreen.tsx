@@ -445,7 +445,13 @@ export default function HomeScreen() {
               accessibilityLabel="알림"
             >
               <Ionicons name="notifications-outline" size={24} color={colors.text} />
-              {unreadCount > 0 && <View style={styles.unreadBadge} />}
+              {unreadCount > 0 && (
+                <View style={styles.unreadBadge}>
+                  <Text style={styles.unreadBadgeText}>
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -1332,12 +1338,21 @@ const createStyles = (c: ThemeColors) =>
     },
     unreadBadge: {
       position: 'absolute',
-      top: -2,
-      right: -2,
-      width: 9,
-      height: 9,
-      borderRadius: 4.5,
+      top: -6,
+      right: -8,
+      minWidth: 18,
+      height: 18,
+      borderRadius: 9,
       backgroundColor: COLORS.primary,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 4,
+    },
+    unreadBadgeText: {
+      color: '#FFFFFF',
+      fontSize: 10,
+      fontWeight: '700',
+      lineHeight: 12,
     },
 
     // Greeting
