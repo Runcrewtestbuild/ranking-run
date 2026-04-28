@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { Ionicons } from '../../lib/icons';
 import type { TFunction } from 'i18next';
 import * as Haptics from 'expo-haptics';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -326,7 +327,11 @@ function ActivityCardInner({
           onPress={handleToggleLike}
           activeOpacity={0.7}
         >
-          <Text style={s.actionEmoji}>{isLiked ? '\u2764\uFE0F' : '\uD83E\uDE76'}</Text>
+          <Ionicons
+            name={isLiked ? 'heart' : 'heart-outline'}
+            size={22}
+            color={isLiked ? '#E53E3E' : colors.textTertiary}
+          />
           {likeCount > 0 && (
             <Text style={[s.actionCount, isLiked && s.actionCountActive]}>
               {likeCount}
@@ -339,7 +344,7 @@ function ActivityCardInner({
           onPress={handleCommentPress}
           activeOpacity={0.7}
         >
-          <Text style={s.actionEmoji}>{'\uD83D\uDCAC'}</Text>
+          <Ionicons name="chatbubble-outline" size={20} color={colors.textTertiary} />
           {commentCount > 0 && (
             <Text style={s.actionCount}>{commentCount}</Text>
           )}
