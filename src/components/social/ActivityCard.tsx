@@ -5,6 +5,7 @@ import {
   Image,
   StyleSheet,
   TouchableOpacity,
+  useWindowDimensions,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '../../lib/icons';
@@ -54,37 +55,48 @@ function formatDistanceKm(meters: number): string {
   return (meters / 1000).toFixed(2);
 }
 
-function getActivityIcon(type: FeedActivity['activityType']): string {
+function getActivityIconName(type: FeedActivity['activityType']): string {
   switch (type) {
     case 'run_completed':
-      return '\uD83C\uDFC3';
+      return 'footsteps-outline';
     case 'pr_achieved':
-      return '\uD83C\uDFC6';
+      return 'trophy-outline';
     case 'challenge_completed':
-      return '\uD83C\uDF1F';
+      return 'ribbon-outline';
     case 'crew_joined':
-      return '\uD83D\uDC65';
+      return 'people-outline';
     case 'streak_milestone':
-      return '\uD83D\uDD25';
+      return 'flame-outline';
     case 'post':
-      return '';
+      return 'document-text-outline';
     default:
-      return '';
+      return 'ellipse-outline';
+  }
+}
+
+function getActivityIconColor(type: FeedActivity['activityType']): string {
+  switch (type) {
+    case 'run_completed': return '#FF7A33';
+    case 'pr_achieved': return '#FFD700';
+    case 'challenge_completed': return '#10B981';
+    case 'crew_joined': return '#8B5CF6';
+    case 'streak_milestone': return '#EF4444';
+    default: return '#6B7280';
   }
 }
 
 function getActivityTitle(activity: FeedActivity, t: TFunction): string {
   switch (activity.activityType) {
     case 'run_completed':
-      return `\uD83C\uDFC3 ${t('social.activity.runCompleted')}`;
+      return t('social.activity.runCompleted');
     case 'pr_achieved':
-      return `\uD83C\uDFC6 ${t('social.activity.prAchieved')}`;
+      return t('social.activity.prAchieved');
     case 'challenge_completed':
-      return `\uD83C\uDF1F ${t('social.activity.challengeCompleted')}`;
+      return t('social.activity.challengeCompleted');
     case 'crew_joined':
-      return `\uD83D\uDC65 ${t('social.activity.crewJoined')}`;
+      return t('social.activity.crewJoined');
     case 'streak_milestone':
-      return `\uD83D\uDD25 ${t('social.activity.streakMilestone')}`;
+      return t('social.activity.streakMilestone');
     default:
       return '';
   }
@@ -144,7 +156,14 @@ const CardHeader = memo(function CardHeader({
           <Text style={s.timestamp}>{formatRelativeTime(activity.createdAt, t)}</Text>
         </View>
         {activity.activityType !== 'post' && activityTitle !== '' && (
-          <Text style={s.headerSubtitle}>{activityTitle}</Text>
+          <View style={s.headerSubtitleRow}>
+            <Ionicons
+              name={getActivityIconName(activity.activityType) as any}
+              size={14}
+              color={getActivityIconColor(activity.activityType)}
+            />
+            <Text style={s.headerSubtitle}>{activityTitle}</Text>
+          </View>
         )}
       </View>
     </TouchableOpacity>
@@ -158,13 +177,15 @@ interface RunStatsProps {
 }
 
 const RunStats = memo(function RunStats({ runRecord, styles: s, colors, t }: RunStatsProps & { t: TFunction }) {
+  const { width: screenWidth } = useWindowDimensions();
+  const mapWidth = screenWidth - SPACING.md * 2; // card margin
   return (
     <View style={s.runStatsContainer}>
       {runRecord.routePreview && runRecord.routePreview.length >= 2 ? (
         <View style={s.routeMapPreview}>
           <RoutePreview
             coordinates={runRecord.routePreview}
-            width={340}
+            width={mapWidth}
             height={220}
             strokeColor={colors.primary}
             strokeWidth={3}
@@ -466,6 +487,12 @@ const createStyles = (colors: ThemeColors) =>
     timestamp: {
       fontSize: FONT_SIZES.xs,
       color: colors.textTertiary,
+    },
+    headerSubtitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      marginTop: 2,
     },
     headerSubtitle: {
       fontSize: FONT_SIZES.xs,

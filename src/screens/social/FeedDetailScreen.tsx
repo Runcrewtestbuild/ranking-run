@@ -265,6 +265,7 @@ export default function FeedDetailScreen() {
 
       setCommentText('');
       setReplyTarget(null);
+      inputRef.current?.blur(); // 키보드 내리기
     } catch {
       showToast('error', '댓글을 작성하지 못했어요');
     } finally {
