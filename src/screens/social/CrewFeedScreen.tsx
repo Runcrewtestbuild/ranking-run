@@ -40,6 +40,7 @@ type SectionItem =
   | { type: 'crew_selector'; data: CrewMiniCard[] }
   | { type: 'feed_header'; crewName: string }
   | { type: 'post'; data: CrewPost }
+  | { type: 'empty_posts' }
   | { type: 'empty_crew' }
   | { type: 'discover_header' }
   | { type: 'discover_crew'; data: DiscoverCrew };
@@ -282,12 +283,15 @@ export default function CrewFeedScreen() {
     }
 
     // Posts
+    if (posts.length === 0 && !isLoading) {
+      items.push({ type: 'empty_posts' });
+    }
     posts.forEach((post) => {
       items.push({ type: 'post', data: post });
     });
 
     return items;
-  }, [hasCrews, upcomingRuns, myCrews, selectedCrewId, posts, recommendedCrews]);
+  }, [hasCrews, upcomingRuns, myCrews, selectedCrewId, posts, recommendedCrews, isLoading]);
 
   // ---- Render ----
 
@@ -329,7 +333,7 @@ export default function CrewFeedScreen() {
         case 'feed_header':
           return (
             <View style={s.sectionHeader}>
-              <Text style={s.sectionTitle}>{item.crewName} {t('social.crewFeed.latest')}</Text>
+              <Text style={s.sectionTitle}>{item.crewName} {t('social.crewFeed.posts')}</Text>
             </View>
           );
 
@@ -340,6 +344,19 @@ export default function CrewFeedScreen() {
               onLike={handlePostLike}
               onAuthorPress={handleAuthorPress}
             />
+          );
+
+        case 'empty_posts':
+          return (
+            <View style={s.emptyPostsContainer}>
+              <Ionicons name="document-text-outline" size={40} color={colors.textTertiary} />
+              <Text style={s.emptyPostsText}>
+                {t('social.crewFeed.emptyPosts')}
+              </Text>
+              <Text style={s.emptyPostsHint}>
+                {t('social.crewFeed.emptyPostsHint')}
+              </Text>
+            </View>
           );
 
         case 'empty_crew':
@@ -522,6 +539,25 @@ const createStyles = (c: ThemeColors) =>
       fontSize: FONT_SIZES.md,
       fontWeight: '700',
       color: c.text,
+    },
+    // Empty posts state
+    emptyPostsContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: SPACING.xxl,
+      paddingHorizontal: SPACING.xxl,
+      gap: SPACING.sm,
+    },
+    emptyPostsText: {
+      fontSize: FONT_SIZES.md,
+      color: c.textSecondary,
+      textAlign: 'center',
+      marginTop: SPACING.sm,
+    },
+    emptyPostsHint: {
+      fontSize: FONT_SIZES.sm,
+      color: c.textTertiary,
+      textAlign: 'center',
     },
     // Empty state
     emptyContainer: {

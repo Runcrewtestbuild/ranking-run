@@ -1074,7 +1074,7 @@
     "title": "소셜",
     "tabs": {
       "feed": "피드",
-      "battle": "대결",
+      "battle": "랭킹",
       "crew": "크루",
       "explore": "탐색",
       "comingSoon": "준비 중",
@@ -1231,7 +1231,9 @@
     "crewFeed": {
       "upcomingGroupRuns": "다가오는 그룹런",
       "myCrews": "내 크루",
-      "latest": "최신",
+      "posts": "게시글",
+      "emptyPosts": "아직 게시글이 없습니다",
+      "emptyPostsHint": "첫 글을 작성해보세요!",
       "emptyCrewTitle": "혼자 달려도 좋지만, 함께 하면 더 멀리 갈 수 있어요",
       "findNearbyCrews": "내 주변 크루 찾기",
       "createCrew": "크루 만들기",

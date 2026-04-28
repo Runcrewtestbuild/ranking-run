@@ -1074,7 +1074,7 @@
     "title": "Social",
     "tabs": {
       "feed": "Feed",
-      "battle": "Battle",
+      "battle": "Ranking",
       "crew": "Crew",
       "explore": "Explore",
       "comingSoon": "Coming Soon",
@@ -1231,7 +1231,9 @@
     "crewFeed": {
       "upcomingGroupRuns": "Upcoming Group Runs",
       "myCrews": "My Crews",
-      "latest": "Latest",
+      "posts": "Posts",
+      "emptyPosts": "No posts yet",
+      "emptyPostsHint": "Be the first to write a post!",
       "emptyCrewTitle": "Running is better together. Find a crew to go further!",
       "findNearbyCrews": "Find Nearby Crews",
       "createCrew": "Create Crew",
