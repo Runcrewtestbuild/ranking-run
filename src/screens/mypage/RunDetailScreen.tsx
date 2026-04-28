@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, CommonActions, useIsFocused } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '../../lib/icons';
+import { useAuthStore } from '../../stores/authStore';
 import { useTheme } from '../../hooks/useTheme';
 import BlurredBackground from '../../components/common/BlurredBackground';
 import GlassCard from '../../components/common/GlassCard';
@@ -127,6 +128,7 @@ export default function RunDetailScreen() {
   const { runId } = route.params;
   const { t } = useTranslation();
   const colors = useTheme();
+  const currentUserId = useAuthStore((s) => s.user?.id);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const mapRef = useRef<RouteMapViewHandle>(null);
   const isFocused = useIsFocused();
@@ -469,8 +471,8 @@ export default function RunDetailScreen() {
             </TouchableOpacity>
           )}
 
-          {/* Save as Course */}
-          {!detail.course && detail.distance_meters >= 500 && routePoints.length >= 2 && (
+          {/* Save as Course — only for own runs */}
+          {!detail.course && detail.distance_meters >= 500 && routePoints.length >= 2 && detail.user_id === currentUserId && (
             <TouchableOpacity
               style={styles.saveAsCourseBtn}
               activeOpacity={0.7}
