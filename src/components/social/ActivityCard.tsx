@@ -55,36 +55,6 @@ function formatDistanceKm(meters: number): string {
   return (meters / 1000).toFixed(2);
 }
 
-function getActivityIconName(type: FeedActivity['activityType']): string {
-  switch (type) {
-    case 'run_completed':
-      return 'footsteps-outline';
-    case 'pr_achieved':
-      return 'trophy-outline';
-    case 'challenge_completed':
-      return 'ribbon-outline';
-    case 'crew_joined':
-      return 'people-outline';
-    case 'streak_milestone':
-      return 'flame-outline';
-    case 'post':
-      return 'document-text-outline';
-    default:
-      return 'ellipse-outline';
-  }
-}
-
-function getActivityIconColor(type: FeedActivity['activityType']): string {
-  switch (type) {
-    case 'run_completed': return '#FF7A33';
-    case 'pr_achieved': return '#FFD700';
-    case 'challenge_completed': return '#10B981';
-    case 'crew_joined': return '#8B5CF6';
-    case 'streak_milestone': return '#EF4444';
-    default: return '#6B7280';
-  }
-}
-
 function getActivityTitle(activity: FeedActivity, t: TFunction): string {
   switch (activity.activityType) {
     case 'run_completed':
@@ -156,14 +126,7 @@ const CardHeader = memo(function CardHeader({
           <Text style={s.timestamp}>{formatRelativeTime(activity.createdAt, t)}</Text>
         </View>
         {activity.activityType !== 'post' && activityTitle !== '' && (
-          <View style={s.headerSubtitleRow}>
-            <Ionicons
-              name={getActivityIconName(activity.activityType) as any}
-              size={14}
-              color={getActivityIconColor(activity.activityType)}
-            />
-            <Text style={s.headerSubtitle}>{activityTitle}</Text>
-          </View>
+          <Text style={s.headerSubtitle}>{activityTitle}</Text>
         )}
       </View>
     </TouchableOpacity>
@@ -243,17 +206,26 @@ const PRContent = memo(function PRContent({ activity, styles: s, t }: PRContentP
 
   return (
     <View style={s.prContainer}>
-      <View style={s.prBadge}>
-        <Text style={s.prBadgeText}>PR</Text>
-      </View>
-      <View style={s.prTextGroup}>
-        <Text style={s.prMainText}>
-          {distanceLabel} — {newTime}
-        </Text>
+      <View style={s.prStatsRow}>
+        <View style={s.prStatItem}>
+          <Text style={s.prStatLabel}>{t('social.activity.prCategory')}</Text>
+          <Text style={s.prStatValue}>{distanceLabel}</Text>
+        </View>
+        <View style={s.prStatItem}>
+          <Text style={s.prStatLabel}>{t('social.activity.prNewRecord')}</Text>
+          <Text style={[s.prStatValue, { color: '#10B981' }]}>{newTime}</Text>
+        </View>
         {prevTime ? (
-          <Text style={s.prSubText}>
-            {t('social.activity.prPrevious')}: {prevTime} {'\u26A1'} {improvement}
-          </Text>
+          <View style={s.prStatItem}>
+            <Text style={s.prStatLabel}>{t('social.activity.prPrevious')}</Text>
+            <Text style={s.prStatValue}>{prevTime}</Text>
+          </View>
+        ) : null}
+        {improvement ? (
+          <View style={s.prStatItem}>
+            <Text style={s.prStatLabel}>{t('social.activity.prImprovement')}</Text>
+            <Text style={[s.prStatValue, { color: '#FF7A33' }]}>{improvement}</Text>
+          </View>
         ) : null}
       </View>
     </View>
@@ -488,12 +460,7 @@ const createStyles = (colors: ThemeColors) =>
       fontSize: FONT_SIZES.xs,
       color: colors.textTertiary,
     },
-    headerSubtitleRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      marginTop: 2,
-    },
+    // headerSubtitleRow removed — using text-only subtitle
     headerSubtitle: {
       fontSize: FONT_SIZES.xs,
       fontWeight: '500',
@@ -558,34 +525,30 @@ const createStyles = (colors: ThemeColors) =>
 
     // ---- PR ----
     prContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: SPACING.md,
       marginTop: SPACING.sm,
+      marginHorizontal: SPACING.md,
+      backgroundColor: colors.surface,
+      borderRadius: BORDER_RADIUS.md,
+      padding: SPACING.md,
     },
-    prBadge: {
-      backgroundColor: colors.accent ?? colors.primary,
-      borderRadius: BORDER_RADIUS.xs,
-      paddingHorizontal: SPACING.sm,
-      paddingVertical: SPACING.xs,
+    prStatsRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
     },
-    prBadgeText: {
+    prStatItem: {
+      alignItems: 'center',
+      gap: 2,
+    },
+    prStatLabel: {
       fontSize: FONT_SIZES.xs,
+      fontWeight: '500',
+      color: colors.textTertiary,
+    },
+    prStatValue: {
+      fontSize: FONT_SIZES.md,
       fontWeight: '800',
-      color: '#FFF',
-    },
-    prTextGroup: {
-      flex: 1,
-    },
-    prMainText: {
-      fontSize: FONT_SIZES.lg,
-      fontWeight: '700',
       color: colors.text,
-    },
-    prSubText: {
-      fontSize: FONT_SIZES.sm,
-      color: colors.textSecondary,
-      marginTop: 2,
+      fontVariant: ['tabular-nums'] as any,
     },
 
     // ---- Content ----
