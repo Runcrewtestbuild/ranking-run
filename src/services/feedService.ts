@@ -22,6 +22,7 @@ class FeedService {
           avg_pace_seconds_per_km: number | null;
           course_title: string | null;
           route_thumbnail_url: string | null;
+          route_preview: number[][] | null;
         } | null;
         reactions_summary: Record<string, number>;
         user_reactions: string[];
@@ -47,7 +48,7 @@ class FeedService {
             distanceMeters: a.run_summary.distance_meters,
             durationSeconds: a.run_summary.duration_seconds,
             avgPaceSecondsPerKm: a.run_summary.avg_pace_seconds_per_km ?? 0,
-            routePreview: [],
+            routePreview: (a.run_summary.route_preview ?? []) as [number, number][],
             thumbnailUrl: a.run_summary.route_thumbnail_url,
           }
         : undefined,

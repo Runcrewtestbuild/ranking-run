@@ -65,12 +65,35 @@ async def _get_comment_counts_batch(
     return {row.activity_id: row.cnt for row in result.all()}
 
 
+def _simplify_route(coordinates: list[list[float]], max_points: int = 60) -> list[list[float]]:
+    """Downsample route coordinates for preview display."""
+    if len(coordinates) <= max_points:
+        return coordinates
+    step = len(coordinates) / max_points
+    return [coordinates[int(i * step)] for i in range(max_points)]
+
+
 def _build_run_summary(run_record) -> RunSummary | None:
     if run_record is None:
         return None
     course_title = None
     if run_record.course is not None:
         course_title = run_record.course.title
+
+    # Extract route preview from stored geometry
+    route_preview = None
+    if run_record.route_geometry is not None:
+        try:
+            import json
+            geo = run_record.route_geometry
+            if isinstance(geo, str):
+                geo = json.loads(geo)
+            coords = geo.get("coordinates", []) if isinstance(geo, dict) else []
+            if len(coords) >= 2:
+                route_preview = _simplify_route(coords)
+        except Exception:
+            pass
+
     return RunSummary(
         id=str(run_record.id),
         distance_meters=run_record.distance_meters,
@@ -78,6 +101,7 @@ def _build_run_summary(run_record) -> RunSummary | None:
         avg_pace_seconds_per_km=run_record.avg_pace_seconds_per_km,
         course_title=course_title,
         route_thumbnail_url=run_record.route_thumbnail_url,
+        route_preview=route_preview,
     )
 
 

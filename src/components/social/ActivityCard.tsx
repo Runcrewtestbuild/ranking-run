@@ -12,6 +12,7 @@ import type { TFunction } from 'i18next';
 import * as Haptics from 'expo-haptics';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useTheme } from '../../hooks/useTheme';
+import RoutePreview from '../common/RoutePreview';
 import type { ThemeColors } from '../../utils/constants';
 import { FONT_SIZES, SPACING, BORDER_RADIUS } from '../../utils/constants';
 import type { FeedActivity, ReactionType } from '../../types/feed';
@@ -159,7 +160,18 @@ interface RunStatsProps {
 const RunStats = memo(function RunStats({ runRecord, styles: s, colors, t }: RunStatsProps & { t: TFunction }) {
   return (
     <View style={s.runStatsContainer}>
-      {runRecord.thumbnailUrl ? (
+      {runRecord.routePreview && runRecord.routePreview.length >= 2 ? (
+        <View style={s.routeMapPreview}>
+          <RoutePreview
+            coordinates={runRecord.routePreview}
+            width={340}
+            height={220}
+            strokeColor={colors.primary}
+            strokeWidth={3}
+            showMap
+          />
+        </View>
+      ) : runRecord.thumbnailUrl ? (
         <Image
           source={{ uri: runRecord.thumbnailUrl }}
           style={s.routeMapPreview}
