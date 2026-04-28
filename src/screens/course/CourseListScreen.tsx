@@ -22,7 +22,7 @@ import CourseThumbnailMap from '../../components/course/CourseThumbnailMap';
 import { useTheme } from '../../hooks/useTheme';
 import type { ThemeColors } from '../../utils/constants';
 import type { CourseStackParamList } from '../../types/navigation';
-import type { CourseListItem, FavoriteCourseItem, NearbyCourse } from '../../types/api';
+import type { CourseListItem, FavoriteCourseItem } from '../../types/api';
 import { formatDistance, formatNumber } from '../../utils/format';
 import {
   FONT_SIZES,
@@ -40,8 +40,8 @@ type CourseNav = NativeStackNavigationProp<CourseStackParamList, 'CourseList'>;
 
 // ---- Constants ----
 
-const NEARBY_CARD_WIDTH = 160;
-const NEARBY_THUMB_HEIGHT = 100;
+const OVERLAY_CARD_WIDTH = 200;
+const OVERLAY_CARD_HEIGHT = 160;
 const ROW_THUMB_SIZE = 56;
 
 /** Difficulty color map matching design spec */
@@ -186,74 +186,54 @@ export default function CourseListScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.nearbyScrollContent}
+              contentContainerStyle={styles.overlayScrollContent}
             >
-              {favoriteCourses.map((course: FavoriteCourseItem) => {
-                const diff = (course.difficulty as DifficultyLevel) || inferDifficulty(course.distance_meters, 0);
-                return (
-                  <TouchableOpacity
-                    key={course.id}
-                    style={styles.nearbyCard}
-                    onPress={() => handleCoursePress(course.id)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.nearbyThumbContainer}>
-                      {course.thumbnail_url || (course.route_preview && course.route_preview.length >= 2) ? (
-                        <CourseThumbnailMap
-                          routePreview={course.route_preview ?? []}
-                          thumbnailUrl={course.thumbnail_url}
-                          width={NEARBY_CARD_WIDTH}
-                          height={NEARBY_THUMB_HEIGHT}
-                          borderRadius={0}
-                        />
-                      ) : (
-                        <View style={[styles.nearbyThumb, styles.nearbyThumbPlaceholder]}>
-                          <Ionicons name="map-outline" size={28} color={colors.textTertiary} />
-                        </View>
-                      )}
-                    </View>
-                    <View style={styles.hCardInfo}>
-                      <Text style={styles.hCardTitle} numberOfLines={1}>{course.title}</Text>
-                      <Text style={styles.hCardMeta}>
-                        {formatDistance(course.distance_meters)}
-                        <Text style={styles.hCardMetaSep}>{' · '}</Text>
-                        <Text style={{ color: DIFF_COLOR[diff] ?? colors.textSecondary }}>{getDifficultyLabel(diff)}</Text>
-                        {(course.total_runs ?? 0) > 0 && <Text style={styles.hCardMetaSep}>{' · '}</Text>}
-                        {(course.total_runs ?? 0) > 0 && `참여 ${formatNumber(course.total_runs ?? 0)}회`}
-                      </Text>
-                      <Text style={styles.hCardSub} numberOfLines={1}>{course.creator_nickname}</Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+              {favoriteCourses.map((course: FavoriteCourseItem) => (
+                <OverlayCard
+                  key={course.id}
+                  id={course.id}
+                  title={course.title}
+                  distanceMeters={course.distance_meters}
+                  totalRuns={course.total_runs ?? 0}
+                  routePreview={course.route_preview ?? []}
+                  thumbnailUrl={course.thumbnail_url}
+                  onPress={() => handleCoursePress(course.id)}
+                />
+              ))}
             </ScrollView>
           </View>
         )}
 
         {/* Section 1: Nearby */}
-        <View style={styles.section}>
-          <SectionHeader title={t('course.nearbySection')} ionicon="location" iconColor="#FF3B30" />
-          {nearbyCourses.length === 0 ? (
-            <View style={styles.nearbyEmptyContainer}>
-              <Text style={styles.nearbyEmptyText}>{t('course.nearbyEmpty')}</Text>
-            </View>
-          ) : (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.nearbyScrollContent}
-            >
-              {nearbyCourses.map((course) => (
-                <NearbyCard
-                  key={course.id}
-                  course={course}
-
-                  onPress={() => handleCoursePress(course.id)}
-                />
-              ))}
-            </ScrollView>
-          )}
-        </View>
+        {locationReady && (
+          <View style={styles.section}>
+            <SectionHeader title={t('course.nearbySection')} ionicon="location" iconColor="#FF3B30" />
+            {nearbyCourses.length === 0 ? (
+              <View style={styles.nearbyEmptyContainer}>
+                <Text style={styles.nearbyEmptyText}>{t('course.nearbyEmpty')}</Text>
+              </View>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.overlayScrollContent}
+              >
+                {nearbyCourses.map((course) => (
+                  <OverlayCard
+                    key={course.id}
+                    id={course.id}
+                    title={course.title}
+                    distanceMeters={course.distance_meters}
+                    totalRuns={course.total_runs}
+                    routePreview={course.route_preview ?? []}
+                    thumbnailUrl={course.thumbnail_url}
+                    onPress={() => handleCoursePress(course.id)}
+                  />
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        )}
 
         {/* Section 2: Popular */}
         {popularCourses.length > 0 && (
@@ -352,54 +332,58 @@ function SectionHeader({
   );
 }
 
-// ---- Nearby Card (Horizontal Scroll) ----
+// ---- Overlay Card (Horizontal Scroll — Favorites / Nearby) ----
 
-const NearbyCard = React.memo(function NearbyCard({
-  course,
-  onPress,
-}: {
-  course: NearbyCourse;
+interface OverlayCardProps {
+  id: string;
+  title: string;
+  distanceMeters: number;
+  totalRuns: number;
+  routePreview: number[][];
+  thumbnailUrl?: string | null;
   onPress: () => void;
-}) {
+}
+
+const OverlayCard = React.memo(function OverlayCard({
+  title,
+  distanceMeters,
+  totalRuns,
+  routePreview,
+  thumbnailUrl,
+  onPress,
+}: OverlayCardProps) {
   const { t } = useTranslation();
   const colors = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const difficulty = (course.difficulty as DifficultyLevel) || inferDifficulty(course.distance_meters, 0);
 
   return (
     <TouchableOpacity
-      style={styles.nearbyCard}
+      style={styles.overlayCard}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {/* Thumbnail */}
-      <View style={styles.nearbyThumbContainer}>
-        {course.thumbnail_url || (course.route_preview && course.route_preview.length >= 2) ? (
-          <CourseThumbnailMap
-            routePreview={course.route_preview ?? []}
-            thumbnailUrl={course.thumbnail_url}
-            width={NEARBY_CARD_WIDTH}
-            height={NEARBY_THUMB_HEIGHT}
-            borderRadius={0}
-          />
-        ) : (
-          <View style={[styles.nearbyThumb, styles.nearbyThumbPlaceholder]}>
-            <Ionicons name="map-outline" size={28} color={colors.textTertiary} />
-          </View>
-        )}
-      </View>
+      {/* Full-bleed route map */}
+      {thumbnailUrl || (routePreview && routePreview.length >= 2) ? (
+        <CourseThumbnailMap
+          routePreview={routePreview}
+          thumbnailUrl={thumbnailUrl}
+          width={OVERLAY_CARD_WIDTH}
+          height={OVERLAY_CARD_HEIGHT}
+          borderRadius={BORDER_RADIUS.md}
+        />
+      ) : (
+        <View style={styles.overlayCardPlaceholder}>
+          <Ionicons name="map-outline" size={32} color={colors.textTertiary} />
+        </View>
+      )}
 
-      {/* Info */}
-      <View style={styles.hCardInfo}>
-        <Text style={styles.hCardTitle} numberOfLines={1}>{course.title}</Text>
-        <Text style={styles.hCardMeta}>
-          {formatDistance(course.distance_meters)}
-          <Text style={styles.hCardMetaSep}>{' · '}</Text>
-          <Text style={{ color: DIFF_COLOR[difficulty] ?? colors.textSecondary }}>{getDifficultyLabel(difficulty)}</Text>
-          {course.total_runs > 0 && <Text style={styles.hCardMetaSep}>{' · '}</Text>}
-          {course.total_runs > 0 && `참여 ${formatNumber(course.total_runs)}회`}
+      {/* Semi-transparent info overlay at bottom */}
+      <View style={styles.overlayCardInfo}>
+        <Text style={styles.overlayCardTitle} numberOfLines={1}>{title}</Text>
+        <Text style={styles.overlayCardMeta}>
+          {formatDistance(distanceMeters)}
+          {totalRuns > 0 && ` · ${t('course.runCount', { count: totalRuns })}`}
         </Text>
-        <Text style={styles.hCardSub} numberOfLines={1}>{course.creator_nickname}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -531,8 +515,8 @@ const createStyles = (c: ThemeColors) =>
       color: c.textTertiary,
     },
 
-    // -- Nearby horizontal scroll --
-    nearbyScrollContent: {
+    // -- Overlay horizontal scroll (Favorites / Nearby) --
+    overlayScrollContent: {
       paddingHorizontal: SPACING.xxl,
       gap: SPACING.md,
     },
@@ -546,55 +530,43 @@ const createStyles = (c: ThemeColors) =>
       fontWeight: '500',
     },
 
-    // -- Horizontal Card (Favorites / Nearby) --
-    nearbyCard: {
-      width: NEARBY_CARD_WIDTH,
-      backgroundColor: c.card,
-      borderRadius: BORDER_RADIUS.lg,
+    // -- Overlay Card (map-style with overlaid info) --
+    overlayCard: {
+      width: OVERLAY_CARD_WIDTH,
+      height: OVERLAY_CARD_HEIGHT,
+      borderRadius: BORDER_RADIUS.md,
       overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: c.border,
       ...SHADOWS.sm,
     },
-    nearbyThumbContainer: {
-      position: 'relative',
-    },
-    nearbyThumb: {
-      width: NEARBY_CARD_WIDTH,
-      height: NEARBY_THUMB_HEIGHT,
-      resizeMode: 'cover',
-    },
-    nearbyThumbPlaceholder: {
+    overlayCardPlaceholder: {
+      width: OVERLAY_CARD_WIDTH,
+      height: OVERLAY_CARD_HEIGHT,
       backgroundColor: c.surface,
       justifyContent: 'center',
       alignItems: 'center',
+      borderRadius: BORDER_RADIUS.md,
     },
-    hCardInfo: {
-      paddingHorizontal: SPACING.sm,
-      paddingVertical: 6,
-      gap: 2,
+    overlayCardInfo: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderBottomLeftRadius: BORDER_RADIUS.md,
+      borderBottomRightRadius: BORDER_RADIUS.md,
     },
-    hCardTitle: {
-      fontSize: 14,
+    overlayCardTitle: {
+      fontSize: FONT_SIZES.sm,
       fontWeight: '700',
-      color: c.text,
+      color: '#FFFFFF',
     },
-    hCardMeta: {
-      fontSize: 12,
-      fontWeight: '500',
-      color: c.text,
-      opacity: 0.7,
+    overlayCardMeta: {
+      fontSize: FONT_SIZES.xs,
+      color: 'rgba(255,255,255,0.8)',
+      marginTop: 2,
       fontVariant: ['tabular-nums'] as const,
-    },
-    hCardMetaSep: {
-      color: c.text,
-      opacity: 0.35,
-    },
-    hCardSub: {
-      fontSize: 12,
-      fontWeight: '400',
-      color: c.text,
-      opacity: 0.4,
     },
 
     // -- Vertical list --

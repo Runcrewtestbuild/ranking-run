@@ -284,8 +284,8 @@
   "course": {
     "title": "Courses",
     "discover": "Discover",
-    "favorites": "Favorites",
-    "nearbySection": "Nearby",
+    "favorites": "Favorite Courses",
+    "nearbySection": "Nearby Courses",
     "popularSection": "Popular Courses",
     "newSection": "New Courses",
     "seeMore": "See more",
