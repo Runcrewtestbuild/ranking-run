@@ -1435,11 +1435,18 @@ export default function WorldScreen() {
     if (captureRoutePoints.length >= 2) {
       InteractionManager.runAfterInteractions(() => {
         mapRef.current?.animateCamera({ pitch: 0, heading: 0 }, 800);
+        // First fit for display (with UI panel padding)
         setTimeout(() => {
           mapRef.current?.fitToCoordinates(captureRoutePoints, {
             top: 120, right: 60, bottom: 380, left: 60,
           }, true);
         }, 900);
+        // Second fit for thumbnail capture — uniform padding so entire route is visible
+        setTimeout(() => {
+          mapRef.current?.fitToCoordinates(captureRoutePoints, {
+            top: 60, right: 60, bottom: 60, left: 60,
+          }, true);
+        }, 1500);
       });
     }
 
