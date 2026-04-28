@@ -1227,7 +1227,19 @@
       "challengeComingSoon": "곧 챌린지가 시작됩니다",
       "challengeHint": "다양한 러닝 챌린지에 참여해 보세요",
       "emptySearchTitle": "\"{{query}}\"에 대한 결과가 없어요",
-      "emptySearchHint": "다른 키워드로 검색해 보세요"
+      "emptySearchHint": "다른 키워드로 검색해 보세요",
+      "weeklyHighlights": "이번 주 하이라이트",
+      "highlightRunners": "이번 주 러너",
+      "highlightPRs": "기록 갱신",
+      "highlightDistance": "총 거리 (km)",
+      "trendingActivities": "트렌딩 활동",
+      "activityRun": "러닝",
+      "recommendedRunners": "추천 러너",
+      "reasonSimilarPace": "비슷한 페이스",
+      "reasonMutualFollow": "공통 친구 {{count}}명",
+      "reasonSameRegion": "같은 지역",
+      "follow": "팔로우",
+      "following": "팔로잉"
     }
   },
   "friend": {

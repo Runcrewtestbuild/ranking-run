@@ -208,3 +208,24 @@ class UserSearchResponse(BaseModel):
 class ConsentResponse(BaseModel):
     """Consent save result."""
     status: str = "ok"
+
+
+# ---------------------------------------------------------------------------
+# Recommended Runners
+# ---------------------------------------------------------------------------
+
+class RecommendedRunner(BaseModel):
+    """A recommended runner for the Discover tab."""
+    id: str
+    nickname: str | None
+    avatar_url: str | None
+    total_distance_meters: int
+    total_runs: int
+    avg_pace: int | None = None  # seconds per km, computed from run_records
+    reason: str  # "similar_pace" | "mutual_follow" | "same_region"
+    mutual_count: int | None = None  # for mutual_follow reason
+
+
+class RecommendedRunnersResponse(BaseModel):
+    """List of recommended runners."""
+    data: list[RecommendedRunner]

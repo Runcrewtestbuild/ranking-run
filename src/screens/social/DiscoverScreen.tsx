@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   RefreshControl,
   Image,
+  ScrollView,
+  Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,10 +19,16 @@ import { useTheme } from '../../hooks/useTheme';
 import type { ThemeColors } from '../../utils/constants';
 import { FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '../../utils/constants';
 import type { CommunityStackParamList } from '../../types/navigation';
-import type { CrewItem, CourseListItem } from '../../types/api';
+import type { CrewItem } from '../../types/api';
 import { useTranslation } from 'react-i18next';
 import { crewService } from '../../services/crewService';
-import { courseService } from '../../services/courseService';
+import { userService } from '../../services/userService';
+import {
+  discoverService,
+  type TrendingActivity,
+  type RecommendedRunner,
+  type WeeklyHighlights,
+} from '../../services/discoverService';
 import { useToastStore } from '../../stores/toastStore';
 
 type Nav = NativeStackNavigationProp<CommunityStackParamList, 'CommunityFeed'>;
@@ -30,10 +38,32 @@ type Nav = NativeStackNavigationProp<CommunityStackParamList, 'CommunityFeed'>;
 type SectionItem =
   | { type: 'search_bar' }
   | { type: 'section_header'; title: string; icon: string }
+  | { type: 'weekly_highlights'; data: WeeklyHighlights }
+  | { type: 'trending_scroll'; data: TrendingActivity[] }
+  | { type: 'runner_grid'; data: RecommendedRunner[] }
   | { type: 'crew_card'; data: CrewItem }
-  | { type: 'course_card'; data: CourseListItem }
-  | { type: 'challenge_placeholder' }
-  | { type: 'empty_search'; query: string };
+  | { type: 'empty_search'; query: string }
+  | { type: 'empty_state'; message: string };
+
+// ---- Reason tag helpers ----
+
+const REASON_LABELS: Record<string, string> = {
+  similar_pace: 'social.discover.reasonSimilarPace',
+  mutual_follow: 'social.discover.reasonMutualFollow',
+  same_region: 'social.discover.reasonSameRegion',
+};
+
+function formatPace(avgPace: number | null): string {
+  if (!avgPace || avgPace <= 0) return '-';
+  const mins = Math.floor(avgPace);
+  const secs = Math.round((avgPace - mins) * 60);
+  return `${mins}'${secs.toString().padStart(2, '0')}"`;
+}
+
+function formatDistance(meters: number): string {
+  if (meters >= 1000) return `${(meters / 1000).toFixed(1)}km`;
+  return `${Math.round(meters)}m`;
+}
 
 // ---- Main Component ----
 
@@ -44,29 +74,44 @@ export default function DiscoverScreen() {
   const navigation = useNavigation<Nav>();
   const showToast = useToastStore((st) => st.showToast);
 
+  // State
   const [searchQuery, setSearchQuery] = useState('');
-  const [recommendedCrews, setRecommendedCrews] = useState<CrewItem[]>([]);
-  const [popularCourses, setPopularCourses] = useState<CourseListItem[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<CrewItem[]>([]);
+
+  const [highlights, setHighlights] = useState<WeeklyHighlights | null>(null);
+  const [trending, setTrending] = useState<TrendingActivity[]>([]);
+  const [recommendedRunners, setRecommendedRunners] = useState<RecommendedRunner[]>([]);
+  const [recommendedCrews, setRecommendedCrews] = useState<CrewItem[]>([]);
+
+  const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
+
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [initialLoaded, setInitialLoaded] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
 
   // ---- Data fetching ----
 
   const loadDiscoverData = useCallback(async () => {
     try {
-      const [crewRes, courseRes] = await Promise.all([
-        crewService.listCrews({ per_page: 6 }).catch((): { data: CrewItem[]; total_count: number } => ({ data: [], total_count: 0 })),
-        courseService.getCourses({ per_page: 6, order_by: 'total_runs' }).catch((): { data: CourseListItem[]; total_count: number; has_next: boolean } => ({ data: [], total_count: 0, has_next: false })),
+      const [highlightsRes, trendingRes, runnersRes, crewRes] = await Promise.all([
+        discoverService.getWeeklyHighlights().catch((): WeeklyHighlights => ({
+          runnerCount: 0, prCount: 0, totalDistanceMeters: 0, weekStart: '',
+        })),
+        discoverService.getTrending(10).catch((): TrendingActivity[] => []),
+        discoverService.getRecommendedRunners(10).catch((): RecommendedRunner[] => []),
+        crewService.listCrews({ per_page: 6 }).catch((): { data: CrewItem[]; total_count: number } => ({
+          data: [], total_count: 0,
+        })),
       ]);
+      setHighlights(highlightsRes);
+      setTrending(trendingRes);
+      setRecommendedRunners(runnersRes);
       setRecommendedCrews(crewRes.data);
-      setPopularCourses(courseRes.data);
     } catch {
       showToast('error', t('common.loadError'));
     }
-  }, []);
+  }, [showToast, t]);
 
   useEffect(() => {
     if (!initialLoaded) {
@@ -83,6 +128,8 @@ export default function DiscoverScreen() {
     await loadDiscoverData();
     setIsRefreshing(false);
   }, [loadDiscoverData]);
+
+  // ---- Search ----
 
   const handleSearch = useCallback(async (query: string) => {
     setSearchQuery(query);
@@ -101,6 +148,42 @@ export default function DiscoverScreen() {
     }
   }, [showToast, t]);
 
+  // ---- Follow toggle (optimistic) ----
+
+  const handleToggleFollow = useCallback(async (userId: string) => {
+    const wasFollowing = followingSet.has(userId);
+
+    setFollowingSet((prev) => {
+      const next = new Set(prev);
+      if (wasFollowing) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+
+    try {
+      if (wasFollowing) {
+        await userService.unfollowUser(userId);
+      } else {
+        await userService.followUser(userId);
+      }
+    } catch {
+      // Revert on failure
+      setFollowingSet((prev) => {
+        const next = new Set(prev);
+        if (wasFollowing) {
+          next.add(userId);
+        } else {
+          next.delete(userId);
+        }
+        return next;
+      });
+      showToast('error', t('common.error'));
+    }
+  }, [followingSet, showToast, t]);
+
   // ---- Navigation ----
 
   const handleCrewPress = useCallback(
@@ -108,8 +191,13 @@ export default function DiscoverScreen() {
     [navigation],
   );
 
-  const handleCoursePress = useCallback(
-    (courseId: string) => navigation.navigate('CourseDetail', { courseId }),
+  const handleActivityPress = useCallback(
+    (activityId: string) => navigation.navigate('FeedDetail', { activityId }),
+    [navigation],
+  );
+
+  const handleRunnerPress = useCallback(
+    (userId: string) => navigation.navigate('UserProfile', { userId }),
     [navigation],
   );
 
@@ -119,11 +207,16 @@ export default function DiscoverScreen() {
     const items: SectionItem[] = [];
     items.push({ type: 'search_bar' });
 
+    // Search mode
     if (isSearching) {
       if (searchResults.length === 0) {
         items.push({ type: 'empty_search', query: searchQuery });
       } else {
-        items.push({ type: 'section_header', title: t('social.discover.searchResultTitle', { query: searchQuery }), icon: 'search' });
+        items.push({
+          type: 'section_header',
+          title: t('social.discover.searchResultTitle', { query: searchQuery }),
+          icon: 'search',
+        });
         searchResults.forEach((crew) => {
           items.push({ type: 'crew_card', data: crew });
         });
@@ -131,7 +224,25 @@ export default function DiscoverScreen() {
       return items;
     }
 
-    // Recommended crews
+    // Section 1: Weekly Highlights
+    if (highlights) {
+      items.push({ type: 'section_header', title: t('social.discover.weeklyHighlights'), icon: 'flame' });
+      items.push({ type: 'weekly_highlights', data: highlights });
+    }
+
+    // Section 2: Trending Activities
+    if (trending.length > 0) {
+      items.push({ type: 'section_header', title: t('social.discover.trendingActivities'), icon: 'trending-up' });
+      items.push({ type: 'trending_scroll', data: trending });
+    }
+
+    // Section 3: Recommended Runners
+    if (recommendedRunners.length > 0) {
+      items.push({ type: 'section_header', title: t('social.discover.recommendedRunners'), icon: 'person-add' });
+      items.push({ type: 'runner_grid', data: recommendedRunners });
+    }
+
+    // Section 4: Recommended Crews
     if (recommendedCrews.length > 0) {
       items.push({ type: 'section_header', title: t('social.discover.recommendedCrews'), icon: 'people' });
       recommendedCrews.forEach((crew) => {
@@ -139,22 +250,135 @@ export default function DiscoverScreen() {
       });
     }
 
-    // Popular courses
-    if (popularCourses.length > 0) {
-      items.push({ type: 'section_header', title: t('social.discover.popularCourses'), icon: 'map' });
-      popularCourses.forEach((course) => {
-        items.push({ type: 'course_card', data: course });
-      });
-    }
-
-    // Challenge section placeholder
-    items.push({ type: 'section_header', title: t('social.discover.challenges'), icon: 'trophy' });
-    items.push({ type: 'challenge_placeholder' });
-
     return items;
-  }, [isSearching, searchQuery, searchResults, recommendedCrews, popularCourses, t]);
+  }, [isSearching, searchQuery, searchResults, highlights, trending, recommendedRunners, recommendedCrews, t]);
 
-  // ---- Render ----
+  // ---- Sub-renderers ----
+
+  const renderHighlights = useCallback(
+    (data: WeeklyHighlights) => (
+      <View style={s.highlightsRow}>
+        <View style={[s.highlightCard, { backgroundColor: colors.primary + '14' }]}>
+          <Ionicons name="person" size={20} color={colors.primary} />
+          <Text style={s.highlightValue}>{data.runnerCount}</Text>
+          <Text style={s.highlightLabel}>{t('social.discover.highlightRunners')}</Text>
+        </View>
+        <View style={[s.highlightCard, { backgroundColor: '#FFD16614' }]}>
+          <Ionicons name="trophy" size={20} color="#FFD166" />
+          <Text style={s.highlightValue}>{data.prCount}</Text>
+          <Text style={s.highlightLabel}>{t('social.discover.highlightPRs')}</Text>
+        </View>
+        <View style={[s.highlightCard, { backgroundColor: colors.success + '14' }]}>
+          <Ionicons name="footsteps" size={20} color={colors.success} />
+          <Text style={s.highlightValue}>{(data.totalDistanceMeters / 1000).toFixed(0)}</Text>
+          <Text style={s.highlightLabel}>{t('social.discover.highlightDistance')}</Text>
+        </View>
+      </View>
+    ),
+    [s, colors, t],
+  );
+
+  const renderTrendingScroll = useCallback(
+    (data: TrendingActivity[]) => (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={s.trendingScrollContent}
+      >
+        {data.map((activity) => (
+          <TouchableOpacity
+            key={activity.id}
+            style={s.trendingCard}
+            onPress={() => handleActivityPress(activity.id)}
+            activeOpacity={0.7}
+          >
+            {activity.user.avatarUrl ? (
+              <Image source={{ uri: activity.user.avatarUrl }} style={s.trendingAvatar} />
+            ) : (
+              <View style={[s.trendingAvatar, s.trendingAvatarPlaceholder]}>
+                <Ionicons name="person" size={16} color={colors.textTertiary} />
+              </View>
+            )}
+            <Text style={s.trendingNickname} numberOfLines={1}>{activity.user.nickname}</Text>
+            <Text style={s.trendingActivityType} numberOfLines={1}>
+              {activity.activityType === 'run' ? t('social.discover.activityRun') : activity.activityType}
+            </Text>
+            {activity.runSummary && (
+              <Text style={s.trendingDistance}>
+                {formatDistance(activity.runSummary.distanceMeters)}
+              </Text>
+            )}
+            <View style={s.trendingFooter}>
+              <Ionicons name="heart" size={12} color={colors.primary} />
+              <Text style={s.trendingLikeCount}>{activity.likeCount}</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    ),
+    [s, colors, t, handleActivityPress],
+  );
+
+  const renderRunnerGrid = useCallback(
+    (runners: RecommendedRunner[]) => (
+      <View style={s.runnerGrid}>
+        {runners.map((runner) => {
+          const isFollowing = followingSet.has(runner.id);
+          const reasonKey = REASON_LABELS[runner.reason];
+          let reasonText = '';
+          if (reasonKey) {
+            reasonText =
+              runner.reason === 'mutual_follow' && runner.mutualCount
+                ? t(reasonKey, { count: runner.mutualCount })
+                : t(reasonKey);
+          }
+
+          return (
+            <TouchableOpacity
+              key={runner.id}
+              style={s.runnerCard}
+              onPress={() => handleRunnerPress(runner.id)}
+              activeOpacity={0.7}
+            >
+              {runner.avatarUrl ? (
+                <Image source={{ uri: runner.avatarUrl }} style={s.runnerAvatar} />
+              ) : (
+                <View style={[s.runnerAvatar, s.runnerAvatarPlaceholder]}>
+                  <Ionicons name="person" size={22} color={colors.textTertiary} />
+                </View>
+              )}
+              <Text style={s.runnerNickname} numberOfLines={1}>{runner.nickname}</Text>
+              <Text style={s.runnerStat} numberOfLines={1}>
+                {runner.avgPace
+                  ? `${formatPace(runner.avgPace)} /km`
+                  : formatDistance(runner.totalDistanceMeters)}
+              </Text>
+              {reasonText !== '' && (
+                <View style={s.reasonBadge}>
+                  <Text style={s.reasonBadgeText}>{reasonText}</Text>
+                </View>
+              )}
+              <TouchableOpacity
+                style={[s.followButton, isFollowing && s.followButtonActive]}
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  handleToggleFollow(runner.id);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={[s.followButtonText, isFollowing && s.followButtonTextActive]}>
+                  {isFollowing ? t('social.discover.following') : t('social.discover.follow')}
+                </Text>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    ),
+    [s, colors, t, followingSet, handleRunnerPress, handleToggleFollow],
+  );
+
+  // ---- Render items ----
 
   const renderItem = useCallback(
     ({ item }: { item: SectionItem }) => {
@@ -198,6 +422,15 @@ export default function DiscoverScreen() {
             </View>
           );
 
+        case 'weekly_highlights':
+          return renderHighlights(item.data);
+
+        case 'trending_scroll':
+          return renderTrendingScroll(item.data);
+
+        case 'runner_grid':
+          return renderRunnerGrid(item.data);
+
         case 'crew_card':
           return (
             <TouchableOpacity
@@ -230,41 +463,6 @@ export default function DiscoverScreen() {
             </TouchableOpacity>
           );
 
-        case 'course_card':
-          return (
-            <TouchableOpacity
-              style={s.courseCard}
-              onPress={() => handleCoursePress(item.data.id)}
-              activeOpacity={0.7}
-            >
-              {item.data.thumbnail_url ? (
-                <Image source={{ uri: item.data.thumbnail_url }} style={s.courseThumbnail} />
-              ) : (
-                <View style={[s.courseThumbnail, s.courseThumbnailPlaceholder]}>
-                  <Ionicons name="map-outline" size={24} color={colors.textTertiary} />
-                </View>
-              )}
-              <View style={s.courseInfo}>
-                <Text style={s.courseName} numberOfLines={1}>{item.data.title}</Text>
-                <Text style={s.courseMeta} numberOfLines={1}>
-                  {(item.data.distance_meters / 1000).toFixed(1)}km
-                  {'  \u00B7  '}
-                  {t('social.discover.totalRuns', { count: item.data.stats.total_runs })}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
-            </TouchableOpacity>
-          );
-
-        case 'challenge_placeholder':
-          return (
-            <View style={s.challengePlaceholder}>
-              <Ionicons name="trophy-outline" size={36} color={colors.textTertiary} />
-              <Text style={s.challengeText}>{t('social.discover.challengeComingSoon')}</Text>
-              <Text style={s.challengeSubtext}>{t('social.discover.challengeHint')}</Text>
-            </View>
-          );
-
         case 'empty_search':
           return (
             <View style={s.emptySearch}>
@@ -276,11 +474,18 @@ export default function DiscoverScreen() {
             </View>
           );
 
+        case 'empty_state':
+          return (
+            <View style={s.emptySearch}>
+              <Text style={s.emptySearchSubtitle}>{item.message}</Text>
+            </View>
+          );
+
         default:
           return null;
       }
     },
-    [s, colors, t, searchQuery, handleSearch, handleCrewPress, handleCoursePress],
+    [s, colors, t, searchQuery, handleSearch, handleCrewPress, renderHighlights, renderTrendingScroll, renderRunnerGrid],
   );
 
   const keyExtractor = useCallback(
@@ -288,8 +493,6 @@ export default function DiscoverScreen() {
       switch (item.type) {
         case 'crew_card':
           return `crew-${item.data.id}`;
-        case 'course_card':
-          return `course-${item.data.id}`;
         default:
           return `${item.type}-${index}`;
       }
@@ -338,6 +541,7 @@ const createStyles = (c: ThemeColors) =>
     listContent: {
       paddingBottom: SPACING.huge,
     },
+
     // Search
     searchContainer: {
       paddingHorizontal: SPACING.lg,
@@ -359,6 +563,7 @@ const createStyles = (c: ThemeColors) =>
       color: c.text,
       paddingVertical: 0,
     },
+
     // Section header
     sectionHeader: {
       flexDirection: 'row',
@@ -373,6 +578,153 @@ const createStyles = (c: ThemeColors) =>
       fontWeight: '700',
       color: c.text,
     },
+
+    // Weekly Highlights
+    highlightsRow: {
+      flexDirection: 'row',
+      paddingHorizontal: SPACING.lg,
+      gap: SPACING.sm,
+    },
+    highlightCard: {
+      flex: 1,
+      alignItems: 'center',
+      paddingVertical: SPACING.lg,
+      borderRadius: BORDER_RADIUS.lg,
+      gap: SPACING.xs,
+    },
+    highlightValue: {
+      fontSize: FONT_SIZES.xl,
+      fontWeight: '800',
+      color: c.text,
+    },
+    highlightLabel: {
+      fontSize: FONT_SIZES.xs,
+      fontWeight: '500',
+      color: c.textSecondary,
+      textAlign: 'center',
+    },
+
+    // Trending scroll
+    trendingScrollContent: {
+      paddingHorizontal: SPACING.lg,
+      gap: SPACING.sm,
+    },
+    trendingCard: {
+      width: 130,
+      backgroundColor: c.card,
+      borderRadius: BORDER_RADIUS.lg,
+      padding: SPACING.md,
+      alignItems: 'center',
+      gap: SPACING.xs,
+      ...SHADOWS.sm,
+    },
+    trendingAvatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+    },
+    trendingAvatarPlaceholder: {
+      backgroundColor: c.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    trendingNickname: {
+      fontSize: FONT_SIZES.sm,
+      fontWeight: '600',
+      color: c.text,
+      maxWidth: 110,
+    },
+    trendingActivityType: {
+      fontSize: FONT_SIZES.xs,
+      color: c.textTertiary,
+    },
+    trendingDistance: {
+      fontSize: FONT_SIZES.sm,
+      fontWeight: '700',
+      color: c.primary,
+    },
+    trendingFooter: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      marginTop: SPACING.xs,
+    },
+    trendingLikeCount: {
+      fontSize: FONT_SIZES.xs,
+      color: c.textTertiary,
+    },
+
+    // Runner grid
+    runnerGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      paddingHorizontal: SPACING.lg,
+      gap: SPACING.sm,
+    },
+    runnerCard: {
+      width: (Dimensions.get('window').width - SPACING.lg * 2 - SPACING.sm) / 2,
+      backgroundColor: c.card,
+      borderRadius: BORDER_RADIUS.lg,
+      padding: SPACING.lg,
+      alignItems: 'center',
+      gap: SPACING.xs,
+      ...SHADOWS.sm,
+    },
+    runnerAvatar: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+    },
+    runnerAvatarPlaceholder: {
+      backgroundColor: c.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    runnerNickname: {
+      fontSize: FONT_SIZES.md,
+      fontWeight: '700',
+      color: c.text,
+      marginTop: SPACING.xs,
+    },
+    runnerStat: {
+      fontSize: FONT_SIZES.sm,
+      color: c.textSecondary,
+    },
+    reasonBadge: {
+      backgroundColor: c.primary + '14',
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: 2,
+      borderRadius: BORDER_RADIUS.full,
+      marginTop: SPACING.xs,
+    },
+    reasonBadgeText: {
+      fontSize: FONT_SIZES.xs,
+      fontWeight: '600',
+      color: c.primary,
+    },
+    followButton: {
+      marginTop: SPACING.sm,
+      paddingHorizontal: SPACING.lg,
+      paddingVertical: SPACING.sm,
+      borderRadius: BORDER_RADIUS.full,
+      backgroundColor: c.primary,
+      alignSelf: 'stretch',
+      alignItems: 'center',
+    },
+    followButtonActive: {
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    followButtonText: {
+      fontSize: FONT_SIZES.sm,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+    followButtonTextActive: {
+      color: c.textSecondary,
+    },
+
     // Crew card
     crewCard: {
       flexDirection: 'row',
@@ -423,61 +775,7 @@ const createStyles = (c: ThemeColors) =>
       fontWeight: '600',
       color: c.primary,
     },
-    // Course card
-    courseCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: c.card,
-      marginHorizontal: SPACING.lg,
-      marginBottom: SPACING.sm,
-      padding: SPACING.md,
-      borderRadius: BORDER_RADIUS.lg,
-      ...SHADOWS.sm,
-    },
-    courseThumbnail: {
-      width: 56,
-      height: 56,
-      borderRadius: BORDER_RADIUS.md,
-      marginRight: SPACING.md,
-    },
-    courseThumbnailPlaceholder: {
-      backgroundColor: c.surface,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    courseInfo: {
-      flex: 1,
-    },
-    courseName: {
-      fontSize: FONT_SIZES.md,
-      fontWeight: '600',
-      color: c.text,
-    },
-    courseMeta: {
-      fontSize: FONT_SIZES.sm,
-      color: c.textTertiary,
-      marginTop: 2,
-    },
-    // Challenge placeholder
-    challengePlaceholder: {
-      alignItems: 'center',
-      paddingVertical: SPACING.xxxl,
-      paddingHorizontal: SPACING.xxl,
-      marginHorizontal: SPACING.lg,
-      backgroundColor: c.card,
-      borderRadius: BORDER_RADIUS.lg,
-      gap: SPACING.sm,
-      ...SHADOWS.sm,
-    },
-    challengeText: {
-      fontSize: FONT_SIZES.md,
-      fontWeight: '600',
-      color: c.text,
-    },
-    challengeSubtext: {
-      fontSize: FONT_SIZES.sm,
-      color: c.textTertiary,
-    },
+
     // Empty search
     emptySearch: {
       alignItems: 'center',
@@ -494,6 +792,7 @@ const createStyles = (c: ThemeColors) =>
       fontSize: FONT_SIZES.sm,
       color: c.textSecondary,
     },
+
     // Loader
     initialLoader: {
       ...StyleSheet.absoluteFillObject,

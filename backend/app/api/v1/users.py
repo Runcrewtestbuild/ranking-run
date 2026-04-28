@@ -15,6 +15,7 @@ from app.core.container import Container
 from app.core.deps import CurrentUser, CurrentUserAllowBanned, DbSession
 from app.core.exceptions import AuthenticationError, BadRequestError, ConflictError, NotFoundError
 from app.models.course import Course, CourseStats
+from app.models.follow import Follow
 from app.models.like import CourseLike
 from app.models.ranking import Ranking
 from app.models.run_record import RunRecord
@@ -36,6 +37,8 @@ from app.schemas.user import (
     PublicProfileGear,
     PublicProfileRanking,
     PublicProfileResponse,
+    RecommendedRunner,
+    RecommendedRunnersResponse,
     SocialCountsResponse,
     UserResponse,
     UserSearchItem,
@@ -131,6 +134,150 @@ async def search_users(
         total_count=total_count,
         has_next=(page + 1) * per_page < total_count,
     )
+
+
+@router.get("/recommended", response_model=RecommendedRunnersResponse)
+async def get_recommended_runners(
+    current_user: CurrentUser,
+    db: DbSession,
+    limit: int = Query(20, ge=1, le=50),
+) -> RecommendedRunnersResponse:
+    """Get recommended runners for the Discover tab.
+
+    Combines three recommendation sources:
+    A) Similar average pace (within 30 seconds/km)
+    B) Follow-of-follow (mutual connections, 2-hop)
+    C) Same country/region
+    """
+    user_id = current_user.id
+
+    # IDs the current user is already following
+    following_result = await db.execute(
+        select(Follow.following_id).where(Follow.follower_id == user_id)
+    )
+    already_following_ids = {row.following_id for row in following_result.all()}
+    already_following_ids.add(user_id)  # exclude self
+
+    # Compute current user's average pace from their run records
+    my_pace_result = await db.execute(
+        select(func.avg(RunRecord.avg_pace_seconds_per_km))
+        .where(
+            RunRecord.user_id == user_id,
+            RunRecord.avg_pace_seconds_per_km.isnot(None),
+            RunRecord.avg_pace_seconds_per_km > 0,
+        )
+    )
+    my_pace = my_pace_result.scalar()
+
+    seen_ids: set = set()
+    recommendations: list[RecommendedRunner] = []
+
+    # --- A) Similar pace (within 30 sec/km) ---
+    if my_pace is not None:
+        # Subquery: compute avg pace per user from run_records
+        user_avg_pace = (
+            select(
+                RunRecord.user_id.label("uid"),
+                func.avg(RunRecord.avg_pace_seconds_per_km).label("avg_pace"),
+            )
+            .where(
+                RunRecord.avg_pace_seconds_per_km.isnot(None),
+                RunRecord.avg_pace_seconds_per_km > 0,
+                RunRecord.user_id.notin_(already_following_ids),
+            )
+            .group_by(RunRecord.user_id)
+            .having(func.abs(func.avg(RunRecord.avg_pace_seconds_per_km) - my_pace) < 30)
+            .subquery()
+        )
+        pace_result = await db.execute(
+            select(User, user_avg_pace.c.avg_pace)
+            .join(user_avg_pace, User.id == user_avg_pace.c.uid)
+            .limit(10)
+        )
+        for user_row, avg_pace_val in pace_result.all():
+            if user_row.id in seen_ids:
+                continue
+            seen_ids.add(user_row.id)
+            recommendations.append(RecommendedRunner(
+                id=str(user_row.id),
+                nickname=user_row.nickname,
+                avatar_url=user_row.avatar_url,
+                total_distance_meters=user_row.total_distance_meters,
+                total_runs=user_row.total_runs,
+                avg_pace=int(avg_pace_val) if avg_pace_val else None,
+                reason="similar_pace",
+            ))
+
+    # --- B) Follow-of-follow (2-hop mutual connections) ---
+    my_following_ids = list(already_following_ids - {user_id})
+    if my_following_ids:
+        mutual_result = await db.execute(
+            select(
+                Follow.following_id,
+                func.count().label("cnt"),
+            )
+            .where(
+                Follow.follower_id.in_(my_following_ids),
+                Follow.following_id != user_id,
+                Follow.following_id.notin_(already_following_ids),
+            )
+            .group_by(Follow.following_id)
+            .order_by(desc(func.count()))
+            .limit(10)
+        )
+        mutual_rows = mutual_result.all()
+        if mutual_rows:
+            mutual_user_ids = [row.following_id for row in mutual_rows]
+            mutual_counts = {row.following_id: row.cnt for row in mutual_rows}
+
+            users_result = await db.execute(
+                select(User).where(User.id.in_(mutual_user_ids))
+            )
+            users_map = {u.id: u for u in users_result.scalars().all()}
+
+            for uid in mutual_user_ids:
+                if uid in seen_ids or uid not in users_map:
+                    continue
+                seen_ids.add(uid)
+                u = users_map[uid]
+                recommendations.append(RecommendedRunner(
+                    id=str(u.id),
+                    nickname=u.nickname,
+                    avatar_url=u.avatar_url,
+                    total_distance_meters=u.total_distance_meters,
+                    total_runs=u.total_runs,
+                    avg_pace=None,
+                    reason="mutual_follow",
+                    mutual_count=mutual_counts.get(uid, 0),
+                ))
+
+    # --- C) Same country/region ---
+    my_country = current_user.country
+    if my_country:
+        region_result = await db.execute(
+            select(User)
+            .where(
+                User.country == my_country,
+                User.id.notin_(already_following_ids | seen_ids),
+            )
+            .order_by(func.random())
+            .limit(5)
+        )
+        for u in region_result.scalars().all():
+            if u.id in seen_ids:
+                continue
+            seen_ids.add(u.id)
+            recommendations.append(RecommendedRunner(
+                id=str(u.id),
+                nickname=u.nickname,
+                avatar_url=u.avatar_url,
+                total_distance_meters=u.total_distance_meters,
+                total_runs=u.total_runs,
+                avg_pace=None,
+                reason="same_region",
+            ))
+
+    return RecommendedRunnersResponse(data=recommendations[:limit])
 
 
 @router.get("/me", response_model=UserResponse)

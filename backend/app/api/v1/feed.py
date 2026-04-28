@@ -22,6 +22,7 @@ from app.schemas.feed import (
     ReactionResponse,
     ReactionsAggregateResponse,
     RunSummary,
+    WeeklyHighlightsResponse,
     VALID_REACTION_TYPES,
 )
 from app.services.feed_service import FeedService
@@ -109,6 +110,76 @@ def _build_activity_response(
 # ---------------------------------------------------------------------------
 # Feed Endpoints
 # ---------------------------------------------------------------------------
+
+@router.get("/trending", response_model=ActivityFeedPaginatedResponse)
+@inject
+async def get_trending_feed(
+    current_user: CurrentUser,
+    db: DbSession,
+    hours: int = Query(48, ge=12, le=168),
+    limit: int = Query(20, ge=1, le=50),
+    feed_service: FeedService = Depends(Provide[Container.feed_service]),
+) -> ActivityFeedPaginatedResponse:
+    """Get trending activities ordered by reaction count in the last N hours."""
+    activities = await feed_service.get_trending(
+        db=db, hours=hours, limit=limit,
+    )
+
+    activity_ids = [a.id for a in activities]
+    reactions_map = await feed_service.get_reactions_summary_batch(
+        db=db,
+        activity_ids=activity_ids,
+        current_user_id=current_user.id,
+    )
+    comment_counts = await _get_comment_counts_batch(db, activity_ids)
+
+    return ActivityFeedPaginatedResponse(
+        data=[
+            _build_activity_response(
+                a, reactions_map.get(a.id), comment_counts.get(a.id, 0),
+            )
+            for a in activities
+        ],
+        total_count=len(activities),
+        page=0,
+        per_page=limit,
+    )
+
+
+@router.get("/highlights", response_model=WeeklyHighlightsResponse)
+@inject
+async def get_weekly_highlights(
+    current_user: CurrentUser,
+    db: DbSession,
+    feed_service: FeedService = Depends(Provide[Container.feed_service]),
+) -> WeeklyHighlightsResponse:
+    """Get this week's community highlights for the Discover tab."""
+    data = await feed_service.get_weekly_highlights(db=db)
+
+    top_activity_response = None
+    if data["top_activity"] is not None:
+        activity = data["top_activity"]
+        # Fetch reaction summary for the top activity
+        reactions_map = await feed_service.get_reactions_summary_batch(
+            db=db,
+            activity_ids=[activity.id],
+            current_user_id=current_user.id,
+        )
+        comment_counts = await _get_comment_counts_batch(db, [activity.id])
+        top_activity_response = _build_activity_response(
+            activity,
+            reactions_map.get(activity.id),
+            comment_counts.get(activity.id, 0),
+        )
+
+    return WeeklyHighlightsResponse(
+        runner_count=data["runner_count"],
+        pr_count=data["pr_count"],
+        total_distance_meters=data["total_distance_meters"],
+        top_activity=top_activity_response,
+        week_start=data["week_start"],
+    )
+
 
 @router.get("", response_model=ActivityFeedPaginatedResponse)
 @inject

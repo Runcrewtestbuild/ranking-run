@@ -1227,7 +1227,19 @@
       "challengeComingSoon": "Challenges coming soon",
       "challengeHint": "Stay tuned for running challenges",
       "emptySearchTitle": "No results for \"{{query}}\"",
-      "emptySearchHint": "Try a different keyword"
+      "emptySearchHint": "Try a different keyword",
+      "weeklyHighlights": "This Week's Highlights",
+      "highlightRunners": "Runners This Week",
+      "highlightPRs": "New PRs",
+      "highlightDistance": "Total Distance (km)",
+      "trendingActivities": "Trending Activities",
+      "activityRun": "Run",
+      "recommendedRunners": "Recommended Runners",
+      "reasonSimilarPace": "Similar Pace",
+      "reasonMutualFollow": "{{count}} Mutual Friends",
+      "reasonSameRegion": "Same Region",
+      "follow": "Follow",
+      "following": "Following"
     }
   },
   "friend": {

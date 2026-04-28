@@ -1,6 +1,7 @@
 """Feed service: create and query activity feed items."""
 
 import logging
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -243,3 +244,109 @@ class FeedService:
             summary[activity_id]["user_reacted"].append(reaction_type)
 
         return summary
+
+    # ------------------------------------------------------------------
+    # Trending
+    # ------------------------------------------------------------------
+
+    async def get_trending(
+        self,
+        db: AsyncSession,
+        hours: int = 48,
+        limit: int = 20,
+    ) -> list[ActivityFeed]:
+        """Get the most-reacted activities in the last N hours.
+
+        Uses a subquery to count reactions per activity within the cutoff
+        window, then joins with activities and orders by reaction count.
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+        # Subquery: count reactions per activity within the time window
+        reaction_counts = (
+            select(
+                Reaction.activity_id,
+                func.count(Reaction.id).label("cnt"),
+            )
+            .where(Reaction.created_at > cutoff)
+            .group_by(Reaction.activity_id)
+            .subquery()
+        )
+
+        query = (
+            select(ActivityFeed)
+            .join(
+                reaction_counts,
+                ActivityFeed.id == reaction_counts.c.activity_id,
+            )
+            .options(
+                joinedload(ActivityFeed.user),
+                joinedload(ActivityFeed.run_record),
+            )
+            .where(ActivityFeed.created_at > cutoff)
+            .order_by(reaction_counts.c.cnt.desc())
+            .limit(limit)
+        )
+        result = await db.execute(query)
+        return list(result.scalars().unique().all())
+
+    # ------------------------------------------------------------------
+    # Weekly Highlights
+    # ------------------------------------------------------------------
+
+    async def get_weekly_highlights(
+        self,
+        db: AsyncSession,
+    ) -> dict:
+        """Compute community-wide highlights for the current week (Mon-Sun).
+
+        Returns a dict with runner_count, pr_count, total_distance_meters,
+        top_activity, and week_start.
+        """
+        now = datetime.now(timezone.utc)
+        # Monday 00:00 of the current week
+        week_start = (now - timedelta(days=now.weekday())).replace(
+            hour=0, minute=0, second=0, microsecond=0,
+        )
+
+        # 1. Unique runners this week
+        runner_count_result = await db.execute(
+            select(func.count(func.distinct(RunRecord.user_id)))
+            .where(RunRecord.started_at >= week_start)
+        )
+        runner_count = runner_count_result.scalar_one() or 0
+
+        # 2. PR count this week
+        pr_count_result = await db.execute(
+            select(func.count(ActivityFeed.id))
+            .where(
+                ActivityFeed.activity_type == "pr_achieved",
+                ActivityFeed.created_at >= week_start,
+            )
+        )
+        pr_count = pr_count_result.scalar_one() or 0
+
+        # 3. Community total distance this week
+        total_distance_result = await db.execute(
+            select(func.sum(RunRecord.distance_meters))
+            .where(RunRecord.started_at >= week_start)
+        )
+        total_distance = total_distance_result.scalar_one() or 0
+
+        # 4. Most-reacted activity this week (top 1 trending)
+        top_activity = None
+        trending = await self.get_trending(
+            db=db,
+            hours=int((now - week_start).total_seconds() / 3600) or 1,
+            limit=1,
+        )
+        if trending:
+            top_activity = trending[0]
+
+        return {
+            "runner_count": runner_count,
+            "pr_count": pr_count,
+            "total_distance_meters": int(total_distance),
+            "top_activity": top_activity,
+            "week_start": week_start.isoformat(),
+        }

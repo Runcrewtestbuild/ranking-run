@@ -1227,7 +1227,19 @@
       "challengeComingSoon": "チャレンジがまもなく始まります",
       "challengeHint": "さまざまなランニングチャレンジに参加してみましょう",
       "emptySearchTitle": "「{{query}}」の結果がありません",
-      "emptySearchHint": "別のキーワードで検索してみてください"
+      "emptySearchHint": "別のキーワードで検索してみてください",
+      "weeklyHighlights": "今週のハイライト",
+      "highlightRunners": "今週のランナー",
+      "highlightPRs": "記録更新",
+      "highlightDistance": "総距離 (km)",
+      "trendingActivities": "トレンド活動",
+      "activityRun": "ランニング",
+      "recommendedRunners": "おすすめランナー",
+      "reasonSimilarPace": "似たペース",
+      "reasonMutualFollow": "共通フォロー{{count}}人",
+      "reasonSameRegion": "同じ地域",
+      "follow": "フォロー",
+      "following": "フォロー中"
     }
   },
   "friend": {

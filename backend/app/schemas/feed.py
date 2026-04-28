@@ -118,3 +118,16 @@ class FeedCommentPaginatedResponse(BaseModel):
     total_count: int
     page: int
     per_page: int
+
+
+# ---------------------------------------------------------------------------
+# Weekly Highlights
+# ---------------------------------------------------------------------------
+
+class WeeklyHighlightsResponse(BaseModel):
+    """Community weekly highlights for the Discover tab."""
+    runner_count: int = 0
+    pr_count: int = 0
+    total_distance_meters: int = 0
+    top_activity: ActivityResponse | None = None
+    week_start: str
