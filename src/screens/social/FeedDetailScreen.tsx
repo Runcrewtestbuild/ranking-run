@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '../../lib/icons';
@@ -32,19 +33,19 @@ type Route = RouteProp<CommunityStackParamList, 'FeedDetail'>;
 
 // ---- Helpers ----
 
-function formatCommentTime(dateStr: string): string {
+function formatCommentTime(dateStr: string, t: (key: string, opts?: Record<string, unknown>) => string): string {
   const now = Date.now();
   const then = new Date(dateStr).getTime();
   const diffSec = Math.floor((now - then) / 1000);
 
-  if (diffSec < 60) return '방금';
+  if (diffSec < 60) return t('social.comment.justNow');
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}분`;
+  if (diffMin < 60) return t('social.comment.minutesAgo', { count: diffMin });
   const diffHour = Math.floor(diffMin / 60);
-  if (diffHour < 24) return `${diffHour}시간`;
+  if (diffHour < 24) return t('social.comment.hoursAgo', { count: diffHour });
   const diffDay = Math.floor(diffHour / 24);
-  if (diffDay < 30) return `${diffDay}일`;
-  return `${Math.floor(diffDay / 30)}달`;
+  if (diffDay < 30) return t('social.comment.daysAgo', { count: diffDay });
+  return t('social.comment.monthsAgo', { count: Math.floor(diffDay / 30) });
 }
 
 // ---- Comment Item ----
@@ -66,6 +67,7 @@ const CommentItem = React.memo(function CommentItem({
   onDelete,
   isReply = false,
 }: CommentItemProps) {
+  const { t } = useTranslation();
   const s = useMemo(() => createStyles(colors), [colors]);
   const initial = comment.userNickname.charAt(0).toUpperCase();
 
@@ -84,18 +86,18 @@ const CommentItem = React.memo(function CommentItem({
       <View style={s.commentBody}>
         <View style={s.commentHeader}>
           <Text style={s.commentNickname}>{comment.userNickname}</Text>
-          <Text style={s.commentTime}>{formatCommentTime(comment.createdAt)}</Text>
+          <Text style={s.commentTime}>{formatCommentTime(comment.createdAt, t)}</Text>
         </View>
         <Text style={s.commentContent}>{comment.content}</Text>
         <View style={s.commentActions}>
           {!isReply && (
             <TouchableOpacity onPress={() => onReply(comment)} activeOpacity={0.7}>
-              <Text style={s.commentActionText}>답글</Text>
+              <Text style={s.commentActionText}>{t('social.comment.reply')}</Text>
             </TouchableOpacity>
           )}
           {currentUserId === comment.userId && (
             <TouchableOpacity onPress={() => onDelete(comment.id)} activeOpacity={0.7}>
-              <Text style={[s.commentActionText, s.commentDeleteText]}>삭제</Text>
+              <Text style={[s.commentActionText, s.commentDeleteText]}>{t('common.delete')}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -168,7 +170,7 @@ export default function FeedDetailScreen() {
         setPage(pageNum);
       } catch {
         if (!append) {
-          showToast('error', '댓글을 불러오지 못했어요');
+          showToast('error', t('social.comment.loadFailed'));
         }
       }
     },
@@ -177,7 +179,11 @@ export default function FeedDetailScreen() {
 
   useEffect(() => {
     setIsLoading(true);
-    fetchComments(0).finally(() => setIsLoading(false));
+    fetchComments(0).finally(() => {
+      setIsLoading(false);
+      // Auto-focus input after loading
+      setTimeout(() => inputRef.current?.focus(), 500);
+    });
   }, [fetchComments]);
 
   const handleLoadMore = useCallback(() => {
@@ -268,9 +274,18 @@ export default function FeedDetailScreen() {
 
   // Delete comment
   const handleDelete = useCallback(
-    async (commentId: string) => {
-      try {
-        await feedService.deleteComment(activityId, commentId);
+    (commentId: string) => {
+      Alert.alert(
+        t('social.comment.deleteTitle'),
+        t('social.comment.deleteMessage'),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('common.delete'),
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await feedService.deleteComment(activityId, commentId);
         // Remove from top-level or from replies
         setComments((prev) =>
           prev
@@ -286,9 +301,13 @@ export default function FeedDetailScreen() {
         if (activity) {
           setActivity({ ...activity, commentCount: Math.max(0, activity.commentCount - 1) });
         }
-      } catch {
-        showToast('error', '댓글을 삭제하지 못했어요');
-      }
+              } catch {
+                showToast('error', t('social.comment.deleteFailed'));
+              }
+            },
+          },
+        ],
+      );
     },
     [activityId, activity],
   );
@@ -385,7 +404,7 @@ export default function FeedDetailScreen() {
             <TextInput
               ref={inputRef}
               style={s.textInput}
-              placeholder="댓글을 입력하세요..."
+              placeholder={t('social.comment.placeholder')}
               placeholderTextColor={colors.textTertiary}
               value={commentText}
               onChangeText={setCommentText}

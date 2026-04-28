@@ -1076,6 +1076,19 @@
       "empty": "フィードが空です",
       "emptyHint": "ランニングを始めるとフィードにアクティビティが表示されます"
     },
+    "comment": {
+      "placeholder": "コメントを入力",
+      "reply": "返信",
+      "deleteTitle": "コメント削除",
+      "deleteMessage": "このコメントを削除しますか？",
+      "deleteFailed": "コメントの削除に失敗しました",
+      "loadFailed": "コメントの読み込みに失敗しました",
+      "justNow": "たった今",
+      "minutesAgo": "{{count}}分",
+      "hoursAgo": "{{count}}時間",
+      "daysAgo": "{{count}}日",
+      "monthsAgo": "{{count}}ヶ月"
+    },
     "findCrew": "クルー検索",
     "createCrew": "クルー作成",
     "addFriend": "友達追加",

@@ -1076,6 +1076,19 @@
       "empty": "피드가 비어있어요",
       "emptyHint": "러닝을 시작하면 피드에 활동이 표시됩니다"
     },
+    "comment": {
+      "placeholder": "댓글을 입력하세요",
+      "reply": "답글",
+      "deleteTitle": "댓글 삭제",
+      "deleteMessage": "이 댓글을 삭제하시겠습니까?",
+      "deleteFailed": "댓글을 삭제하지 못했어요",
+      "loadFailed": "댓글을 불러오지 못했어요",
+      "justNow": "방금",
+      "minutesAgo": "{{count}}분",
+      "hoursAgo": "{{count}}시간",
+      "daysAgo": "{{count}}일",
+      "monthsAgo": "{{count}}달"
+    },
     "findCrew": "크루 찾기",
     "createCrew": "크루 만들기",
     "addFriend": "친구 추가",
