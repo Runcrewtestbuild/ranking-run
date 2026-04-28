@@ -703,27 +703,21 @@ export default function MyPageScreen() {
               </View>
               <View style={styles.recordsRow}>
                 <View style={[styles.recordTile, { backgroundColor: colors.success + '18' }]}>
-                  <ProgressRingChart
-                    progress={1}
-                    size={64}
-                    strokeWidth={6}
-                    color={colors.success}
-                    trackColor={colors.success + '30'}
-                    value={`${stats.best_streak_days}`}
-                    subtitle="최고 기록"
-                  />
+                  <View style={[styles.recordIconBadge, { backgroundColor: colors.success + '28' }]}>
+                    <Ionicons name="flame" size={18} color={colors.success} />
+                  </View>
+                  <Text style={styles.recordTileValue}>
+                    {stats.best_streak_days}{t('common.daySuffix')}
+                  </Text>
                   <Text style={styles.recordTileLabel}>{t('mypage.longestStreak')}</Text>
                 </View>
                 <View style={[styles.recordTile, { backgroundColor: colors.secondary + '1A' }]}>
-                  <ProgressRingChart
-                    progress={stats.best_streak_days > 0 ? stats.current_streak_days / stats.best_streak_days : 1}
-                    size={64}
-                    strokeWidth={6}
-                    color={colors.secondary}
-                    trackColor={colors.secondary + '30'}
-                    value={`${stats.current_streak_days}`}
-                    subtitle="일 연속"
-                  />
+                  <View style={[styles.recordIconBadge, { backgroundColor: colors.secondary + '28' }]}>
+                    <Ionicons name="calendar" size={18} color={colors.secondary} />
+                  </View>
+                  <Text style={styles.recordTileValue}>
+                    {stats.current_streak_days}{t('common.daySuffix')}
+                  </Text>
                   <Text style={styles.recordTileLabel}>{t('mypage.currentStreak')}</Text>
                 </View>
               </View>
@@ -1311,8 +1305,9 @@ const createStyles = (c: ThemeColors) => StyleSheet.create({
   recordsRow: { flexDirection: 'row', gap: SPACING.sm },
   recordTile: {
     flex: 1, borderRadius: BORDER_RADIUS.md,
-    paddingVertical: SPACING.lg, paddingHorizontal: SPACING.md,
-    alignItems: 'center', gap: SPACING.xs,
+    paddingVertical: SPACING.md, paddingHorizontal: SPACING.sm,
+    alignItems: 'center', justifyContent: 'center',
+    gap: SPACING.xs, minHeight: 110,
   },
   recordIconBadge: {
     width: 36, height: 36, borderRadius: 18,
