@@ -185,8 +185,8 @@ const RunStats = memo(function RunStats({ runRecord, styles: s, colors, t }: Run
         <View style={s.routeMapPreview}>
           <RoutePreview
             coordinates={runRecord.routePreview}
-            width={mapWidth}
-            height={220}
+            width={mapWidth - SPACING.md * 2}
+            height={180}
             strokeColor={colors.primary}
             strokeWidth={3}
             showMap
@@ -504,11 +504,16 @@ const createStyles = (colors: ThemeColors) =>
     // ---- Run stats ----
     runStatsContainer: {
       overflow: 'hidden',
+      borderRadius: BORDER_RADIUS.md,
+      marginHorizontal: SPACING.md,
+      marginTop: SPACING.sm,
     },
     routeMapPreview: {
       width: '100%',
-      height: 220,
+      height: 180,
       backgroundColor: colors.surface,
+      overflow: 'hidden',
+      borderRadius: BORDER_RADIUS.md,
     },
     routeMapPlaceholder: {
       width: '100%',
