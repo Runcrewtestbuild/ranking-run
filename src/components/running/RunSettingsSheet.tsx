@@ -9,6 +9,7 @@ import {
   PanResponder,
   Dimensions,
   BackHandler,
+  NativeModules,
 } from 'react-native';
 import { Pressable } from '../../lib/touchables';
 import { Ionicons } from '../../lib/icons';
@@ -121,6 +122,8 @@ export default function RunSettingsSheet({ visible, onClose, onNavigateWatch, on
   const setVoiceGuidance = useSettingsStore((s) => s.setVoiceGuidance);
   const countdownSeconds = useSettingsStore((s) => s.countdownSeconds);
   const setCountdownSeconds = useSettingsStore((s) => s.setCountdownSeconds);
+  const metronomeVolume = useSettingsStore((s) => s.metronomeVolume);
+  const setMetronomeVolume = useSettingsStore((s) => s.setMetronomeVolume);
   const hapticFeedback = useSettingsStore((s) => s.hapticFeedback);
 
   const tap = useCallback(() => {
@@ -152,6 +155,17 @@ export default function RunSettingsSheet({ visible, onClose, onNavigateWatch, on
     setCountdownSeconds(opts[(idx + 1) % opts.length]);
   }, [countdownSeconds, setCountdownSeconds, tap]);
 
+  const cycleMetronomeVolume = useCallback(() => {
+    tap();
+    const steps = [0.3, 0.6, 1.0];
+    const currentIdx = steps.findIndex((v) => Math.abs(v - metronomeVolume) < 0.05);
+    const nextIdx = (currentIdx + 1) % steps.length;
+    const nextVol = steps[nextIdx];
+    setMetronomeVolume(nextVol);
+    // Sync volume to native module
+    NativeModules.MetronomeModule?.setVolume?.(nextVol);
+  }, [metronomeVolume, setMetronomeVolume, tap]);
+
   const openHeartRate = useCallback(() => {
     tap();
     onClose();
@@ -182,6 +196,18 @@ export default function RunSettingsSheet({ visible, onClose, onNavigateWatch, on
     },
   ], [runEnvironment, autoPause, cycleEnvironment, cycleAutoPause, t]);
 
+  const getVolumeIcon = (vol: number): IoniconsName => {
+    if (vol <= 0.35) return 'volume-low';
+    if (vol <= 0.65) return 'volume-medium';
+    return 'volume-high';
+  };
+
+  const getVolumeLabel = (vol: number): string => {
+    if (vol <= 0.35) return t('runSettings.volumeLow');
+    if (vol <= 0.65) return t('runSettings.volumeMedium');
+    return t('runSettings.volumeHigh');
+  };
+
   const displayTiles: SettingTile[] = useMemo(() => [
     {
       key: 'voice',
@@ -199,7 +225,14 @@ export default function RunSettingsSheet({ visible, onClose, onNavigateWatch, on
       getValue: () => t('runSettings.seconds', { count: countdownSeconds }),
       onTap: cycleCountdown,
     },
-  ], [voiceGuidance, countdownSeconds, cycleVoice, cycleCountdown, t]);
+    {
+      key: 'metronomeVol',
+      icon: getVolumeIcon(metronomeVolume),
+      label: t('runSettings.metronomeVolume'),
+      getValue: () => getVolumeLabel(metronomeVolume),
+      onTap: cycleMetronomeVolume,
+    },
+  ], [voiceGuidance, countdownSeconds, metronomeVolume, cycleVoice, cycleCountdown, cycleMetronomeVolume, t]);
 
   const deviceTiles: SettingTile[] = useMemo(() => [
     {

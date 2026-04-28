@@ -447,6 +447,7 @@
   },
   "mypage": {
     "editProfile": "Edit",
+    "myActivities": "My Activities",
     "defaultNickname": "Runner",
     "following": "Following",
     "followers": "Followers",
@@ -634,7 +635,7 @@
     "write": "Write",
     "submit": "Submit",
     "postType": "Post Type",
-    "titlePlaceholder": "Title",
+    "titlePlaceholder": "Title (optional)",
     "contentPlaceholder": "Enter your content",
     "crewContentPlaceholder": "Share something with your crew members",
     "crewSelect": "Select Crew",
@@ -936,7 +937,11 @@
     "settings": "Settings",
     "sectionMeasure": "Measurement",
     "sectionDisplayVoice": "Display & Voice",
-    "sectionDevice": "Device"
+    "sectionDevice": "Device",
+    "metronomeVolume": "Metronome Volume",
+    "volumeLow": "Low",
+    "volumeMedium": "Medium",
+    "volumeHigh": "High"
   },
   "runHistory": {
     "intervalLabel": "Interval {{run}}m/{{walk}}m ×{{sets}}",
@@ -951,7 +956,10 @@
     "loadError": "Failed to load courses.",
     "detailError": "Failed to load course details.",
     "replyError": "Failed to post reply.",
-    "deleteReviewError": "Failed to delete review."
+    "deleteReviewError": "Failed to delete review.",
+    "manageCourse": "Manage Course",
+    "deleteCourse": "Delete Course",
+    "deleteConfirm": "Are you sure you want to delete this course? This action cannot be undone."
   },
   "review": {
     "title": "Reviews",

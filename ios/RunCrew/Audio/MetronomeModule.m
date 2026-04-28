@@ -8,5 +8,6 @@ RCT_EXTERN_METHOD(setBPM:(double)bpm)
 RCT_EXTERN_METHOD(isPlaying:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(playBeep:(int)count)
+RCT_EXTERN_METHOD(setVolume:(double)vol)
 
 @end

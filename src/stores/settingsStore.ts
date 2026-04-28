@@ -44,6 +44,9 @@ interface SettingsState {
   showHeartRate: boolean;
   showLevelColor: boolean;
 
+  // Metronome volume (0.0~1.0, default 0.7)
+  metronomeVolume: number;
+
   // Stride (for metronome BPM calculation, persisted)
   // null = auto (estimated from profile height), number = user custom (cm)
   strideLengthCm: number | null;
@@ -69,6 +72,7 @@ interface SettingsState {
   setShowHeartRate: (show: boolean) => void;
   setShowLevelColor: (show: boolean) => void;
   setLastKnownLocation: (loc: { latitude: number; longitude: number }) => void;
+  setMetronomeVolume: (vol: number) => void;
   setStrideLengthCm: (cm: number | null) => void;
 }
 
@@ -100,6 +104,7 @@ export const useSettingsStore = create<SettingsState>()(
       screenOrientation: 'portrait',
       showHeartRate: true,
       showLevelColor: true,
+      metronomeVolume: 0.7,
       strideLengthCm: null,
 
       setLanguage: (lang) => set({ language: lang }),
@@ -126,6 +131,10 @@ export const useSettingsStore = create<SettingsState>()(
       setShowHeartRate: (show) => set({ showHeartRate: show }),
       setShowLevelColor: (show) => set({ showLevelColor: show }),
       setLastKnownLocation: (loc) => set({ lastKnownLocation: loc }),
+      setMetronomeVolume: (vol) => {
+        const clamped = Math.max(0, Math.min(1, vol));
+        set({ metronomeVolume: clamped });
+      },
       setStrideLengthCm: (cm) => set({ strideLengthCm: cm }),
     }),
     {
@@ -162,6 +171,7 @@ export const useSettingsStore = create<SettingsState>()(
         showHeartRate: state.showHeartRate,
         showLevelColor: state.showLevelColor,
         lastKnownLocation: state.lastKnownLocation,
+        metronomeVolume: state.metronomeVolume,
         strideLengthCm: state.strideLengthCm,
       }),
     },

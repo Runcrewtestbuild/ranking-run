@@ -31,6 +31,7 @@ class MetronomeModule(reactContext: ReactApplicationContext) :
     @Volatile private var isRunning = false
     @Volatile private var currentBPM = 0.0
     @Volatile private var pendingBeatBuffer: ShortArray? = null
+    @Volatile private var volume = 0.55f
     private val beepPlaying = AtomicBoolean(false)
 
     companion object {
@@ -40,7 +41,6 @@ class MetronomeModule(reactContext: ReactApplicationContext) :
         private const val BASE_FREQ = 800.0
         private const val HARMONIC_FREQ = 1600.0
         private const val HARMONIC_MIX = 0.3f
-        private const val VOLUME = 0.55f
     }
 
     private fun generateClickSamples(): ShortArray {
@@ -60,7 +60,7 @@ class MetronomeModule(reactContext: ReactApplicationContext) :
             }
             val decayProgress = i.toDouble() / frameCount
             sample *= exp(-5.0 * decayProgress).toFloat()
-            sample *= VOLUME
+            sample *= volume
 
             // Convert to 16-bit PCM
             samples[i] = (sample * Short.MAX_VALUE).toInt()
@@ -197,6 +197,21 @@ class MetronomeModule(reactContext: ReactApplicationContext) :
         clickSamples.copyInto(newBuffer, 0)
         pendingBeatBuffer = newBuffer
         Log.i(TAG, "BPM changed to ${bpm.toInt()}")
+    }
+
+    @ReactMethod
+    fun setVolume(vol: Double) {
+        val clamped = vol.toFloat().coerceIn(0f, 1f)
+        volume = clamped
+        // Regenerate beat buffer with new volume if currently running
+        if (isRunning && currentBPM > 0) {
+            val clickSamples = generateClickSamples()
+            val beatPeriodSamples = (SAMPLE_RATE * 60.0 / currentBPM).toInt()
+            val newBuffer = ShortArray(beatPeriodSamples)
+            clickSamples.copyInto(newBuffer, 0)
+            pendingBeatBuffer = newBuffer
+        }
+        Log.i(TAG, "Volume set to ${"%.2f".format(clamped)}")
     }
 
     @ReactMethod

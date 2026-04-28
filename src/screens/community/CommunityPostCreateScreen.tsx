@@ -23,6 +23,7 @@ import BlurredBackground from '../../components/common/BlurredBackground';
 import type { CommunityStackParamList } from '../../types/navigation';
 import type { CommunityPostType } from '../../types/api';
 import { communityService } from '../../services/communityService';
+import { feedService } from '../../services/feedService';
 import { FONT_SIZES, SPACING, BORDER_RADIUS } from '../../utils/constants';
 import type { ThemeColors } from '../../utils/constants';
 import { useTheme } from '../../hooks/useTheme';
@@ -66,9 +67,7 @@ export default function CommunityPostCreateScreen() {
   const [imageUris, setImageUris] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
-  const canSubmit = crewId
-    ? content.trim().length > 0 && !submitting
-    : title.trim().length > 0 && content.trim().length > 0 && !submitting;
+  const canSubmit = content.trim().length > 0 && !submitting;
 
   // ---- Image picker ----
 
@@ -107,10 +106,6 @@ export default function CommunityPostCreateScreen() {
     const trimmedTitle = title.trim();
     const trimmedContent = content.trim();
 
-    if (!crewId && trimmedTitle.length === 0) {
-      Alert.alert(t('common.notification'), t('community.titleRequired'));
-      return;
-    }
     if (trimmedContent.length === 0) {
       Alert.alert(t('common.notification'), t('community.contentRequired'));
       return;
@@ -127,13 +122,24 @@ export default function CommunityPostCreateScreen() {
       }
 
       await communityService.createPost({
-        title: crewId ? undefined : trimmedTitle,
+        title: crewId || !trimmedTitle ? undefined : trimmedTitle,
         content: trimmedContent,
         post_type: crewId ? 'general' : postType,
         crew_id: crewId,
         image_url: uploadedImageUrls?.[0],
         image_urls: uploadedImageUrls,
       });
+
+      // Also create an activity_feed entry so the post appears in the feed
+      const feedContent = trimmedTitle
+        ? `${trimmedTitle}\n${trimmedContent}`
+        : trimmedContent;
+      await feedService
+        .createActivity(feedContent, uploadedImageUrls)
+        .catch(() => {
+          // Feed entry is best-effort; don't block post creation
+        });
+
       navigation.goBack();
     } catch {
       Alert.alert(t('common.errorTitle'), t('community.createFailed'));

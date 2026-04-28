@@ -447,6 +447,7 @@
   },
   "mypage": {
     "editProfile": "편집",
+    "myActivities": "내 활동 보기",
     "defaultNickname": "러너",
     "following": "팔로잉",
     "followers": "팔로워",
@@ -581,7 +582,7 @@
     "write": "글쓰기",
     "submit": "등록",
     "postType": "게시글 유형",
-    "titlePlaceholder": "제목",
+    "titlePlaceholder": "제목 (선택)",
     "contentPlaceholder": "내용을 입력하세요",
     "crewContentPlaceholder": "크루 멤버들과 나누고 싶은 이야기를 적어주세요",
     "crewSelect": "크루 선택",
@@ -883,7 +884,11 @@
     "settings": "설정",
     "sectionMeasure": "측정",
     "sectionDisplayVoice": "표시 및 음성",
-    "sectionDevice": "기기"
+    "sectionDevice": "기기",
+    "metronomeVolume": "메트로놈 볼륨",
+    "volumeLow": "작게",
+    "volumeMedium": "보통",
+    "volumeHigh": "크게"
   },
   "runHistory": {
     "intervalLabel": "인터벌 {{run}}분/{{walk}}분 ×{{sets}}",
@@ -898,7 +903,10 @@
     "loadError": "코스 목록을 불러올 수 없습니다.",
     "detailError": "코스 정보를 불러올 수 없습니다.",
     "replyError": "답글 등록에 실패했습니다.",
-    "deleteReviewError": "리뷰를 삭제할 수 없습니다."
+    "deleteReviewError": "리뷰를 삭제할 수 없습니다.",
+    "manageCourse": "코스 관리",
+    "deleteCourse": "코스 삭제",
+    "deleteConfirm": "이 코스를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다."
   },
   "review": {
     "title": "리뷰",

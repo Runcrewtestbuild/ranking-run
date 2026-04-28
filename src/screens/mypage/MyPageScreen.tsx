@@ -440,16 +440,28 @@ export default function MyPageScreen() {
               </TouchableOpacity>
             ) : null}
           </View>
-          {/* Edit Profile button — Instagram style */}
-          <TouchableOpacity
-            style={styles.editProfileButton}
-            onPress={() => navigation.navigate('ProfileEdit')}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={t('mypage.editProfile')}
-          >
-            <Text style={styles.editProfileButtonText}>{t('mypage.editProfile')}</Text>
-          </TouchableOpacity>
+          {/* Edit Profile + My Activities buttons — Instagram style */}
+          <View style={styles.profileButtonsRow}>
+            <TouchableOpacity
+              style={styles.editProfileButton}
+              onPress={() => navigation.navigate('ProfileEdit')}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t('mypage.editProfile')}
+            >
+              <Text style={styles.editProfileButtonText}>{t('mypage.editProfile')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.editProfileButton}
+              onPress={() => user?.id && navigation.navigate('UserProfile', { userId: user.id })}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t('mypage.myActivities')}
+            >
+              <Ionicons name="newspaper-outline" size={14} color={colors.text} style={{ marginRight: 4 }} />
+              <Text style={styles.editProfileButtonText}>{t('mypage.myActivities')}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Runner Level Banner — separate section */}
@@ -1042,10 +1054,16 @@ const createStyles = (c: ThemeColors) => StyleSheet.create({
     paddingBottom: 0,
     gap: 4,
   },
-  editProfileButton: {
+  profileButtonsRow: {
+    flexDirection: 'row',
     marginHorizontal: SPACING.xxl,
     marginTop: 12,
     marginBottom: 4,
+    gap: 8,
+  },
+  editProfileButton: {
+    flex: 1,
+    flexDirection: 'row',
     height: 34,
     backgroundColor: c.surfaceLight,
     borderRadius: 8,

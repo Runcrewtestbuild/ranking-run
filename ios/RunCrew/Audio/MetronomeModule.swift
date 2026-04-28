@@ -15,6 +15,7 @@ class MetronomeModule: NSObject {
     private var timer: DispatchSourceTimer?
     private var isRunning = false
     private var currentBPM: Double = 0
+    private var volume: Float = 0.55
 
     private let timerQueue = DispatchQueue(label: "com.runcrew.metronome", qos: .userInteractive)
 
@@ -54,7 +55,7 @@ class MetronomeModule: NSObject {
             sample *= Float(exp(-5.0 * decayProgress))
 
             // Volume
-            sample *= 0.55
+            sample *= volume
 
             channelData[i] = sample
         }
@@ -193,6 +194,19 @@ class MetronomeModule: NSObject {
         newTimer.resume()
         self.timer = newTimer
         NSLog("[Metronome] BPM changed to %.0f (interval: %.3fs)", bpm, interval)
+    }
+
+    @objc func setVolume(_ vol: Double) {
+        let clamped = Float(min(max(vol, 0.0), 1.0))
+        volume = clamped
+        // Regenerate click buffer with new volume so next click uses it
+        if let engine = audioEngine {
+            let format = AVAudioFormat(standardFormatWithSampleRate: 44100.0, channels: 1)!
+            if let newBuffer = generateClickBuffer(format: format) {
+                clickBuffer = newBuffer
+            }
+        }
+        NSLog("[Metronome] Volume set to %.2f", clamped)
     }
 
     @objc func isPlaying(_ resolve: @escaping RCTPromiseResolveBlock,

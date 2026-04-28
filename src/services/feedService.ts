@@ -85,22 +85,12 @@ class FeedService {
 
   async createActivity(
     content: string,
-    imageUris?: string[],
+    imageUrls?: string[],
   ): Promise<FeedActivity> {
-    if (imageUris && imageUris.length > 0) {
-      const formData = new FormData();
-      formData.append('content', content);
-      imageUris.forEach((uri, idx) => {
-        const ext = uri.split('.').pop() ?? 'jpg';
-        formData.append('images', {
-          uri,
-          name: `image_${idx}.${ext}`,
-          type: `image/${ext === 'png' ? 'png' : 'jpeg'}`,
-        } as unknown as Blob);
-      });
-      return api.post<FeedActivity>('/feed', formData);
-    }
-    return api.post<FeedActivity>('/feed', { content });
+    return api.post<FeedActivity>('/feed/activities', {
+      content,
+      image_urls: imageUrls ?? [],
+    });
   }
 
   async addReaction(activityId: string, type: ReactionType): Promise<void> {

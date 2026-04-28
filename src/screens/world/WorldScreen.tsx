@@ -460,12 +460,14 @@ export default function WorldScreen() {
   // Metronome auto-start/stop
   const [metronomeMuted, setMetronomeMuted] = useState(false);
   const MetronomeModule = NativeModules.MetronomeModule;
+  const metronomeVolume = useSettingsStore((s) => s.metronomeVolume);
   const baseBPM = storeRunGoal?.type === 'program' ? (storeRunGoal.cadenceBPM ?? 0) : 0;
   const isAdaptiveMetronome = storeRunGoal?.type === 'program' && (storeRunGoal.adaptiveMetronome ?? false);
   useEffect(() => {
     if (!MetronomeModule) return;
 
     if (phase === 'running' && baseBPM > 0 && !metronomeMuted) {
+      MetronomeModule.setVolume?.(metronomeVolume);
       MetronomeModule.start(baseBPM);
     } else {
       MetronomeModule.stop();

@@ -447,6 +447,7 @@
   },
   "mypage": {
     "editProfile": "編集",
+    "myActivities": "マイアクティビティ",
     "defaultNickname": "ランナー",
     "following": "フォロー中",
     "followers": "フォロワー",
@@ -634,7 +635,7 @@
     "write": "投稿する",
     "submit": "登録",
     "postType": "投稿タイプ",
-    "titlePlaceholder": "タイトル",
+    "titlePlaceholder": "タイトル（任意）",
     "contentPlaceholder": "内容を入力してください",
     "crewContentPlaceholder": "クルーメンバーと共有したいことを書いてください",
     "crewSelect": "クルーを選択",
@@ -936,7 +937,11 @@
     "settings": "設定",
     "sectionMeasure": "計測",
     "sectionDisplayVoice": "表示と音声",
-    "sectionDevice": "デバイス"
+    "sectionDevice": "デバイス",
+    "metronomeVolume": "メトロノーム音量",
+    "volumeLow": "小",
+    "volumeMedium": "中",
+    "volumeHigh": "大"
   },
   "runHistory": {
     "intervalLabel": "インターバル {{run}}分/{{walk}}分 ×{{sets}}",
@@ -951,7 +956,10 @@
     "loadError": "コース一覧を読み込めません。",
     "detailError": "コース情報を読み込めません。",
     "replyError": "返信の登録に失敗しました。",
-    "deleteReviewError": "レビューを削除できません。"
+    "deleteReviewError": "レビューを削除できません。",
+    "manageCourse": "コース管理",
+    "deleteCourse": "コース削除",
+    "deleteConfirm": "このコースを削除しますか？この操作は元に戻せません。"
   },
   "review": {
     "title": "レビュー",

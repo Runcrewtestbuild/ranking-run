@@ -12,10 +12,10 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  UIManager,
-  LayoutAnimation,
   StatusBar,
   BackHandler,
+  Dimensions,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -23,138 +23,103 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '../../lib/icons';
 import { useCourseListStore } from '../../stores/courseListStore';
-import { useAuthStore } from '../../stores/authStore';
 import { useTheme } from '../../hooks/useTheme';
 import type { ThemeColors } from '../../utils/constants';
 import type { MyPageStackParamList } from '../../types/navigation';
 import type { MyCourse } from '../../types/api';
-import { formatDistance, formatNumber, formatDate, formatPace } from '../../utils/format';
+import { formatDistance } from '../../utils/format';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '../../utils/constants';
 
 const IS_ANDROID = Platform.OS === 'android';
-
-if (IS_ANDROID && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const CARD_HORIZONTAL_PADDING = SPACING.xxl * 2;
+const CARD_WIDTH = SCREEN_WIDTH - CARD_HORIZONTAL_PADDING;
+const CARD_HEIGHT = 180;
 
 type Nav = NativeStackNavigationProp<MyPageStackParamList, 'MyCourses'>;
 
 function MyCourseCard({
   course,
-  nickname,
-  onEdit,
   onDetail,
+  onDelete,
+  onEdit,
 }: {
   course: MyCourse;
-  nickname: string;
-  onEdit: (course: MyCourse) => void;
   onDetail: (courseId: string) => void;
+  onDelete: (course: MyCourse) => void;
+  onEdit: (course: MyCourse) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const { t } = useTranslation();
   const colors = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const toggleExpand = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpanded((prev) => !prev);
+  const handleLongPress = () => {
+    Alert.alert(
+      t('courses.manageCourse'),
+      course.title,
+      [
+        {
+          text: t('common.edit'),
+          onPress: () => onEdit(course),
+        },
+        {
+          text: t('common.delete'),
+          style: 'destructive',
+          onPress: () => onDelete(course),
+        },
+        { text: t('common.cancel'), style: 'cancel' },
+      ],
+    );
   };
 
   return (
     <TouchableOpacity
-      style={styles.card}
-      onPress={toggleExpand}
-      activeOpacity={0.7}
+      style={styles.overlayCard}
+      onPress={() => onDetail(course.id)}
+      onLongPress={handleLongPress}
+      activeOpacity={0.8}
     >
-      {/* Summary (always visible) */}
-      <View style={styles.summaryRow}>
-        <View style={styles.summaryLeft}>
-          <Text style={styles.cardTitle} numberOfLines={1}>
-            {course.title}
-          </Text>
-          <Text style={styles.cardMeta}>
-            {nickname} · {formatDate(course.created_at)}
-          </Text>
-        </View>
-        <View style={styles.summaryRight}>
-          <View
-            style={[
-              styles.visibilityBadge,
-              course.is_public ? styles.badgePublic : styles.badgePrivate,
-            ]}
-          >
-            <Text
-              style={[
-                styles.visibilityText,
-                course.is_public ? styles.badgePublicText : styles.badgePrivateText,
-              ]}
-            >
-              {course.is_public ? t('common.public') : t('common.private')}
-            </Text>
-          </View>
-          <Ionicons
-            name={expanded ? 'chevron-up' : 'chevron-down'}
-            size={18}
-            color={colors.textTertiary}
-          />
-        </View>
-      </View>
-
-      {/* Expanded detail */}
-      {expanded && (
-        <View style={styles.detail}>
-          <View style={styles.detailDivider} />
-
-          <Text style={styles.detailDistance}>
-            {formatDistance(course.distance_meters)}
-          </Text>
-
-          <View style={styles.detailStatsRow}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>
-                {formatNumber(course.stats.total_runs)}
-              </Text>
-              <Text style={styles.statLabel}>{t('course.statChallenges')}</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>
-                {formatNumber(course.stats.unique_runners)}
-              </Text>
-              <Text style={styles.statLabel}>{t('course.statRunners')}</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: colors.secondary }]}>
-                {course.stats.avg_pace_seconds_per_km
-                  ? formatPace(course.stats.avg_pace_seconds_per_km)
-                  : '--'}
-              </Text>
-              <Text style={styles.statLabel}>{t('course.statAvgPace')}</Text>
-            </View>
-          </View>
-
-          {/* Action buttons */}
-          <View style={styles.actionRow}>
-            <TouchableOpacity
-              style={styles.detailBtn}
-              onPress={() => onDetail(course.id)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="open-outline" size={14} color={colors.text} />
-              <Text style={styles.detailBtnText}>{t('common.seeMore')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.editBtn}
-              onPress={() => onEdit(course)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="pencil" size={14} color={colors.primary} />
-              <Text style={styles.editBtnText}>{t('common.edit')}</Text>
-            </TouchableOpacity>
-          </View>
+      {/* Full-bleed thumbnail */}
+      {course.thumbnail_url ? (
+        <Image
+          source={{ uri: course.thumbnail_url }}
+          style={styles.overlayCardImage}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={styles.overlayCardPlaceholder}>
+          <Ionicons name="map-outline" size={40} color={colors.textTertiary} />
         </View>
       )}
+
+      {/* Visibility badge — top right */}
+      <View
+        style={[
+          styles.visibilityBadge,
+          course.is_public ? styles.badgePublic : styles.badgePrivate,
+        ]}
+      >
+        <Text
+          style={[
+            styles.visibilityText,
+            course.is_public ? styles.badgePublicText : styles.badgePrivateText,
+          ]}
+        >
+          {course.is_public ? t('common.public') : t('common.private')}
+        </Text>
+      </View>
+
+      {/* Semi-transparent info overlay at bottom */}
+      <View style={styles.overlayCardInfo}>
+        <Text style={styles.overlayCardTitle} numberOfLines={1}>
+          {course.title}
+        </Text>
+        <Text style={styles.overlayCardMeta}>
+          {formatDistance(course.distance_meters)}
+          {course.stats.total_runs > 0 &&
+            ` · ${t('course.runCount', { count: course.stats.total_runs })}`}
+        </Text>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -168,8 +133,7 @@ export default function MyCoursesScreen() {
   const isLoadingMyCourses = useCourseListStore((s) => s.isLoadingMyCourses);
   const fetchMyCourses = useCourseListStore((s) => s.fetchMyCourses);
   const updateMyCourse = useCourseListStore((s) => s.updateMyCourse);
-  const nickname = useAuthStore((s) => s.user?.nickname ?? '나');
-
+  const deleteMyCourse = useCourseListStore((s) => s.deleteMyCourse);
   // Edit modal state
   const [androidEditVisible, setAndroidEditVisible] = useState(false);
   const [editCourse, setEditCourse] = useState<MyCourse | null>(null);
@@ -216,6 +180,30 @@ export default function MyCoursesScreen() {
     [navigation],
   );
 
+  const handleDelete = useCallback(
+    (course: MyCourse) => {
+      Alert.alert(
+        t('courses.deleteCourse'),
+        t('courses.deleteConfirm'),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('common.delete'),
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await deleteMyCourse(course.id);
+              } catch {
+                Alert.alert(t('common.error'), t('common.errorRetry'));
+              }
+            },
+          },
+        ],
+      );
+    },
+    [deleteMyCourse, t],
+  );
+
   const handleSave = async () => {
     if (!editCourse) return;
     if (editTitle.trim().length < 1) {
@@ -244,9 +232,14 @@ export default function MyCoursesScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: MyCourse }) => (
-      <MyCourseCard course={item} nickname={nickname} onEdit={handleOpenEdit} onDetail={handleDetail} />
+      <MyCourseCard
+        course={item}
+        onDetail={handleDetail}
+        onDelete={handleDelete}
+        onEdit={handleOpenEdit}
+      />
     ),
-    [nickname, handleOpenEdit, handleDetail],
+    [handleDetail, handleDelete, handleOpenEdit],
   );
 
   return (
@@ -507,134 +500,70 @@ const createStyles = (c: ThemeColors) =>
       gap: SPACING.md,
     },
 
-    // Card
-    card: {
-      backgroundColor: c.card,
+    // Overlay Card (map thumbnail + bottom info)
+    overlayCard: {
+      width: CARD_WIDTH,
+      height: CARD_HEIGHT,
       borderRadius: BORDER_RADIUS.lg,
-      padding: SPACING.xl,
-      borderWidth: 1,
-      borderColor: c.border,
+      overflow: 'hidden',
+      ...SHADOWS.sm,
     },
-    summaryRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
+    overlayCardImage: {
+      width: CARD_WIDTH,
+      height: CARD_HEIGHT,
+    },
+    overlayCardPlaceholder: {
+      width: CARD_WIDTH,
+      height: CARD_HEIGHT,
+      backgroundColor: c.surface,
+      justifyContent: 'center',
       alignItems: 'center',
     },
-    summaryLeft: {
-      flex: 1,
-      marginRight: SPACING.md,
-      gap: 4,
+    overlayCardInfo: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      paddingHorizontal: SPACING.lg,
+      paddingVertical: SPACING.md,
     },
-    summaryRight: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: SPACING.sm,
-    },
-    cardTitle: {
-      fontSize: FONT_SIZES.lg,
+    overlayCardTitle: {
+      fontSize: FONT_SIZES.md,
       fontWeight: '700',
-      color: c.text,
+      color: '#FFFFFF',
     },
-    cardMeta: {
+    overlayCardMeta: {
       fontSize: FONT_SIZES.sm,
-      fontWeight: '500',
-      color: c.textTertiary,
+      color: 'rgba(255,255,255,0.8)',
+      marginTop: 2,
+      fontVariant: ['tabular-nums'] as const,
     },
+
+    // Visibility badge (top-right)
     visibilityBadge: {
+      position: 'absolute',
+      top: SPACING.sm,
+      right: SPACING.sm,
       paddingHorizontal: SPACING.md,
       paddingVertical: SPACING.xs,
       borderRadius: BORDER_RADIUS.full,
     },
     badgePublic: {
-      backgroundColor: c.success + '18',
+      backgroundColor: 'rgba(52,199,89,0.85)',
     },
     badgePrivate: {
-      backgroundColor: c.textTertiary + '18',
+      backgroundColor: 'rgba(0,0,0,0.5)',
     },
     visibilityText: {
       fontSize: FONT_SIZES.xs,
       fontWeight: '600',
     },
     badgePublicText: {
-      color: c.success,
+      color: '#FFFFFF',
     },
     badgePrivateText: {
-      color: c.textTertiary,
-    },
-
-    // Expanded detail
-    detail: {
-      gap: SPACING.md,
-    },
-    detailDivider: {
-      height: 1,
-      backgroundColor: c.divider,
-      marginTop: SPACING.lg,
-    },
-    detailDistance: {
-      fontSize: 32,
-      fontWeight: '900',
-      color: c.text,
-      fontVariant: ['tabular-nums'],
-      letterSpacing: -1,
-    },
-    detailStatsRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    statItem: {
-      flex: 1,
-      alignItems: 'center',
-      gap: 2,
-    },
-    statDivider: {
-      width: 1,
-      height: 24,
-      backgroundColor: c.divider,
-    },
-    statValue: {
-      fontSize: FONT_SIZES.md,
-      fontWeight: '700',
-      color: c.text,
-      fontVariant: ['tabular-nums'],
-    },
-    statLabel: {
-      fontSize: FONT_SIZES.xs,
-      fontWeight: '500',
-      color: c.textTertiary,
-    },
-    actionRow: {
-      flexDirection: 'row',
-      justifyContent: 'flex-end',
-      gap: SPACING.sm,
-    },
-    detailBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      paddingVertical: SPACING.sm,
-      paddingHorizontal: SPACING.md,
-      borderRadius: BORDER_RADIUS.full,
-      backgroundColor: c.surface,
-    },
-    detailBtnText: {
-      fontSize: FONT_SIZES.sm,
-      fontWeight: '600',
-      color: c.text,
-    },
-    editBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      paddingVertical: SPACING.sm,
-      paddingHorizontal: SPACING.md,
-      borderRadius: BORDER_RADIUS.full,
-      backgroundColor: c.primary + '10',
-    },
-    editBtnText: {
-      fontSize: FONT_SIZES.sm,
-      fontWeight: '600',
-      color: c.primary,
+      color: 'rgba(255,255,255,0.9)',
     },
 
     // Modal
