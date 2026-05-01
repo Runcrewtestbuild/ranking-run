@@ -48,7 +48,7 @@ function buildStaticMapUrl(
       ]),
     },
   }));
-  return `https://api.mapbox.com/styles/v1/${styleId}/static/geojson(${geojson})/auto/${pixelW}x${pixelH}@2x?padding=20&logo=false&attribution=false&access_token=${MAPBOX_ACCESS_TOKEN}`;
+  return `https://api.mapbox.com/styles/v1/${styleId}/static/geojson(${geojson})/auto/${pixelW}x${pixelH}@2x?padding=40&logo=false&attribution=false&access_token=${MAPBOX_ACCESS_TOKEN}`;
 }
 
 /**
