@@ -198,15 +198,34 @@ interface PRContentProps {
 }
 
 const PRContent = memo(function PRContent({ activity, styles: s, t }: PRContentProps & { t: TFunction }) {
-  const [expanded, setExpanded] = useState(false);
   const meta = activity.metadata;
-  const distanceLabel = (meta.distance_label as string) ?? '';
-  const newTime = (meta.new_time as string) ?? '';
+  let distanceLabel = (meta.distance_label as string) ?? '';
+  let newTime = (meta.new_time as string) ?? '';
   const prevTime = (meta.prev_time as string) ?? '';
   const improvement = (meta.improvement as string) ?? '';
 
-  // If no PR metadata at all, show nothing
-  if (!distanceLabel && !newTime) return null;
+  // Fallback for old PR data without detailed metadata
+  if (!distanceLabel) {
+    const prType = (meta.pr_type as string) ?? '';
+    const typeMap: Record<string, string> = {
+      fastest_5k: '5K',
+      fastest_10k: '10K',
+      longest_run: t('social.activity.prLongestRun'),
+    };
+    distanceLabel = typeMap[prType] || t('social.activity.prAchieved');
+  }
+  if (!newTime && activity.runRecord) {
+    const run = activity.runRecord;
+    const prType = (meta.pr_type as string) ?? '';
+    if (prType.includes('fastest')) {
+      const p = run.avgPaceSecondsPerKm;
+      const m = Math.floor(p / 60);
+      const sec = p % 60;
+      newTime = `${m}'${String(sec).padStart(2, '0')}"`;
+    } else {
+      newTime = `${(run.distanceMeters / 1000).toFixed(2)}km`;
+    }
+  }
 
   return (
     <View style={s.prContainer}>
