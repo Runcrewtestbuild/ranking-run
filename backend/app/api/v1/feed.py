@@ -80,17 +80,17 @@ def _build_run_summary(run_record) -> RunSummary | None:
     if run_record.course is not None:
         course_title = run_record.course.title
 
-    # Extract route preview from stored geometry
+    # Extract route preview from stored PostGIS geometry
     route_preview = None
     if run_record.route_geometry is not None:
         try:
-            import json
-            geo = run_record.route_geometry
-            if isinstance(geo, str):
-                geo = json.loads(geo)
-            coords = geo.get("coordinates", []) if isinstance(geo, dict) else []
+            from geoalchemy2.shape import to_shape
+            shape = to_shape(run_record.route_geometry)
+            coords = list(shape.coords)  # [(lng, lat, ...), ...]
             if len(coords) >= 2:
-                route_preview = _simplify_route(coords)
+                # Convert to [[lng, lat], ...]
+                simple_coords = [[c[0], c[1]] for c in coords]
+                route_preview = _simplify_route(simple_coords)
         except Exception:
             pass
 
