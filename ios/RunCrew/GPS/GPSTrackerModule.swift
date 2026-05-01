@@ -253,8 +253,14 @@ class GPSTrackerModule: RCTEventEmitter {
             }
         }
 
-        // Send non-summary events first
+        // Send non-summary events first (cap to prevent JS thread saturation)
+        // Keep at most 5 milestone events + all status changes
+        var milestoneCount = 0
         for event in otherEvents {
+            if event.name == "GPSTracker_onMilestoneReached" {
+                milestoneCount += 1
+                if milestoneCount > 5 { continue } // Skip excess milestones
+            }
             sendEvent(withName: event.name, body: event.body)
         }
         // Send only the latest summary

@@ -60,7 +60,7 @@ function buildStaticMapUrl(
   return (
     `https://api.mapbox.com/styles/v1/${stylePath}/static/` +
     `path-${strokeWidth}+${color}-1(${poly})/auto/${width}x${height}${ratio}` +
-    `?access_token=${MAPBOX_ACCESS_TOKEN}&padding=10,10,10,10`
+    `?access_token=${MAPBOX_ACCESS_TOKEN}&padding=40,40,40,40`
   );
 }
 
@@ -95,7 +95,7 @@ export default function RoutePreview({
 
     const lngRange = maxLng - minLng || 0.0001;
     const latRange = maxLat - minLat || 0.0001;
-    const pad = 4;
+    const pad = 16;
     const drawW = width - pad * 2;
     const drawH = height - pad * 2;
     const scaleX = drawW / lngRange;

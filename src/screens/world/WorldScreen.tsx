@@ -20,6 +20,8 @@ import {
   InteractionManager,
   Dimensions,
   Easing,
+  AppState,
+  type AppStateStatus,
 } from 'react-native';
 import { TouchableOpacity } from '../../lib/touchables';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -281,6 +283,23 @@ export default function WorldScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  // Background resume: briefly suppress heavy re-renders to let JS thread
+  // process queued native events before updating the UI.
+  const [resuming, setResuming] = useState(false);
+  useEffect(() => {
+    const handleAppState = (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        setResuming(true);
+        // Give JS thread 300ms to process queued events before rendering
+        InteractionManager.runAfterInteractions(() => {
+          setTimeout(() => setResuming(false), 300);
+        });
+      }
+    };
+    const sub = AppState.addEventListener('change', handleAppState);
+    return () => sub.remove();
+  }, []);
   const mapMarkers = useCourseListStore((s) => s.mapMarkers);
   const fetchMapMarkers = useCourseListStore((s) => s.fetchMapMarkers);
   const pendingFocusCourseId = useCourseListStore((s) => s.pendingFocusCourseId);

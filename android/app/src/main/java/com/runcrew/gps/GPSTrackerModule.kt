@@ -128,8 +128,8 @@ class GPSTrackerModule(
 
         eventBuffer.clear()
 
-        // Send milestones first (in order), then latest summary
-        for (milestone in milestones) {
+        // Send milestones first (in order, cap at 5), then latest summary
+        for (milestone in milestones.takeLast(5)) {
             emitToJS(milestone.eventName, milestone.params)
         }
         if (latestSummary != null) {
