@@ -13,7 +13,7 @@ import type { TFunction } from 'i18next';
 import * as Haptics from 'expo-haptics';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useTheme } from '../../hooks/useTheme';
-import RoutePreview from '../common/RoutePreview';
+import CourseThumbnailMap from '../course/CourseThumbnailMap';
 import type { ThemeColors } from '../../utils/constants';
 import { FONT_SIZES, SPACING, BORDER_RADIUS } from '../../utils/constants';
 import type { FeedActivity, ReactionType } from '../../types/feed';
@@ -145,15 +145,12 @@ const RunStats = memo(function RunStats({ runRecord, styles: s, colors, t }: Run
   return (
     <View style={s.runStatsContainer}>
       {runRecord.routePreview && runRecord.routePreview.length >= 2 ? (
-        <View style={s.routeMapPreview}>
-          <RoutePreview
-            coordinates={runRecord.routePreview}
-            width={mapWidth - SPACING.md * 2}
-            height={180}
-            strokeColor="#FFD600"
-            strokeWidth={3}
-          />
-        </View>
+        <CourseThumbnailMap
+          routePreview={runRecord.routePreview}
+          width={mapWidth - SPACING.md * 2}
+          height={180}
+          borderRadius={BORDER_RADIUS.md}
+        />
       ) : (
         <View style={s.routeMapPlaceholder}>
           <Ionicons name="map-outline" size={36} color={colors.textTertiary} />
