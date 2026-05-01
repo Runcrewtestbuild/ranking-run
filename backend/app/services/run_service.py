@@ -538,6 +538,8 @@ class RunService:
                     user_id=user_id,
                     run_record_id=run_record.id,
                     pr_type="fastest_5k",
+                    new_value=pace,
+                    prev_value=prev_min,
                 )
 
         # Check fastest 10K
@@ -558,6 +560,8 @@ class RunService:
                     user_id=user_id,
                     run_record_id=run_record.id,
                     pr_type="fastest_10k",
+                    new_value=pace,
+                    prev_value=prev_min,
                 )
 
         # Check longest run
@@ -575,6 +579,8 @@ class RunService:
                 user_id=user_id,
                 run_record_id=run_record.id,
                 pr_type="longest_run",
+                new_value=distance,
+                prev_value=prev_max,
             )
 
     async def _get_active_session(

@@ -97,12 +97,49 @@ class FeedService:
         user_id: UUID,
         run_record_id: UUID,
         pr_type: str,
+        new_value: float | int | None = None,
+        prev_value: float | int | None = None,
     ) -> ActivityFeed:
         """Create a 'pr_achieved' activity when a personal record is detected.
 
         pr_type examples: 'fastest_5k', 'longest_run', 'fastest_10k', etc.
         """
-        metadata = {"pr_type": pr_type, "run_record_id": str(run_record_id)}
+        # Build human-readable labels
+        label_map = {
+            "fastest_5k": "5K",
+            "fastest_10k": "10K",
+            "longest_run": "최장 거리",
+        }
+        distance_label = label_map.get(pr_type, pr_type)
+
+        def format_pace(secs: float | int | None) -> str:
+            if secs is None or secs <= 0:
+                return ""
+            m, s = divmod(int(secs), 60)
+            return f"{m}'{s:02d}\""
+
+        def format_dist(meters: float | int | None) -> str:
+            if meters is None or meters <= 0:
+                return ""
+            return f"{meters / 1000:.2f}km"
+
+        if pr_type in ("fastest_5k", "fastest_10k"):
+            new_time = format_pace(new_value)
+            prev_time = format_pace(prev_value) if prev_value else ""
+            improvement = format_pace(prev_value - new_value) if prev_value and new_value else ""
+        else:  # longest_run
+            new_time = format_dist(new_value)
+            prev_time = format_dist(prev_value) if prev_value else ""
+            improvement = format_dist(new_value - prev_value) if prev_value and new_value else ""
+
+        metadata = {
+            "pr_type": pr_type,
+            "run_record_id": str(run_record_id),
+            "distance_label": distance_label,
+            "new_time": new_time,
+            "prev_time": prev_time,
+            "improvement": improvement,
+        }
 
         activity = await self.create_activity(
             db=db,

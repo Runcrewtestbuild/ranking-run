@@ -198,11 +198,15 @@ interface PRContentProps {
 }
 
 const PRContent = memo(function PRContent({ activity, styles: s, t }: PRContentProps & { t: TFunction }) {
+  const [expanded, setExpanded] = useState(false);
   const meta = activity.metadata;
   const distanceLabel = (meta.distance_label as string) ?? '';
   const newTime = (meta.new_time as string) ?? '';
   const prevTime = (meta.prev_time as string) ?? '';
   const improvement = (meta.improvement as string) ?? '';
+
+  // If no PR metadata at all, show nothing
+  if (!distanceLabel && !newTime) return null;
 
   return (
     <View style={s.prContainer}>
@@ -332,11 +336,16 @@ function ActivityCardInner({
         <RunStats runRecord={activity.runRecord} styles={s} colors={colors} t={t} />
       )}
 
-      {/* PR achieved — badge display */}
+      {/* PR achieved — show run stats + PR details */}
       {activity.activityType === 'pr_achieved' && (
-        <View style={s.cardInner}>
-          <PRContent activity={activity} styles={s} t={t} />
-        </View>
+        <>
+          {activity.runRecord && (
+            <RunStats runRecord={activity.runRecord} styles={s} colors={colors} t={t} />
+          )}
+          <View style={s.cardInner}>
+            <PRContent activity={activity} styles={s} t={t} />
+          </View>
+        </>
       )}
 
       {/* Photo grid */}
