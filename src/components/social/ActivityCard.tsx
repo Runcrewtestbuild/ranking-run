@@ -198,59 +198,61 @@ interface PRContentProps {
 }
 
 const PRContent = memo(function PRContent({ activity, styles: s, t }: PRContentProps & { t: TFunction }) {
+  const colors = useTheme();
   const meta = activity.metadata;
-  let distanceLabel = (meta.distance_label as string) ?? '';
-  let newTime = (meta.new_time as string) ?? '';
-  const prevTime = (meta.prev_time as string) ?? '';
-  const improvement = (meta.improvement as string) ?? '';
+  const prType = (meta.pr_type as string) ?? '';
 
-  // Fallback for old PR data without detailed metadata
-  if (!distanceLabel) {
-    const prType = (meta.pr_type as string) ?? '';
-    const typeMap: Record<string, string> = {
-      fastest_5k: '5K',
-      fastest_10k: '10K',
-      longest_run: t('social.activity.prLongestRun'),
-    };
-    distanceLabel = typeMap[prType] || t('social.activity.prAchieved');
-  }
-  if (!newTime && activity.runRecord) {
+  // Title: "5K 최고 기록" / "10K 최고 기록" / "최장 거리 기록"
+  const titleMap: Record<string, string> = {
+    fastest_5k: `5K ${t('social.activity.prBestRecord')}`,
+    fastest_10k: `10K ${t('social.activity.prBestRecord')}`,
+    longest_run: t('social.activity.prLongestRecord'),
+  };
+  const title = titleMap[prType] || t('social.activity.prAchieved');
+
+  // Record value (from metadata or fallback to runRecord)
+  let recordValue = (meta.new_time as string) ?? '';
+  if (!recordValue && activity.runRecord) {
     const run = activity.runRecord;
-    const prType = (meta.pr_type as string) ?? '';
     if (prType.includes('fastest')) {
       const p = run.avgPaceSecondsPerKm;
-      const m = Math.floor(p / 60);
-      const sec = p % 60;
-      newTime = `${m}'${String(sec).padStart(2, '0')}"`;
+      recordValue = `${Math.floor(p / 60)}'${String(p % 60).padStart(2, '0')}" /km`;
     } else {
-      newTime = `${(run.distanceMeters / 1000).toFixed(2)}km`;
+      recordValue = `${(run.distanceMeters / 1000).toFixed(2)} km`;
     }
   }
 
+  const prevTime = (meta.prev_time as string) ?? '';
+  const improvement = (meta.improvement as string) ?? '';
+  const run = activity.runRecord;
+
   return (
     <View style={s.prContainer}>
-      <View style={s.prStatsRow}>
-        <View style={s.prStatItem}>
-          <Text style={s.prStatLabel}>{t('social.activity.prCategory')}</Text>
-          <Text style={s.prStatValue}>{distanceLabel}</Text>
+      {/* PR Title */}
+      <Text style={s.prTitle}>{title}</Text>
+
+      {/* Hero record */}
+      <Text style={s.prHeroValue}>{recordValue}</Text>
+
+      {/* Comparison */}
+      {(prevTime || improvement) ? (
+        <Text style={s.prComparison}>
+          {prevTime ? `${t('social.activity.prPrevious')} ${prevTime}` : ''}
+          {prevTime && improvement ? '  →  ' : ''}
+          {improvement ? `${improvement} ${t('social.activity.prFaster')}` : ''}
+        </Text>
+      ) : null}
+
+      {/* Run summary row */}
+      {run ? (
+        <View style={s.prRunSummary}>
+          <Text style={s.prRunStat}>{(run.distanceMeters / 1000).toFixed(2)} km</Text>
+          <Text style={[s.prRunStat, { color: colors.textTertiary }]}>·</Text>
+          <Text style={s.prRunStat}>{formatDuration(run.durationSeconds)}</Text>
+          <Text style={[s.prRunStat, { color: colors.textTertiary }]}>·</Text>
+          <Text style={s.prRunStat}>{Math.round(run.distanceMeters / 1000 * 60)} kcal</Text>
         </View>
-        <View style={s.prStatItem}>
-          <Text style={s.prStatLabel}>{t('social.activity.prNewRecord')}</Text>
-          <Text style={[s.prStatValue, { color: '#10B981' }]}>{newTime}</Text>
-        </View>
-        {prevTime ? (
-          <View style={s.prStatItem}>
-            <Text style={s.prStatLabel}>{t('social.activity.prPrevious')}</Text>
-            <Text style={s.prStatValue}>{prevTime}</Text>
-          </View>
-        ) : null}
-        {improvement ? (
-          <View style={s.prStatItem}>
-            <Text style={s.prStatLabel}>{t('social.activity.prImprovement')}</Text>
-            <Text style={[s.prStatValue, { color: '#FF7A33' }]}>{improvement}</Text>
-          </View>
-        ) : null}
-      </View>
+      ) : null}
     </View>
   );
 });
@@ -552,21 +554,49 @@ const createStyles = (colors: ThemeColors) =>
       marginHorizontal: SPACING.md,
       backgroundColor: colors.surface,
       borderRadius: BORDER_RADIUS.md,
-      padding: SPACING.md,
-    },
-    prStatsRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-around',
-    },
-    prStatItem: {
+      paddingVertical: SPACING.lg,
+      paddingHorizontal: SPACING.lg,
       alignItems: 'center',
-      gap: 2,
     },
-    prStatLabel: {
-      fontSize: FONT_SIZES.xs,
+    prTitle: {
+      fontSize: FONT_SIZES.sm,
+      fontWeight: '700',
+      color: colors.textSecondary,
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+    },
+    prHeroValue: {
+      fontSize: 28,
+      fontWeight: '900',
+      fontVariant: ['tabular-nums'],
+      color: '#10B981',
+      marginTop: SPACING.xs,
+    },
+    prComparison: {
+      fontSize: FONT_SIZES.sm,
       fontWeight: '500',
-      color: colors.textTertiary,
+      color: colors.textSecondary,
+      marginTop: SPACING.xs,
     },
+    prRunSummary: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.sm,
+      marginTop: SPACING.md,
+      paddingTop: SPACING.sm,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    prRunStat: {
+      fontSize: FONT_SIZES.sm,
+      fontWeight: '600',
+      fontVariant: ['tabular-nums'],
+      color: colors.text,
+    },
+    // legacy (unused, kept for TS)
+    prStatsRow: { flexDirection: 'row' },
+    prStatItem: { alignItems: 'center' },
+    prStatLabel: { fontSize: FONT_SIZES.xs, color: colors.textTertiary },
     prStatValue: {
       fontSize: FONT_SIZES.md,
       fontWeight: '800',
