@@ -336,16 +336,11 @@ function ActivityCardInner({
         <RunStats runRecord={activity.runRecord} styles={s} colors={colors} t={t} />
       )}
 
-      {/* PR achieved — show run stats + PR details */}
+      {/* PR achieved — record details only, no map */}
       {activity.activityType === 'pr_achieved' && (
-        <>
-          {activity.runRecord && (
-            <RunStats runRecord={activity.runRecord} styles={s} colors={colors} t={t} />
-          )}
-          <View style={s.cardInner}>
-            <PRContent activity={activity} styles={s} t={t} />
-          </View>
-        </>
+        <View style={s.cardInner}>
+          <PRContent activity={activity} styles={s} t={t} />
+        </View>
       )}
 
       {/* Photo grid */}
