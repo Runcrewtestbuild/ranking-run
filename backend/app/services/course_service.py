@@ -134,11 +134,10 @@ def generate_thumbnail_url(route_geometry: dict, access_token: str) -> str | Non
     # Build polyline string: lng,lat;lng,lat;...
     polyline_str = ";".join(f"{c[0]:.6f},{c[1]:.6f}" for c in simplified_coords)
 
-    # URL-encode the path — match world map route color (#FFC800)
-    path = f"path-4+FFC800-0.9({quote(polyline_str)})"
+    path = f"path-5+FFD600-1({quote(polyline_str)})"
 
     return (
-        f"https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/static/"
+        f"https://api.mapbox.com/styles/v1/runsvs/cmlt12hqy001d01r49zt66z85/static/"
         f"{path}/auto/600x300@2x?access_token={access_token}&padding=50"
     )
 

@@ -462,14 +462,12 @@ class LocationEngine(
                 point.latitude, point.longitude
             )
             val timeDelta = (point.timestamp - (session.filteredLocations.lastOrNull()?.timestamp ?: point.timestamp)) / 1000.0
-            // 15 m/s limit — generous to account for Kalman filter lag
-            val maxPlausibleDist = kotlin.math.max(15.0 * kotlin.math.max(timeDelta, 0.5), 10.0)
+            val maxPlausibleDist = kotlin.math.max(8.0 * kotlin.math.max(timeDelta, 0.5), 8.0)
             if (rawDist > maxPlausibleDist) {
                 Log.d(TAG, "Spike rejected: raw-vs-filtered ${rawDist}m > ${maxPlausibleDist}m")
                 return
             }
-            // Background gap: accept and let Kalman filter smooth the transition.
-            if (timeDelta > 5.0 && rawDist > 50.0) {
+            if (timeDelta > 5.0 && rawDist > 30.0) {
                 Log.d(TAG, "Background gap: ${rawDist}m in ${timeDelta}s — accepting (Kalman will smooth)")
             }
         }

@@ -11,7 +11,6 @@ from app.services.crew_chat_service import CrewChatService
 from app.services.crew_service import CrewService
 from app.services.event_service import EventService
 from app.services.follow_service import FollowService
-from app.services.friend_request_service import FriendRequestService
 from app.services.gear_service import GearService
 from app.services.import_service import ImportService
 from app.services.like_service import LikeService
@@ -58,7 +57,6 @@ class Container(containers.DeclarativeContainer):
             "app.api.v1.crews",
             "app.api.v1.events",
             "app.api.v1.follows",
-            "app.api.v1.friends",
             "app.api.v1.gear",
             "app.api.v1.runs",
             "app.api.v1.rankings",
@@ -100,7 +98,6 @@ class Container(containers.DeclarativeContainer):
     feed_comment_service = providers.Factory(FeedCommentService)
     event_service = providers.Factory(EventService)
     follow_service = providers.Factory(FollowService)
-    friend_request_service = providers.Factory(FriendRequestService)
     gear_service = providers.Factory(GearService)
     crew_challenge_service = providers.Factory(CrewChallengeService)
     crew_ranking_service = providers.Factory(CrewRankingService)

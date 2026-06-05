@@ -919,17 +919,6 @@ export interface SocialCounts {
     total_likes_received: number;
 }
 
-// ---- Live Running Friends ----
-
-export interface FriendRunning {
-  user_id: string;
-  nickname: string;
-  avatar_url: string | null;
-  started_at: string;
-  course_title: string | null;
-  course_id: string | null;
-}
-
 // ---- Activity Feed ----
 
 export interface ActivityFeedItem {
@@ -1428,44 +1417,6 @@ export interface UserSearchByCodeResult {
   total_distance_meters: number;
   total_runs: number;
   is_following: boolean;
-}
-
-// ---- Friend Request System ----
-
-export interface FriendRequestUserInfo {
-  id: string;
-  nickname: string | null;
-  avatar_url: string | null;
-}
-
-export interface FriendRequestItem {
-  id: string;
-  requester: FriendRequestUserInfo;
-  recipient: FriendRequestUserInfo;
-  status: string;
-  created_at: string;
-}
-
-export interface FriendRequestListResponse {
-  data: FriendRequestItem[];
-  total_count: number;
-}
-
-export interface FriendItem {
-  id: string;
-  user: FriendRequestUserInfo;
-  since: string;
-}
-
-export interface FriendListResponse {
-  data: FriendItem[];
-  total_count: number;
-}
-
-export interface FriendshipStatusResponse {
-  is_friend: boolean;
-  request_status: 'pending_sent' | 'pending_received' | 'accepted' | null;
-  friends_count: number;
 }
 
 // ---- Contact-based Friend Recommendation ----

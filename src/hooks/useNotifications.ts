@@ -38,8 +38,6 @@ function navigateFromNotification(
       params = { crewId: targetId };
       break;
     case 'follow':
-    case 'friend_request':
-    case 'friend_request_accepted':
       if (!actorId) return;
       screen = 'UserProfile';
       params = { userId: actorId };

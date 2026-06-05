@@ -26,7 +26,7 @@ from app.schemas.course import (
 )
 from app.services.course_service import CourseService
 from app.tasks.ranking import recalculate_course_ranking
-from app.tasks.thumbnail import generate_course_thumbnail
+
 
 router = APIRouter(prefix="/courses", tags=["courses"])
 
@@ -57,8 +57,6 @@ async def create_course(
         course_type=body.course_type,
         lap_count=body.lap_count,
     )
-
-    background_tasks.add_task(generate_course_thumbnail, course_id=course.id)
 
     # Register the creator's run on the course leaderboard
     background_tasks.add_task(

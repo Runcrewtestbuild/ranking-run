@@ -49,22 +49,6 @@ class FollowStatusResponse(BaseModel):
     following_count: int
 
 
-class FriendRunningInfo(BaseModel):
-    """A friend currently on an active running session."""
-    user_id: str
-    nickname: str | None
-    avatar_url: str | None
-    session_id: str
-    started_at: datetime
-    course_id: str | None
-    course_title: str | None = None
-
-
-class FriendsRunningResponse(BaseModel):
-    """List of friends who are currently running."""
-    data: list[FriendRunningInfo]
-
-
 class ActivityFeedItem(BaseModel):
     """A single activity in the friend feed."""
     type: str  # 'run_completed' or 'course_created'

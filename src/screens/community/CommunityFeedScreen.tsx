@@ -21,15 +21,13 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import BlurredBackground from '../../components/common/BlurredBackground';
 import RegionPickerModal from '../../components/crew/RegionPickerModal';
 import CountryPickerModal from '../../components/common/CountryPickerModal';
-import RunningAvatarIndicator from '../../components/common/RunningAvatarIndicator';
 import { shortProvinceName } from '../../data/koreaRegions';
 import { getCountryFlag, getCountryName } from '../../data/countries';
 import type { CommunityStackParamList } from '../../types/navigation';
-import type { CrewItem, WeeklyRunnerEntry, FriendRunning } from '../../types/api';
+import type { CrewItem, WeeklyRunnerEntry } from '../../types/api';
 import { crewService } from '../../services/crewService';
 import { rankingService } from '../../services/rankingService';
 import { userService } from '../../services/userService';
-import { friendService } from '../../services/friendService';
 import { formatDistance } from '../../utils/format';
 import { useTheme } from '../../hooks/useTheme';
 import type { ThemeColors } from '../../utils/constants';
@@ -317,7 +315,7 @@ export default function CommunityFeedScreen() {
   const { t } = useTranslation();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const [activeTab, setActiveTab] = useState<'explore' | 'friends' | 'ranking'>('ranking');
+  const [activeTab, setActiveTab] = useState<'explore' | 'ranking'>('ranking');
   const currentUserId = useAuthStore((s) => s.user?.id);
 
   // Explore "내 크루" filter
@@ -351,12 +349,6 @@ export default function CommunityFeedScreen() {
   const [myCrews, setMyCrews] = useState<CrewItem[]>(_cachedMyCrews);
   const [myCrewsLoading, setMyCrewsLoading] = useState(_cachedMyCrews.length === 0);
   const [myCrewsRefreshing, setMyCrewsRefreshing] = useState(false);
-
-  // Friends tab state
-  const [friends, setFriends] = useState<Array<{id: string; nickname: string; avatar_url: string | null}>>([]);
-  const [friendsRunning, setFriendsRunning] = useState<FriendRunning[]>([]);
-  const [friendsLoading, setFriendsLoading] = useState(false);
-
 
   const loadExplore = useCallback(async (page: number, refresh = false, region?: string | null) => {
     if (page === 0) {
@@ -412,30 +404,6 @@ export default function CommunityFeedScreen() {
       setRankingLoading(false);
       setRankingRefreshing(false);
     }
-  }, []);
-
-  const loadFriends = useCallback(async () => {
-    setFriendsLoading(true);
-    // Load friends and running status separately
-    try {
-      const friendsRes = await friendService.getFriends(0, 100);
-      setFriends(
-        (friendsRes.data ?? []).map((f) => ({
-          id: f.user.id,
-          nickname: f.user.nickname ?? '',
-          avatar_url: f.user.avatar_url,
-        })),
-      );
-    } catch {
-      useToastStore.getState().showToast('error', '친구 목록을 불러올 수 없습니다');
-    }
-    try {
-      const runningRes = await userService.getFriendsRunning();
-      setFriendsRunning(runningRes);
-    } catch {
-      // running status is non-critical — OK to skip
-    }
-    setFriendsLoading(false);
   }, []);
 
   // Filtered explore crews for "내 크루" chip
@@ -499,48 +467,7 @@ export default function CommunityFeedScreen() {
 
   const exploreKeyExtractor = useCallback((item: CrewItem) => item.id, []);
   const myCrewKeyExtractor = useCallback((item: CrewItem) => item.id, []);
-  const friendKeyExtractor = useCallback((item: {id: string}) => item.id, []);
-
-  const renderFriendRow = useCallback(
-    ({ item }: { item: {id: string; nickname: string; avatar_url: string | null} }) => {
-      const running = friendsRunning.find((f) => f.user_id === item.id);
-      return (
-        <TouchableOpacity
-          style={styles.friendRow}
-          onPress={() => navigation.navigate('UserProfile', { userId: item.id })}
-          activeOpacity={0.7}
-        >
-          <RunningAvatarIndicator
-            avatarUrl={item.avatar_url}
-            nickname={item.nickname}
-            size={44}
-            isRunning={!!running}
-          />
-          <View style={styles.friendInfo}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={styles.friendName} numberOfLines={1}>{item.nickname}</Text>
-              {running && (
-                <View style={styles.friendRunningBadge}>
-                  <Text style={styles.friendRunningBadgeText}>{t('social.running')}</Text>
-                </View>
-              )}
-            </View>
-            {running?.course_title && (
-              <Text style={styles.friendCourse} numberOfLines={1}>{running.course_title}</Text>
-            )}
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
-        </TouchableOpacity>
-      );
-    },
-    [colors, friendsRunning, navigation, styles, t],
-  );
-
   // ---- Header navigation handlers ----
-
-  const handleNavigateToFriends = useCallback(() => {
-    navigation.navigate('Friends');
-  }, [navigation]);
 
   const handleNavigateToSearch = useCallback(() => {
     navigation.navigate('UnifiedSearch');
@@ -562,18 +489,9 @@ export default function CommunityFeedScreen() {
     loadMyCrews(true);
   }, [loadMyCrews]);
 
-  const handleFriendsRefresh = useCallback(() => {
-    loadFriends();
-  }, [loadFriends]);
-
   const handleSetExploreTab = useCallback(() => {
     setActiveTab('explore');
   }, []);
-
-  const handleSetFriendsTab = useCallback(() => {
-    setActiveTab('friends');
-    loadFriends();
-  }, [loadFriends]);
 
   const handleSetRankingTab = useCallback(() => {
     setActiveTab('ranking');
@@ -708,15 +626,6 @@ export default function CommunityFeedScreen() {
           >
             <Text style={[styles.tabText, activeTab === 'explore' && styles.tabTextActive]}>
               {t('crew.explore')}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'friends' && styles.tabActive]}
-            onPress={handleSetFriendsTab}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.tabText, activeTab === 'friends' && styles.tabTextActive]}>
-              {t('social.friends')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -858,47 +767,6 @@ export default function CommunityFeedScreen() {
                 }
               />
             )
-        )}
-
-        {/* Friends Tab */}
-        {activeTab === 'friends' && (
-          friendsLoading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-            </View>
-          ) : (
-            <FlatList
-              data={friends}
-              renderItem={renderFriendRow}
-              keyExtractor={friendKeyExtractor}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
-              removeClippedSubviews={true}
-              maxToRenderPerBatch={10}
-              windowSize={7}
-              ListEmptyComponent={
-                <View style={styles.friendsEmptyContainer}>
-                  <Ionicons name="people-outline" size={36} color={colors.textTertiary} />
-                  <Text style={styles.emptyTitle}>{t('social.noFriends')}</Text>
-                  <TouchableOpacity
-                    style={styles.emptyBtn}
-                    onPress={() => navigation.navigate('Friends')}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="search" size={16} color="#FFF" />
-                    <Text style={styles.emptyBtnText}>{t('social.findFriends')}</Text>
-                  </TouchableOpacity>
-                </View>
-              }
-              refreshControl={
-                <RefreshControl
-                  refreshing={false}
-                  onRefresh={handleFriendsRefresh}
-                  tintColor={colors.primary}
-                />
-              }
-            />
-          )
         )}
 
         {/* Ranking Tab */}
@@ -1331,60 +1199,6 @@ const createStyles = (c: ThemeColors) =>
     footerLoading: {
       paddingVertical: SPACING.xl,
       alignItems: 'center',
-    },
-
-    // ═══ FRIENDS TAB ═══
-    friendRow: {
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      backgroundColor: c.card,
-      borderRadius: BORDER_RADIUS.lg,
-      borderWidth: 1,
-      borderColor: c.border,
-      padding: SPACING.md,
-      marginBottom: SPACING.sm,
-      gap: SPACING.md,
-    },
-    friendInfo: {
-      flex: 1,
-      marginLeft: SPACING.xs,
-      gap: 2,
-    },
-    friendName: {
-      fontSize: FONT_SIZES.md,
-      fontWeight: '700' as const,
-      color: c.text,
-      flexShrink: 1,
-    },
-    friendRunningBadge: {
-      backgroundColor: '#34C759',
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      borderRadius: BORDER_RADIUS.full,
-    },
-    friendRunningBadgeText: {
-      fontSize: 11,
-      fontWeight: '700' as const,
-      color: '#FFF',
-    },
-    friendCourse: {
-      fontSize: FONT_SIZES.xs,
-      fontWeight: '500' as const,
-      color: c.textTertiary,
-    },
-    friendsHeader: {
-      paddingVertical: SPACING.sm,
-      marginBottom: SPACING.xs,
-    },
-    friendsHeaderText: {
-      fontSize: FONT_SIZES.sm,
-      fontWeight: '700' as const,
-      color: c.textSecondary,
-    },
-    friendsEmptyContainer: {
-      alignItems: 'center' as const,
-      paddingVertical: SPACING.xxxl * 2,
-      gap: SPACING.sm,
     },
 
     // My crew filter chip (explore tab)

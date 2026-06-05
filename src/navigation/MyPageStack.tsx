@@ -7,9 +7,7 @@ import MyCoursesScreen from '../screens/mypage/MyCoursesScreen';
 import CourseDetailScreen from '../screens/course/CourseDetailScreen';
 import UserProfileScreen from '../screens/profile/UserProfileScreen';
 import GearManageScreen from '../screens/mypage/GearManageScreen';
-import FindFriendsScreen from '../screens/mypage/FindFriendsScreen';
 import FollowListScreen from '../screens/profile/FollowListScreen';
-import FriendsScreen from '../screens/profile/FriendsScreen';
 import RunHistoryScreen from '../screens/mypage/RunHistoryScreen';
 import RunDetailScreen from '../screens/mypage/RunDetailScreen';
 import SettingsScreen from '../screens/mypage/SettingsScreen';
@@ -38,12 +36,10 @@ export default function MyPageStack() {
       <Stack.Screen name="CourseDetail" component={CourseDetailScreen} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} />
       <Stack.Screen name="GearManage" component={GearManageScreen} />
-      <Stack.Screen name="FindFriends" component={FindFriendsScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
       <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} />
       <Stack.Screen name="FollowList" component={FollowListScreen} />
-      <Stack.Screen name="Friends" component={FriendsScreen} />
       <Stack.Screen name="PointHistory" component={PointHistoryScreen} />
     </Stack.Navigator>
   );

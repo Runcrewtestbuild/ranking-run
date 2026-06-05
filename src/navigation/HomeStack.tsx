@@ -23,7 +23,6 @@ import CommunityPostEditScreen from '../screens/community/CommunityPostEditScree
 import WorldScreen from '../screens/world/WorldScreen';
 import CourseListScreen from '../screens/course/CourseListScreen';
 import FollowListScreen from '../screens/profile/FollowListScreen';
-import FriendsScreen from '../screens/profile/FriendsScreen';
 import CrewMemberSettingsScreen from '../screens/crew/CrewMemberSettingsScreen';
 import ChallengeListScreen from '../screens/challenge/ChallengeListScreen';
 import ChallengeDetailScreen from '../screens/challenge/ChallengeDetailScreen';
@@ -67,7 +66,6 @@ export default function HomeStack() {
       <Stack.Screen name="World" component={WorldScreen} />
       <Stack.Screen name="CourseList" component={CourseListScreen} />
       <Stack.Screen name="FollowList" component={FollowListScreen} />
-      <Stack.Screen name="Friends" component={FriendsScreen} />
       <Stack.Screen name="CrewMemberSettings" component={CrewMemberSettingsScreen} />
       <Stack.Screen name="ChallengeList" component={ChallengeListScreen} />
       <Stack.Screen name="ChallengeDetail" component={ChallengeDetailScreen} />

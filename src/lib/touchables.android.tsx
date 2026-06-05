@@ -1,9 +1,10 @@
 /**
  * Android: Plain View for layout + invisible RectButton for tap detection.
- * For long-press buttons (onPressIn/onPressOut), uses responder system instead.
+ * For long-press buttons (onPressIn/onPressOut), uses native Pressable to
+ * avoid JS responder system conflicts with GestureHandlerRootView.
  */
-import React, { useRef } from 'react';
-import { View, ViewStyle, StyleProp, StyleSheet } from 'react-native';
+import React from 'react';
+import { View, Pressable as RNPressable, ViewStyle, StyleProp, StyleSheet } from 'react-native';
 import { RectButton } from 'react-native-gesture-handler';
 
 interface TouchableOpacityProps {
@@ -31,47 +32,20 @@ export function TouchableOpacity({
   children,
   ...rest
 }: TouchableOpacityProps) {
-  // Long-press buttons (stop, lock unlock): use responder system
-  const wasLongPressRef = useRef(false);
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   if (onPressIn || onPressOut) {
     return (
-      <View
-        style={style}
-        onStartShouldSetResponder={() => true}
-        onResponderGrant={() => {
-          wasLongPressRef.current = false;
-          onPressIn?.();
-          if (onLongPress) {
-            longPressTimerRef.current = setTimeout(() => {
-              wasLongPressRef.current = true;
-              onLongPress();
-            }, 500);
-          }
-        }}
-        onResponderRelease={() => {
-          if (longPressTimerRef.current) {
-            clearTimeout(longPressTimerRef.current);
-            longPressTimerRef.current = null;
-          }
-          onPressOut?.();
-          if (!wasLongPressRef.current) {
-            onPress?.();
-          }
-          wasLongPressRef.current = false;
-        }}
-        onResponderTerminate={() => {
-          if (longPressTimerRef.current) {
-            clearTimeout(longPressTimerRef.current);
-            longPressTimerRef.current = null;
-          }
-          onPressOut?.();
-        }}
+      <RNPressable
+        style={style as ViewStyle}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
+        onPress={onPress}
+        onLongPress={onLongPress}
         hitSlop={hitSlop}
+        disabled={disabled}
         {...rest}
       >
         {children}
-      </View>
+      </RNPressable>
     );
   }
 

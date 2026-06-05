@@ -23,10 +23,9 @@ import { useTheme } from '../../hooks/useTheme';
 import { useAuthStore } from '../../stores/authStore';
 import { useToastStore } from '../../stores/toastStore';
 import { userService } from '../../services/userService';
-import { friendService } from '../../services/friendService';
 import type { ThemeColors } from '../../utils/constants';
 import type { CourseStackParamList } from '../../types/navigation';
-import type { PublicProfile, PublicProfileCourse, PublicProfileRanking, GearItem, FriendshipStatusResponse } from '../../types/api';
+import type { PublicProfile, PublicProfileCourse, PublicProfileRanking, GearItem } from '../../types/api';
 import { formatDistance, formatDuration, formatNumber } from '../../utils/format';
 import { FONT_SIZES, SPACING, BORDER_RADIUS } from '../../utils/constants';
 import PlayerCard from '../../components/profile/PlayerCard';
@@ -50,8 +49,6 @@ export default function UserProfileScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followersCount, setFollowersCount] = useState(0);
-  const [friendshipStatus, setFriendshipStatus] = useState<FriendshipStatusResponse | null>(null);
-  const [friendActionLoading, setFriendActionLoading] = useState(false);
 
   const isOwnProfile = currentUser?.id === userId;
   const followScale = useRef(new Animated.Value(1)).current;
@@ -68,15 +65,6 @@ export default function UserProfileScreen() {
       setProfile(data);
       setIsFollowing(data.is_following);
       setFollowersCount(data.followers_count);
-      // Load friendship status
-      if (currentUser?.id && currentUser.id !== userId) {
-        try {
-          const fs = await friendService.getFriendshipStatus(userId);
-          setFriendshipStatus(fs);
-        } catch {
-          useToastStore.getState().showToast('error', t('common.loadError'));
-        }
-      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : t('profile.loadError');
       setError(msg);
@@ -107,32 +95,6 @@ export default function UserProfileScreen() {
       useToastStore.getState().showToast('error', t('common.loadError'));
     }
   }, [profile, isFollowing, followersCount, userId]);
-
-  const handleFriendAction = useCallback(async () => {
-    if (!friendshipStatus || friendActionLoading) return;
-    setFriendActionLoading(true);
-    try {
-      if (friendshipStatus.request_status === null || friendshipStatus.request_status === undefined) {
-        // Send friend request
-        await friendService.sendRequest(userId);
-        setFriendshipStatus({ ...friendshipStatus, request_status: 'pending_sent' });
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      } else if (friendshipStatus.request_status === 'pending_received') {
-        // Accept the request — need to find the request ID
-        const received = await friendService.getReceivedRequests(0, 50);
-        const req = received.data.find((r) => r.requester.id === userId);
-        if (req) {
-          await friendService.acceptRequest(req.id);
-          setFriendshipStatus({ ...friendshipStatus, is_friend: true, request_status: 'accepted' });
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        }
-      }
-    } catch {
-      useToastStore.getState().showToast('error', t('common.loadError'));
-    } finally {
-      setFriendActionLoading(false);
-    }
-  }, [friendshipStatus, friendActionLoading, userId]);
 
   const handleOpenInstagram = useCallback((username: string) => {
     Linking.openURL(`https://instagram.com/${username}`);
@@ -223,40 +185,6 @@ export default function UserProfileScreen() {
                   </Text>
                 </TouchableOpacity>
               </Animated.View>
-              {friendshipStatus && (
-                <TouchableOpacity
-                  style={[
-                    styles.cardActionButton,
-                    friendshipStatus.is_friend && styles.cardActionButtonSuccess,
-                    (friendshipStatus.request_status === null || friendshipStatus.request_status === undefined) && styles.cardActionButtonPrimary,
-                  ]}
-                  onPress={handleFriendAction}
-                  activeOpacity={0.7}
-                  disabled={
-                    friendActionLoading ||
-                    friendshipStatus.is_friend ||
-                    friendshipStatus.request_status === 'pending_sent'
-                  }
-                >
-                  {friendActionLoading ? (
-                    <ActivityIndicator size="small" color={colors.white} />
-                  ) : (
-                    <Text style={[
-                      styles.cardActionButtonText,
-                      (friendshipStatus.request_status === null || friendshipStatus.request_status === undefined) && styles.cardActionButtonTextPrimary,
-                      friendshipStatus.is_friend && { color: colors.success },
-                    ]}>
-                      {friendshipStatus.is_friend
-                        ? t('friend.friends')
-                        : friendshipStatus.request_status === 'pending_sent'
-                        ? t('friend.requested')
-                        : friendshipStatus.request_status === 'pending_received'
-                        ? t('friend.acceptRequest')
-                        : t('friend.addFriend')}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              )}
             </View>
           )}
         </PlayerCard>

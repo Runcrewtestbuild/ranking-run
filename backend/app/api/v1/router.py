@@ -17,7 +17,6 @@ from app.api.v1.crews import router as crews_router
 from app.api.v1.events import router as events_router
 from app.api.v1.favorites import router as favorites_router
 from app.api.v1.follows import router as follows_router
-from app.api.v1.friends import router as friends_router
 from app.api.v1.gear import router as gear_router
 from app.api.v1.gear import public_router as gear_public_router
 from app.api.v1.heatmap import router as heatmap_router
@@ -54,7 +53,6 @@ api_router.include_router(contacts_router)
 api_router.include_router(crew_chat_router)
 api_router.include_router(crews_router)
 api_router.include_router(follows_router)
-api_router.include_router(friends_router)
 api_router.include_router(courses_router)
 api_router.include_router(runs_router)
 api_router.include_router(rankings_router)

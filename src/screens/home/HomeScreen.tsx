@@ -28,7 +28,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import type { HomeStackParamList } from '../../types/navigation';
-import type { WeeklySummary, RecentRun, AnnouncementItem, FavoriteCourseItem, CrewChallengeItem, CrewItem, FriendRunning } from '../../types/api';
+import type { WeeklySummary, RecentRun, AnnouncementItem, FavoriteCourseItem, CrewChallengeItem, CrewItem } from '../../types/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useCourseListStore } from '../../stores/courseListStore';
@@ -40,7 +40,6 @@ import { notificationService } from '../../services/notificationService';
 import BlurredBackground from '../../components/common/BlurredBackground';
 import HomeSkeleton from '../../components/skeleton/HomeSkeleton';
 import CourseThumbnailMap from '../../components/course/CourseThumbnailMap';
-import RunningAvatarIndicator from '../../components/common/RunningAvatarIndicator';
 import {
   formatDistance,
   formatDuration,
@@ -73,7 +72,6 @@ let _cachedWeekly: WeeklySummary | null = null;
 let _cachedRuns: RecentRun[] = [];
 let _cachedAnnouncements: AnnouncementItem[] = [];
 let _cachedRaids: Array<{ crew: CrewItem; raid: CrewChallengeItem }> = [];
-let _cachedFriendsRunning: FriendRunning[] = [];
 let _diskCacheLoaded = false;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const IS_ANDROID = Platform.OS === 'android';
@@ -153,7 +151,6 @@ export default function HomeScreen() {
   const [recentRuns, setRecentRuns] = useState<RecentRun[]>(_cachedRuns);
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>(_cachedAnnouncements);
   const [myCrewRaids, setMyCrewRaids] = useState<Array<{ crew: CrewItem; raid: CrewChallengeItem }>>(_cachedRaids);
-  const [friendsRunning, setFriendsRunning] = useState<FriendRunning[]>(_cachedFriendsRunning);
   const [loading, setLoading] = useState(!_cachedWeekly && _cachedRuns.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -230,10 +227,9 @@ export default function HomeScreen() {
   // Secondary data: deferred (below the fold)
   const loadSecondaryData = useCallback(async () => {
     try {
-      const [annRes, crews, friendsRes] = await Promise.all([
+      const [annRes, crews] = await Promise.all([
         announcementService.getAnnouncements(10).catch(() => ({ data: [] })),
         crewService.getMyCrews().catch((): CrewItem[] => []),
-        userService.getFriendsRunning().catch((): FriendRunning[] => []),
         fetchChallenges().catch(() => {}),
         groupRunService.getMyGroupRuns().then((res) => {
           const items = Array.isArray(res?.data) ? res.data : [];
@@ -241,7 +237,6 @@ export default function HomeScreen() {
           setGroupRuns(active);
         }).catch(() => {}),
       ]);
-      setFriendsRunning(friendsRes); _cachedFriendsRunning = friendsRes;
       const ann = annRes.data ?? [];
       setAnnouncements(ann); _cachedAnnouncements = ann;
       setCache('home:announcements', ann);
@@ -302,41 +297,6 @@ export default function HomeScreen() {
     await Promise.all([loadPrimaryData(), loadSecondaryData()]);
     setRefreshing(false);
   }, [loadPrimaryData, loadSecondaryData]);
-
-  // --- Poll friends running every 30s when there are active runners ---
-  const hasFriendsRunning = friendsRunning.length > 0;
-  useEffect(() => {
-    if (!hasFriendsRunning) return;
-    const interval = setInterval(async () => {
-      try {
-        const res = await userService.getFriendsRunning();
-        setFriendsRunning(res); _cachedFriendsRunning = res;
-      } catch { /* ignore */ }
-    }, 30_000);
-    return () => clearInterval(interval);
-  }, [hasFriendsRunning]);
-
-  // --- Pulsing dot animation for friends running banner ---
-  const friendsDotOpacity = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    if (friendsRunning.length === 0) return;
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(friendsDotOpacity, {
-          toValue: 0.3,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-        Animated.timing(friendsDotOpacity, {
-          toValue: 1,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [friendsRunning.length, friendsDotOpacity]);
 
   // --- Location permission ---
   useEffect(() => {
@@ -991,67 +951,6 @@ export default function HomeScreen() {
                 <Ionicons name="footsteps-outline" size={32} color={colors.textTertiary} />
                 <Text style={styles.emptyText}>{t('home.noRecentRuns')}</Text>
                 <Text style={styles.emptySubText}>{t('home.startRunning')}</Text>
-              </View>
-            )}
-          </View>
-
-          {/* Friends Running Banner */}
-          <View style={styles.friendsRunningCard}>
-            <View style={styles.friendsRunningHeader}>
-              {friendsRunning.length > 0 ? (
-                <Animated.View style={[styles.friendsRunningDot, { opacity: friendsDotOpacity }]} />
-              ) : (
-                <Ionicons name="people" size={14} color={colors.textTertiary} />
-              )}
-              <Text style={styles.friendsRunningTitle}>{t('home.friendsRunning')}</Text>
-            </View>
-            {friendsRunning.length > 0 ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.friendsRunningScroll}
-              >
-                {friendsRunning.map((friend) => (
-                  <TouchableOpacity
-                    key={friend.user_id}
-                    style={styles.friendsRunningChip}
-                    activeOpacity={0.7}
-                    onPress={() => navigation.navigate('UserProfile', { userId: friend.user_id })}
-                  >
-                    <View>
-                      <RunningAvatarIndicator
-                        avatarUrl={friend.avatar_url}
-                        nickname={friend.nickname}
-                        size={36}
-                        isRunning
-                      />
-                      {friend.course_id ? (
-                        <View style={styles.friendsRunningBadge}>
-                          <Ionicons name="map-outline" size={10} color="#FFF" />
-                        </View>
-                      ) : null}
-                    </View>
-                    <Text style={styles.friendsRunningName} numberOfLines={1}>
-                      {friend.nickname}
-                    </Text>
-                    {friend.course_title ? (
-                      <Text style={styles.friendsRunningCourse} numberOfLines={1}>
-                        {friend.course_title}
-                      </Text>
-                    ) : (
-                      <Text style={styles.friendsRunningFree} numberOfLines={1}>
-                        {t('home.freeRunning', { defaultValue: '자유 러닝' })}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            ) : (
-              <View style={styles.friendsRunningEmpty}>
-                <Ionicons name="people-outline" size={20} color={colors.textTertiary} />
-                <Text style={styles.friendsRunningEmptyText}>
-                  {t('home.noFriendsRunning', { defaultValue: '지금 달리는 친구가 없어요' })}
-                </Text>
               </View>
             )}
           </View>
@@ -1771,93 +1670,6 @@ const createStyles = (c: ThemeColors) =>
       fontWeight: '800',
       color: '#FFFFFF',
       letterSpacing: 0.3,
-    },
-
-    // Friends running banner
-    friendsRunningCard: {
-      marginHorizontal: SPACING.xxl,
-      marginTop: SPACING.lg,
-      backgroundColor: c.card,
-      borderRadius: BORDER_RADIUS.lg,
-      borderWidth: 1,
-      borderColor: c.border,
-      paddingVertical: SPACING.md,
-    },
-    friendsRunningHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      paddingHorizontal: SPACING.md,
-      marginBottom: SPACING.sm,
-    },
-    friendsRunningDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: '#34C759',
-    },
-    friendsRunningTitle: {
-      fontSize: FONT_SIZES.sm,
-      fontWeight: '700',
-      color: c.text,
-    },
-    friendsRunningScroll: {
-      paddingHorizontal: SPACING.md,
-      gap: SPACING.md,
-    },
-    friendsRunningChip: {
-      alignItems: 'center',
-      width: 56,
-    },
-    friendsRunningName: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: c.text,
-      marginTop: 4,
-      textAlign: 'center',
-      width: 56,
-    },
-    friendsRunningCourse: {
-      fontSize: 10,
-      fontWeight: '500',
-      color: COLORS.primary,
-      marginTop: 1,
-      textAlign: 'center',
-      width: 56,
-    },
-    friendsRunningFree: {
-      fontSize: 10,
-      fontWeight: '500',
-      color: c.textTertiary,
-      marginTop: 1,
-      textAlign: 'center',
-      width: 56,
-    },
-    friendsRunningEmpty: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-      paddingVertical: SPACING.md,
-      paddingHorizontal: SPACING.md,
-    },
-    friendsRunningEmptyText: {
-      fontSize: FONT_SIZES.sm,
-      fontWeight: '500',
-      color: c.textTertiary,
-    },
-    friendsRunningBadge: {
-      position: 'absolute',
-      bottom: -2,
-      left: -2,
-      width: 16,
-      height: 16,
-      borderRadius: 8,
-      backgroundColor: COLORS.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 1.5,
-      borderColor: '#FFF',
     },
 
     // Challenge cards

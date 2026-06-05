@@ -1,5 +1,6 @@
 """Background task: course thumbnail generation via Mapbox Static Images API."""
 
+import asyncio
 import logging
 from uuid import UUID
 
@@ -19,7 +20,7 @@ settings = get_settings()
 # Mapbox Static Images API
 MAPBOX_STATIC_URL = "https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/static"
 THUMBNAIL_WIDTH = 600
-THUMBNAIL_HEIGHT = 400
+THUMBNAIL_HEIGHT = 300
 
 
 def _build_geojson_overlay(coords: list[tuple[float, float]]) -> str:
@@ -56,6 +57,8 @@ async def generate_course_thumbnail(course_id: UUID) -> None:
         logger.warning("MAPBOX_ACCESS_TOKEN not set, skipping thumbnail for course %s", course_id)
         return
 
+    await asyncio.sleep(3)
+
     try:
         async with async_session_factory() as db:
             result = await db.execute(
@@ -85,7 +88,7 @@ async def generate_course_thumbnail(course_id: UUID) -> None:
                 f"{MAPBOX_STATIC_URL}/{overlay}/auto/"
                 f"{THUMBNAIL_WIDTH}x{THUMBNAIL_HEIGHT}@2x"
                 f"?access_token={settings.MAPBOX_ACCESS_TOKEN}"
-                f"&padding=40"
+                f"&padding=50"
             )
 
             # Download the image

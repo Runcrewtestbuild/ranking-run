@@ -65,14 +65,6 @@ export interface EventMarkerData {
   ends_at: string;
 }
 
-export interface FriendMarkerData {
-  user_id: string;
-  nickname: string;
-  avatar_url: string | null;
-  latitude: number;
-  longitude: number;
-}
-
 // ---- Checkpoint data ----
 
 export interface CheckpointMarkerData {
@@ -90,7 +82,7 @@ interface RouteMapViewProps {
   routePoints?: Array<{ latitude: number; longitude: number }>;
   markers?: CourseMarkerData[];
   eventMarkers?: EventMarkerData[];
-  friendMarkers?: FriendMarkerData[];
+
   checkpoints?: CheckpointMarkerData[];
   previewPolyline?: Array<{ latitude: number; longitude: number }>;
   onMarkerPress?: (courseId: string) => void;
@@ -329,7 +321,7 @@ const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function 
   routePoints: routePointsProp = [],
   markers,
   eventMarkers,
-  friendMarkers,
+
   checkpoints,
   previewPolyline,
   onMarkerPress,
@@ -1078,23 +1070,6 @@ const RouteMapView = forwardRef<RouteMapViewHandle, RouteMapViewProps>(function 
           </Mapbox.MarkerView>
         ))}
 
-        {/* ---- Friend markers ---- */}
-        {friendMarkers
-          ?.filter((f) => f.latitude != null && f.longitude != null)
-          .map((friend) => (
-          <Mapbox.MarkerView
-            key={`friend-${friend.user_id}`}
-            coordinate={[friend.longitude, friend.latitude]}
-            anchor={{ x: 0.5, y: 0.5 }}
-          >
-            <View style={styles.friendMarkerWrapper}>
-              <View style={styles.friendMarker}>
-                <Text style={styles.friendInitial}>{friend.nickname?.[0] || '?'}</Text>
-              </View>
-              <View style={styles.friendPulse} />
-            </View>
-          </Mapbox.MarkerView>
-        ))}
 
         {/* ---- Last known location marker (only when custom orange marker is NOT active) ---- */}
         {lastKnownLocation && !customUserLocation && (
@@ -1241,39 +1216,6 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-
-  // ---- Friend markers ----
-  friendMarkerWrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 36,
-    height: 36,
-  },
-  friendMarker: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.secondary,
-    borderWidth: 2.5,
-    borderColor: COLORS.black,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
-  },
-  friendPulse: {
-    position: 'absolute',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: COLORS.secondary,
-    opacity: 0.4,
-  },
-  friendInitial: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: COLORS.black,
   },
 
 

@@ -10,7 +10,6 @@ import type {
   SocialCounts,
   ActivityFeedItem,
   ActivityFeedResponse,
-  FriendRunning,
   AnalyticsData,
   UserSearchByCodeResult,
   UserSearchResponse,
@@ -130,14 +129,6 @@ export const userService = {
   async getActivityFeed(limit: number = 20): Promise<ActivityFeedItem[]> {
     const resp = await api.get<ActivityFeedResponse>(`/follows/activity-feed?limit=${limit}`);
     return resp.data;
-  },
-
-  /**
-   * Fetch friends who are currently running.
-   */
-  async getFriendsRunning(): Promise<FriendRunning[]> {
-    const resp = await api.get<{ data: FriendRunning[] }>('/follows/friends-running');
-    return resp.data ?? [];
   },
 
   /**

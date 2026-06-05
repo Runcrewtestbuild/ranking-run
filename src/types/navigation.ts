@@ -60,7 +60,6 @@ export type HomeStackParamList = {
   World: undefined;
   CourseList: undefined;
   FollowList: { userId: string; type: 'followers' | 'following' };
-  Friends: undefined;
   CrewMemberSettings: { crewId: string; crewName: string };
   CrewActiveCourses: { crewId: string; crewName: string };
   ChallengeList: undefined;
@@ -97,14 +96,12 @@ export type CommunityStackParamList = {
   CrewMembers: { crewId: string };
   CrewSearch: undefined;
   UserProfile: { userId: string };
-  FindFriends: undefined;
   CrewBoard: { crewId: string; crewName: string };
   CrewEdit: { crewId: string };
   CrewManage: { crewId: string };
   CrewNotifications: { crewId: string };
   CommunityPostEdit: { postId: string; title?: string; content: string; imageUrl?: string; postType: string };
   FollowList: { userId: string; type: 'followers' | 'following' };
-  Friends: undefined;
   UnifiedSearch: undefined;
   CrewMemberSettings: { crewId: string; crewName: string };
   VersusDetail: { battleId: string };
@@ -125,8 +122,6 @@ export type MyPageStackParamList = {
   ProfileEdit: undefined;
   UserProfile: { userId: string };
   GearManage: undefined;
-  FindFriends: undefined;
   FollowList: { userId: string; type: 'followers' | 'following' };
-  Friends: undefined;
   PointHistory: undefined;
 };

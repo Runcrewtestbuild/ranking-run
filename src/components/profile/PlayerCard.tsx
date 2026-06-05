@@ -133,7 +133,7 @@ export default function PlayerCard({
         ) : null}
       </View>
 
-      {/* Action buttons slot (edit profile / follow+friend) */}
+      {/* Action buttons slot */}
       {children}
     </View>
   );

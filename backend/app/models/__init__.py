@@ -17,7 +17,6 @@ from app.models.strava_connection import StravaConnection
 from app.models.crew import Crew, CrewMember
 from app.models.crew_message import CrewMessage, CrewMessageRead
 from app.models.community_post import CommunityPost, CommunityComment, CommunityPostLike
-from app.models.friend_request import FriendRequest
 from app.models.crew_join_request import CrewJoinRequest
 from app.models.announcement import Announcement
 from app.models.notification import Notification
@@ -65,7 +64,6 @@ __all__ = [
     "CommunityPost",
     "CommunityComment",
     "CommunityPostLike",
-    "FriendRequest",
     "CrewJoinRequest",
     "Announcement",
     "Notification",

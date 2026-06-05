@@ -44,7 +44,7 @@ const CATEGORY_CHIP_KEYS: { key: LeaderboardCategory; i18nKey: string }[] = [
 const SCOPE_OPTION_KEYS: { key: LeaderboardScope; i18nKey: string }[] = [
   { key: 'nearby', i18nKey: 'social.versus.scopeNearby' },
   { key: 'global', i18nKey: 'social.versus.scopeGlobal' },
-  { key: 'friends', i18nKey: 'social.versus.scopeFriends' },
+
   { key: 'crew', i18nKey: 'social.versus.scopeCrew' },
 ];
 

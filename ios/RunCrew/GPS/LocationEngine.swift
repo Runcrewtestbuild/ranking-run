@@ -515,19 +515,11 @@ class LocationEngine: NSObject, CLLocationManagerDelegate {
                 lat2: validLocation.coordinate.latitude, lon2: validLocation.coordinate.longitude
             )
             let timeDelta = (validLocation.timestamp.timeIntervalSince1970 * 1000 - lastLoc.timestamp) / 1000.0
-            // 15 m/s limit (maxSpeed from OutlierDetector) — previous 10 m/s was too tight
-            // because raw GPS position can diverge from filtered position by several meters,
-            // especially after stationary periods when filter state lags behind.
-            let maxPlausibleDist = max(15.0 * max(timeDelta, 0.5), 10.0)
+            let maxPlausibleDist = max(8.0 * max(timeDelta, 0.5), 8.0)
             if rawDist > maxPlausibleDist {
                 return
             }
-            // Background GPS guard: when update interval is large (>5s),
-            // GPS may report stale/cell-tower positions. Cap distance to prevent
-            // Background gap: accept and let Kalman filter smooth the transition.
-            // Previously rejected points >50m after >5s gap, but this caused
-            // straight-line artifacts when valid GPS resumed after signal loss.
-            if timeDelta > 5.0 && rawDist > 50.0 {
+            if timeDelta > 5.0 && rawDist > 30.0 {
                 NSLog("[LocationEngine] Background gap: \(String(format: "%.0f", rawDist))m in \(String(format: "%.1f", timeDelta))s — accepting (Kalman will smooth)")
             }
         }

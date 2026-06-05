@@ -37,7 +37,7 @@ function buildStaticMapUrl(
     type: 'Feature',
     properties: {
       stroke: '#FFD600',
-      'stroke-width': 4,
+      'stroke-width': 5,
       'stroke-opacity': 1,
     },
     geometry: {
@@ -73,8 +73,9 @@ export default React.memo(function CourseThumbnailMap({
 
     if (!routePreview || routePreview.length < 2 || !MAPBOX_ACCESS_TOKEN) return null;
 
-    // Mapbox Static API doesn't support custom GL styles — use built-in styles
-    const styleId = isDark ? 'mapbox/dark-v11' : 'mapbox/light-v11';
+    const darkStyleId = MAPBOX_DARK_STYLE.replace('mapbox://styles/', '');
+    const lightStyleId = MAPBOX_LIGHT_STYLE.replace('mapbox://styles/', '');
+    const styleId = isDark ? darkStyleId : lightStyleId;
 
     const pixelW = Math.min(Math.round(width * 2), 640);
     const pixelH = Math.min(Math.round(height * 2), 640);

@@ -15,8 +15,6 @@ from app.schemas.follow import (
     FollowResponse,
     FollowStatusResponse,
     FollowUserInfo,
-    FriendRunningInfo,
-    FriendsRunningResponse,
     UserSearchByCodeResponse,
 )
 from app.services.follow_service import FollowService
@@ -204,23 +202,6 @@ async def follow_by_code(
         target_type="user",
     )
     return _to_follow_response_for_following(follow)
-
-
-@router.get("/follows/friends-running", response_model=FriendsRunningResponse)
-@inject
-async def get_friends_running(
-    current_user: CurrentUser,
-    db: DbSession,
-    follow_service: FollowService = Depends(Provide[Container.follow_service]),
-) -> FriendsRunningResponse:
-    """Get friends who are currently on an active running session."""
-    sessions = await follow_service.get_following_active_sessions(
-        db=db,
-        user_id=current_user.id,
-    )
-    return FriendsRunningResponse(
-        data=[FriendRunningInfo(**s) for s in sessions]
-    )
 
 
 @router.get("/follows/activity-feed", response_model=ActivityFeedResponse)

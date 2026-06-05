@@ -4,7 +4,7 @@
 
 export type LeaderboardCategory = 'weekly_distance' | 'monthly_count' | 'pace' | 'course';
 
-export type LeaderboardScope = 'global' | 'nearby' | 'friends' | 'crew';
+export type LeaderboardScope = 'global' | 'nearby' | 'crew';
 
 export interface LeaderboardEntry {
   rank: number;
@@ -41,6 +41,5 @@ export const LEADERBOARD_CATEGORY_LABELS: Record<LeaderboardCategory, string> = 
 export const LEADERBOARD_SCOPE_LABELS: Record<LeaderboardScope, string> = {
   global: '\uC804\uCCB4',
   nearby: '\uB0B4 \uC8FC\uBCC0',
-  friends: '\uCE5C\uAD6C',
   crew: '\uD06C\uB8E8',
 };

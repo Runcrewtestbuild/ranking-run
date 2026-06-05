@@ -37,7 +37,7 @@ const NOTIFICATION_ICONS: Record<string, { name: string; color: string }> = {
   post_like: { name: 'heart', color: '#EF4444' },
   crew_join_request: { name: 'person-add', color: '#FF7A33' },
   follow: { name: 'person-add-outline', color: '#10B981' },
-  friend_request: { name: 'people', color: '#8B5CF6' },
+
   run_completed: { name: 'footsteps', color: '#FF7A33' },
   feed_comment: { name: 'chatbubble-ellipses', color: '#3B82F6' },
   feed_reply: { name: 'chatbubble-ellipses', color: '#6366F1' },
@@ -56,8 +56,7 @@ function getNotificationMessage(item: NotificationItem, t: (key: string, opts?: 
     }
     case 'follow':
       return `${name}${t('notification.followed')}`;
-    case 'friend_request':
-      return `${name}${t('notification.friendRequest')}`;
+
     case 'run_completed':
       return `${name}${t('notification.runCompleted')}`;
     case 'feed_comment':
@@ -164,7 +163,6 @@ export default function NotificationInboxScreen() {
           }
           break;
         case 'follow':
-        case 'friend_request':
           navigation.navigate('UserProfile', { userId: item.actor.id });
           break;
         case 'run_completed':
