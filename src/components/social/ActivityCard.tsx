@@ -144,7 +144,15 @@ const RunStats = memo(function RunStats({ runRecord, styles: s, colors, t }: Run
   const mapWidth = screenWidth - SPACING.md * 2; // card margin
   return (
     <View style={s.runStatsContainer}>
-      {runRecord.routePreview && runRecord.routePreview.length >= 2 ? (
+      {runRecord.thumbnailUrl ? (
+        <CourseThumbnailMap
+          routePreview={runRecord.routePreview}
+          thumbnailUrl={runRecord.thumbnailUrl}
+          width={mapWidth - SPACING.md * 2}
+          height={180}
+          borderRadius={BORDER_RADIUS.md}
+        />
+      ) : runRecord.routePreview && runRecord.routePreview.length >= 2 ? (
         <CourseThumbnailMap
           routePreview={runRecord.routePreview}
           width={mapWidth - SPACING.md * 2}

@@ -389,15 +389,6 @@ export default function HomeScreen() {
           <Text style={styles.logoText}>RUNVS</Text>
           <View style={styles.headerRight}>
             <TouchableOpacity
-              onPress={() => navigation.navigate('ActivityFeed')}
-              activeOpacity={0.6}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              accessibilityRole="button"
-              accessibilityLabel="활동 피드"
-            >
-              <Ionicons name="people-outline" size={24} color={colors.text} />
-            </TouchableOpacity>
-            <TouchableOpacity
               onPress={() => navigation.navigate('NotificationInbox')}
               activeOpacity={0.6}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}

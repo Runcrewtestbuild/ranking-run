@@ -3,10 +3,11 @@ import type { PaginatedResponse } from '../types/api';
 import type { FeedActivity, FeedComment, ReactionSummary, ReactionType } from '../types/feed';
 
 class FeedService {
-  async getFeed(page: number, perPage: number): Promise<{ data: FeedActivity[]; has_next: boolean }> {
+  async getFeed(page: number, perPage: number, scope: 'all' | 'following' = 'all'): Promise<{ data: FeedActivity[]; has_next: boolean }> {
     const sp = new URLSearchParams();
     sp.set('page', String(page));
     sp.set('per_page', String(perPage));
+    sp.set('scope', scope);
     const res = await api.get<{
       data: Array<{
         id: string;

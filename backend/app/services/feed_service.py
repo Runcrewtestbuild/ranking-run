@@ -164,6 +164,7 @@ class FeedService:
         user_id: UUID,
         page: int = 0,
         per_page: int = 20,
+        scope: str = "all",
     ) -> tuple[list[ActivityFeed], int]:
         """Get mixed feed: following activities + recommended activities.
 
@@ -177,7 +178,24 @@ class FeedService:
         following_ids = [row.following_id for row in following_result.all()]
         following_ids.append(user_id)  # include own activities
 
-        # 1) Fetch following activities
+        if scope == "following":
+            query = (
+                select(ActivityFeed)
+                .options(joinedload(ActivityFeed.user))
+                .options(joinedload(ActivityFeed.run_record))
+                .where(ActivityFeed.user_id.in_(following_ids))
+                .order_by(ActivityFeed.created_at.desc())
+                .offset(page * per_page)
+                .limit(per_page)
+            )
+            result = await db.execute(query)
+            activities = list(result.scalars().unique().all())
+            count_result = await db.execute(
+                select(func.count(ActivityFeed.id)).where(ActivityFeed.user_id.in_(following_ids))
+            )
+            return activities, count_result.scalar_one() or 0
+
+        # scope == "all": mixed feed (following + recommended interleave)
         following_query = (
             select(ActivityFeed)
             .options(joinedload(ActivityFeed.user))
@@ -190,11 +208,9 @@ class FeedService:
         following_result = await db.execute(following_query)
         following_activities = list(following_result.scalars().unique().all())
 
-        # 2) If not enough, fill with recommended (non-following) activities
         remaining = per_page - len(following_activities)
         recommended_activities: list[ActivityFeed] = []
         if remaining > 0:
-            # Get recent popular activities from non-followed users
             seen_ids = [a.id for a in following_activities]
             rec_query = (
                 select(ActivityFeed)
@@ -205,27 +221,23 @@ class FeedService:
                     ActivityFeed.id.notin_(seen_ids) if seen_ids else True,
                 )
                 .order_by(ActivityFeed.created_at.desc())
-                .offset(page * remaining)  # offset for pagination of recommended
+                .offset(page * remaining)
                 .limit(remaining)
             )
             rec_result = await db.execute(rec_query)
             recommended_activities = list(rec_result.scalars().unique().all())
 
-        # 3) Interleave: every 3rd item is recommended (if available)
         merged: list[ActivityFeed] = []
         rec_iter = iter(recommended_activities)
         for i, act in enumerate(following_activities):
             merged.append(act)
-            # Insert a recommended item every 3 following items
             if (i + 1) % 3 == 0:
                 rec_item = next(rec_iter, None)
                 if rec_item:
                     merged.append(rec_item)
-        # Append remaining recommended items at the end
         for rec_item in rec_iter:
             merged.append(rec_item)
 
-        # Total count (following + all public)
         count_result = await db.execute(
             select(func.count(ActivityFeed.id))
         )

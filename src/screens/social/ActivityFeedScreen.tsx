@@ -62,6 +62,7 @@ export default function ActivityFeedScreen() {
   const [activeTab, setActiveTab] = useState<SocialTab>('feed');
 
   // Feed state
+  const [feedScope, setFeedScope] = useState<'all' | 'following'>('all');
   const [activities, setActivities] = useState<FeedActivity[]>([]);
   const [page, setPage] = useState(0);
   const [hasNext, setHasNext] = useState(true);
@@ -73,9 +74,10 @@ export default function ActivityFeedScreen() {
   // ---- Data fetching ----
 
   const fetchFeed = useCallback(
-    async (pageNum: number, append = false) => {
+    async (pageNum: number, append = false, scope?: 'all' | 'following') => {
+      const currentScope = scope ?? feedScope;
       try {
-        const res = await feedService.getFeed(pageNum, PAGINATION.DEFAULT_PAGE_SIZE);
+        const res = await feedService.getFeed(pageNum, PAGINATION.DEFAULT_PAGE_SIZE, currentScope);
         setActivities((prev) => (append ? [...prev, ...res.data] : res.data));
         setHasNext(res.has_next);
         setPage(pageNum);
@@ -92,8 +94,22 @@ export default function ActivityFeedScreen() {
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    await fetchFeed(0, false);
+    await fetchFeed(0, false, feedScope);
     setIsRefreshing(false);
+  }, [fetchFeed, feedScope]);
+
+  const handleScopeChange = useCallback((scope: 'all' | 'following') => {
+    Haptics.selectionAsync();
+    setFeedScope(scope);
+    setActivities([]);
+    setPage(0);
+    setHasNext(true);
+    setInitialLoaded(false);
+    setIsLoading(true);
+    fetchFeed(0, false, scope).finally(() => {
+      setIsLoading(false);
+      setInitialLoaded(true);
+    });
   }, [fetchFeed]);
 
   const handleLoadMore = useCallback(async () => {
@@ -266,6 +282,27 @@ export default function ActivityFeedScreen() {
       {/* Content */}
       {activeTab === 'feed' && (
         <View style={s.feedContainer}>
+          {/* Scope filter */}
+          <View style={s.scopeBar}>
+            <TouchableOpacity
+              style={[s.scopeBtn, feedScope === 'all' && s.scopeBtnActive]}
+              onPress={() => handleScopeChange('all')}
+              activeOpacity={0.7}
+            >
+              <Text style={[s.scopeBtnText, feedScope === 'all' && s.scopeBtnTextActive]}>
+                {t('social.feed.all')}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.scopeBtn, feedScope === 'following' && s.scopeBtnActive]}
+              onPress={() => handleScopeChange('following')}
+              activeOpacity={0.7}
+            >
+              <Text style={[s.scopeBtnText, feedScope === 'following' && s.scopeBtnTextActive]}>
+                {t('social.feed.following')}
+              </Text>
+            </TouchableOpacity>
+          </View>
           <FlatList
             data={activities}
             renderItem={renderItem}
@@ -348,6 +385,29 @@ const createStyles = (colors: ThemeColors) =>
     // Feed
     feedContainer: {
       flex: 1,
+    },
+    scopeBar: {
+      flexDirection: 'row',
+      paddingHorizontal: SPACING.md,
+      paddingVertical: SPACING.sm,
+      gap: SPACING.sm,
+    },
+    scopeBtn: {
+      paddingHorizontal: SPACING.lg,
+      paddingVertical: SPACING.xs + 2,
+      borderRadius: BORDER_RADIUS.full,
+      backgroundColor: colors.surface,
+    },
+    scopeBtnActive: {
+      backgroundColor: colors.text,
+    },
+    scopeBtnText: {
+      fontSize: FONT_SIZES.sm,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    scopeBtnTextActive: {
+      color: colors.background,
     },
     hiddenTab: {
       display: 'none',

@@ -212,14 +212,16 @@ async def get_feed(
     db: DbSession,
     page: int = Query(0, ge=0),
     per_page: int = Query(20, ge=1, le=50),
+    scope: str = Query("all"),
     feed_service: FeedService = Depends(Provide[Container.feed_service]),
 ) -> ActivityFeedPaginatedResponse:
-    """Get paginated feed from followed users and own activities."""
+    """Get paginated feed. scope=all (mixed) or scope=following (following only)."""
     activities, total_count = await feed_service.get_feed(
         db=db,
         user_id=current_user.id,
         page=page,
         per_page=per_page,
+        scope=scope,
     )
 
     # Batch-fetch reaction summaries and comment counts

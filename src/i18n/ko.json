@@ -1038,6 +1038,8 @@
       "comingSoonHint": "곧 업데이트 예정입니다"
     },
     "feed": {
+      "all": "전체",
+      "following": "팔로잉",
       "empty": "피드가 비어있어요",
       "emptyHint": "러닝을 시작하면 피드에 활동이 표시됩니다"
     },
