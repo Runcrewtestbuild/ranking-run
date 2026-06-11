@@ -69,24 +69,8 @@ def get_route_preview(course: "Course", max_points: int = 50) -> list[list[float
 
 
 def get_thumbnail_url_for_course(course: "Course") -> str | None:
-    """Return existing thumbnail_url or generate one dynamically from route geometry."""
-    if course.thumbnail_url:
-        return course.thumbnail_url
-
-    if course.route_geometry is None:
-        return None
-
-    settings = get_settings()
-    if not settings.MAPBOX_ACCESS_TOKEN:
-        return None
-
-    shapely_geom = to_shape(course.route_geometry)
-    coords = list(shapely_geom.coords)
-    geojson = {
-        "type": shapely_geom.geom_type,
-        "coordinates": [[c[0], c[1], c[2] if len(c) > 2 else 0.0] for c in coords],
-    }
-    return generate_thumbnail_url(geojson, settings.MAPBOX_ACCESS_TOKEN)
+    """Return existing thumbnail_url (3D map snapshot from the original run)."""
+    return course.thumbnail_url
 
 
 def generate_thumbnail_url(route_geometry: dict, access_token: str) -> str | None:
@@ -347,18 +331,8 @@ class CourseService:
         db.add(stats)
         await db.flush()
 
-        # Generate thumbnail URL from matched route (or raw if matching failed)
-        settings = get_settings()
-        thumbnail_geojson = {
-            "type": "LineString",
-            "coordinates": matched_coordinates if len(coordinates) >= 2 else [],
-        } if len(coordinates) >= 2 else route_geometry_geojson
-        thumbnail_url = generate_thumbnail_url(
-            route_geometry=thumbnail_geojson,
-            access_token=settings.MAPBOX_ACCESS_TOKEN,
-        )
-        if thumbnail_url:
-            course.thumbnail_url = thumbnail_url
+        if source_run.route_thumbnail_url:
+            course.thumbnail_url = source_run.route_thumbnail_url
             await db.flush()
 
         # Generate checkpoints (500m interval, skip if < 1km)
