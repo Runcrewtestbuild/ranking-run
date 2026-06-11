@@ -358,6 +358,7 @@ class CourseService:
         stats.avg_pace_seconds_per_km = source_run.avg_pace_seconds_per_km
         await db.flush()
 
+        course._matched_coordinates = matched_coordinates if len(coordinates) >= 2 else []
         return course
 
     async def get_course_by_id(self, db: AsyncSession, course_id: UUID) -> Course | None:

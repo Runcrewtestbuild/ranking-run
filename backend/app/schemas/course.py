@@ -51,6 +51,7 @@ class CourseCreateResponse(BaseModel):
     distance_meters: int
     thumbnail_url: str | None = None
     share_url: str | None = None
+    matched_route: list[list[float]] | None = None
     created_at: datetime
 
 

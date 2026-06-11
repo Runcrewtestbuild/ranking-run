@@ -66,11 +66,15 @@ async def create_course(
         run_record_id=UUID(body.run_record_id),
     )
 
+    matched = getattr(course, '_matched_coordinates', None)
+    matched_route = [[c[0], c[1]] for c in matched] if matched else None
+
     return CourseCreateResponse(
         id=str(course.id),
         title=course.title,
         distance_meters=course.distance_meters,
         thumbnail_url=course.thumbnail_url,
+        matched_route=matched_route,
         created_at=course.created_at,
     )
 
@@ -193,6 +197,26 @@ async def get_course_detail(
         checkpoints=detail.get("checkpoints"),
         dominion=CourseDominionBrief(**detail["dominion"]) if detail.get("dominion") else None,
     )
+
+
+@router.patch("/{course_id}/thumbnail")
+@inject
+async def update_course_thumbnail(
+    course_id: UUID,
+    body: dict,
+    current_user: CurrentUser,
+    db: DbSession,
+    course_service: CourseService = Depends(Provide[Container.course_service]),
+):
+    """Update course thumbnail URL (only by creator)."""
+    course = await course_service.get_course_by_id(db, course_id)
+    if course is None:
+        raise NotFoundError(code="NOT_FOUND", message="Course not found")
+    if course.creator_id != current_user.id:
+        raise NotFoundError(code="NOT_FOUND", message="Course not found")
+    course.thumbnail_url = body.get("url")
+    await db.commit()
+    return {"ok": True}
 
 
 @router.get("/{course_id}/stats", response_model=CourseStatsResponse)

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,16 +15,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useNavigation, useRoute, RouteProp, CommonActions } from '@react-navigation/native';
 import { courseService } from '../../services/courseService';
+import { runService } from '../../services/runService';
 import { useCourseListStore } from '../../stores/courseListStore';
 import { savePendingCourse, removePendingCourse } from '../../services/pendingSyncService';
 import { Ionicons } from '../../lib/icons';
 import Button from '../../components/common/Button';
-import RouteMapView from '../../components/map/RouteMapView';
+import RouteMapView, { RouteMapViewHandle } from '../../components/map/RouteMapView';
 import { formatDistance } from '../../utils/format';
 import type { CourseStackParamList } from '../../types/navigation';
 import { useTheme } from '../../hooks/useTheme';
 import type { ThemeColors } from '../../utils/constants';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '../../utils/constants';
+import api from '../../services/api';
 
 type CreateRoute = RouteProp<CourseStackParamList, 'CourseCreate'>;
 
@@ -52,6 +54,18 @@ export default function CourseCreateScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [courseType, setCourseType] = useState<'normal' | 'loop'>(isLoop ? 'loop' : 'normal');
   const [lapCount, setLapCount] = useState(1);
+  const [matchedRoutePoints, setMatchedRoutePoints] = useState<Array<{ latitude: number; longitude: number }> | null>(null);
+  const mapRef = useRef<RouteMapViewHandle>(null);
+
+  const captureAndUploadThumbnail = useCallback(async (courseId: string) => {
+    try {
+      await new Promise(r => setTimeout(r, 1500));
+      const uri = await mapRef.current?.takeSnapshot?.(true);
+      if (!uri) return;
+      const url = await runService.uploadRouteSnapshot(uri);
+      await api.patch(`/courses/${courseId}/thumbnail`, { url });
+    } catch {}
+  }, []);
 
   const handleCreate = async () => {
     if (distanceMeters < MIN_COURSE_DISTANCE_M) {
@@ -93,28 +107,29 @@ export default function CourseCreateScreen() {
       createdAt: new Date().toISOString(),
     });
 
-    // 2) Navigate back immediately (no blocking Alert)
-    setIsSubmitting(false);
-    navigation.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [{ name: 'CourseList' }],
-      }),
-    );
+    // 2) Server sync — wait for matched route before navigating
+    try {
+      const result = await courseService.createCourse(coursePayload as unknown as Parameters<typeof courseService.createCourse>[0]);
+      await removePendingCourse(pendingId);
 
-    // 3) Try server sync in background (non-blocking)
-    (async () => {
-      try {
-        await courseService.createCourse(coursePayload as unknown as Parameters<typeof courseService.createCourse>[0]);
-        await removePendingCourse(pendingId);
-        // Refresh course list silently
-        useCourseListStore.getState().fetchCourses().catch((err) => {
-          console.warn('[CourseCreate] 코스 목록 갱신 실패:', err);
+      if (result.matched_route && result.matched_route.length >= 2) {
+        const pts = result.matched_route.map(([lng, lat]: number[]) => ({ latitude: lat, longitude: lng }));
+        setMatchedRoutePoints(pts);
+        mapRef.current?.fitToCoordinates(pts, { top: 60, right: 60, bottom: 60, left: 60 }, true);
+        captureAndUploadThumbnail(result.id).finally(() => {
+          setIsSubmitting(false);
+          navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'CourseList' }] }));
+          useCourseListStore.getState().fetchCourses().catch(() => {});
         });
-      } catch {
-        // Server unreachable — pending data stays in queue
+      } else {
+        setIsSubmitting(false);
+        navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'CourseList' }] }));
+        useCourseListStore.getState().fetchCourses().catch(() => {});
       }
-    })();
+    } catch {
+      setIsSubmitting(false);
+      navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'CourseList' }] }));
+    }
   };
 
   const isDisabled = isSubmitting || !title.trim();
@@ -142,7 +157,7 @@ export default function CourseCreateScreen() {
 
         {/* Map preview with rounded corners */}
         <View style={styles.mapWrapper}>
-          <RouteMapView routePoints={routePoints} style={styles.mapPreview} />
+          <RouteMapView ref={mapRef} routePoints={matchedRoutePoints ?? routePoints} style={styles.mapPreview} />
         </View>
 
         {/* Route Info Summary */}

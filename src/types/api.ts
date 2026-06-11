@@ -356,6 +356,7 @@ export interface CourseCreateResponse {
   distance_meters: number;
   thumbnail_url: string | null;
   share_url: string | null;
+  matched_route: number[][] | null;
   created_at: string;
 }
 
