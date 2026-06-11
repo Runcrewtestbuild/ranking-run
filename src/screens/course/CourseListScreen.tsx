@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { InteractionManager } from 'react-native';
 import {
   View,
@@ -6,14 +6,16 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  FlatList,
   RefreshControl,
-  Platform,
-  StatusBar,
+  Modal,
+  Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Location from 'expo-location';
 import { Ionicons } from '../../lib/icons';
 import { useTranslation } from 'react-i18next';
-import * as Location from 'expo-location';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCourseListStore } from '../../stores/courseListStore';
@@ -22,7 +24,7 @@ import CourseThumbnailMap from '../../components/course/CourseThumbnailMap';
 import { useTheme } from '../../hooks/useTheme';
 import type { ThemeColors } from '../../utils/constants';
 import type { CourseStackParamList } from '../../types/navigation';
-import type { CourseListItem, FavoriteCourseItem } from '../../types/api';
+import type { CourseListItem, CourseListParams, FavoriteCourseItem } from '../../types/api';
 import { formatDistance, formatNumber } from '../../utils/format';
 import {
   FONT_SIZES,
@@ -31,12 +33,19 @@ import {
   SHADOWS,
   inferDifficulty,
   getDifficultyLabel,
-  type DifficultyLevel,
 } from '../../utils/constants';
 
 // ---- Types ----
 
 type CourseNav = NativeStackNavigationProp<CourseStackParamList, 'CourseList'>;
+
+type SortMode = 'all' | 'popular' | 'newest' | 'nearby' | 'distance';
+
+interface DistanceFilter {
+  key: string;
+  labelKey: string;
+  maxDistance?: number; // meters, undefined = no filter
+}
 
 // ---- Constants ----
 
@@ -44,7 +53,6 @@ const OVERLAY_CARD_WIDTH = 200;
 const OVERLAY_CARD_HEIGHT = 160;
 const ROW_THUMB_SIZE = 56;
 
-/** Difficulty color map matching design spec */
 const DIFF_COLOR: Record<string, string> = {
   easy: '#6EE7A0',
   normal: '#FBBF54',
@@ -52,10 +60,69 @@ const DIFF_COLOR: Record<string, string> = {
   expert: '#F87171',
   legend: '#A78BFA',
 };
-const PREVIEW_LIMIT = 3;
 
-const DEFAULT_LAT = 37.5665;
-const DEFAULT_LNG = 126.978;
+const SORT_TABS: { key: SortMode; labelKey: string }[] = [
+  { key: 'all', labelKey: 'course.sortAll' },
+  { key: 'popular', labelKey: 'course.sortPopular' },
+  { key: 'newest', labelKey: 'course.sortNewest' },
+  { key: 'nearby', labelKey: 'course.sortNearby' },
+  { key: 'distance', labelKey: 'course.sortDistance' },
+];
+
+const DISTANCE_FILTERS: DistanceFilter[] = [
+  { key: 'all', labelKey: 'course.filterAll' },
+  { key: '3k', labelKey: 'course.filter3k', maxDistance: 3000 },
+  { key: '5k', labelKey: 'course.filter5kBelow', maxDistance: 5000 },
+  { key: '10k', labelKey: 'course.filter10kBelow', maxDistance: 10000 },
+  { key: 'half', labelKey: 'course.filterHalfBelow', maxDistance: 21100 },
+  { key: 'full', labelKey: 'course.filterFull', maxDistance: 42200 },
+];
+
+// ---- Helpers ----
+
+function buildFetchParams(
+  sortMode: SortMode,
+  distanceAsc: boolean,
+  activeFilter: DistanceFilter,
+  userLat?: number,
+  userLng?: number,
+): CourseListParams {
+  const params: CourseListParams = { per_page: 20 };
+
+  switch (sortMode) {
+    case 'popular':
+      params.order_by = 'total_runs';
+      params.order = 'desc';
+      break;
+    case 'newest':
+      params.order_by = 'created_at';
+      params.order = 'desc';
+      break;
+    case 'nearby':
+      params.order_by = 'distance_from_user';
+      params.order = 'asc';
+      if (userLat != null && userLng != null) {
+        params.near_lat = userLat;
+        params.near_lng = userLng;
+      }
+      break;
+    case 'distance':
+      params.order_by = 'distance_meters';
+      params.order = distanceAsc ? 'asc' : 'desc';
+      break;
+    case 'all':
+    default:
+      params.order_by = 'total_runs';
+      params.order = 'desc';
+      break;
+  }
+
+  if (activeFilter.maxDistance) {
+    params.max_distance = activeFilter.maxDistance;
+  }
+
+  return params;
+}
 
 // ---- Main Screen ----
 
@@ -64,62 +131,78 @@ export default function CourseListScreen() {
   const navigation = useNavigation<CourseNav>();
   const colors = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  // Sort & filter state
+  const [sortMode, setSortMode] = useState<SortMode>('all');
+  const [distanceAsc, setDistanceAsc] = useState(true);
+  const [activeFilter, setActiveFilter] = useState<DistanceFilter>(DISTANCE_FILTERS[0]);
+  const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [locationReady, setLocationReady] = useState(false);
-  const [userLat, setUserLat] = useState(DEFAULT_LAT);
-  const [userLng, setUserLng] = useState(DEFAULT_LNG);
-
-  const nearbyCourses = useCourseListStore((s) => s.nearbyCourses);
-  const popularCourses = useCourseListStore((s) => s.popularCourses);
-  const newCourses = useCourseListStore((s) => s.newCourses);
-  const favoriteCourses = useCourseListStore((s) => s.favoriteCourses);
-  const fetchNearbyCourses = useCourseListStore((s) => s.fetchNearbyCourses);
-  const fetchPopularCourses = useCourseListStore((s) => s.fetchPopularCourses);
-  const fetchNewCourses = useCourseListStore((s) => s.fetchNewCourses);
-  const fetchFavoriteCourses = useCourseListStore((s) => s.fetchFavoriteCourses);
-
-  const loadLocation = useCallback(async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const loc = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        setUserLat(loc.coords.latitude);
-        setUserLng(loc.coords.longitude);
-        fetchNearbyCourses(loc.coords.latitude, loc.coords.longitude);
-      } else {
-        fetchNearbyCourses(DEFAULT_LAT, DEFAULT_LNG);
-      }
-    } catch {
-      fetchNearbyCourses(DEFAULT_LAT, DEFAULT_LNG);
-    } finally {
-      setLocationReady(true);
-    }
-  }, [fetchNearbyCourses]);
+  const [userLat, setUserLat] = useState<number | undefined>(undefined);
+  const [userLng, setUserLng] = useState<number | undefined>(undefined);
 
   useEffect(() => {
-    // Defer data fetching until tab transition animation completes
-    // to prevent jank during tab switch (especially on iOS)
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          setUserLat(loc.coords.latitude);
+          setUserLng(loc.coords.longitude);
+        }
+      } catch {}
+    })();
+  }, []);
+
+  // Store
+  const allCourses = useCourseListStore((s) => s.allCourses);
+  const isLoadingAll = useCourseListStore((s) => s.isLoadingAll);
+  const isLoadingMoreAll = useCourseListStore((s) => s.isLoadingMoreAll);
+  const allHasNext = useCourseListStore((s) => s.allHasNext);
+  const favoriteCourses = useCourseListStore((s) => s.favoriteCourses);
+  const fetchAllCourses = useCourseListStore((s) => s.fetchAllCourses);
+  const fetchMoreAllCourses = useCourseListStore((s) => s.fetchMoreAllCourses);
+  const fetchFavoriteCourses = useCourseListStore((s) => s.fetchFavoriteCourses);
+
+  // Build params from current sort/filter state
+  const currentParams = useMemo(
+    () => buildFetchParams(sortMode, distanceAsc, activeFilter, userLat, userLng),
+    [sortMode, distanceAsc, activeFilter, userLat, userLng],
+  );
+
+  // Initial load
+  useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
-      fetchPopularCourses();
-      fetchNewCourses();
+      fetchAllCourses(currentParams);
       fetchFavoriteCourses();
-      loadLocation();
     });
     return () => task.cancel();
-  }, [fetchPopularCourses, fetchNewCourses, fetchFavoriteCourses, loadLocation]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Refetch when sort/filter changes
+  const isFirstMount = useRef(true);
+  useEffect(() => {
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      return;
+    }
+    fetchAllCourses(currentParams);
+  }, [currentParams, fetchAllCourses]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await Promise.all([
-      fetchPopularCourses(),
-      fetchNewCourses(),
+      fetchAllCourses(currentParams),
       fetchFavoriteCourses(),
-      fetchNearbyCourses(userLat, userLng),
     ]);
     setRefreshing(false);
-  }, [fetchPopularCourses, fetchNewCourses, fetchFavoriteCourses, fetchNearbyCourses, userLat, userLng]);
+  }, [fetchAllCourses, fetchFavoriteCourses, currentParams]);
+
+  const handleLoadMore = useCallback(() => {
+    if (!isLoadingMoreAll && allHasNext) {
+      fetchMoreAllCourses(currentParams);
+    }
+  }, [isLoadingMoreAll, allHasNext, fetchMoreAllCourses, currentParams]);
 
   const handleCoursePress = useCallback(
     (courseId: string) => {
@@ -128,37 +211,172 @@ export default function CourseListScreen() {
     [navigation],
   );
 
-  const allEmpty =
-    locationReady &&
-    nearbyCourses.length === 0 &&
-    popularCourses.length === 0 &&
-    newCourses.length === 0;
+  const handleSortPress = useCallback(
+    (mode: SortMode) => {
+      if (mode === 'distance' && sortMode === 'distance') {
+        // Toggle asc/desc on repeated tap
+        setDistanceAsc((prev) => !prev);
+      } else {
+        setSortMode(mode);
+        if (mode === 'distance') {
+          setDistanceAsc(true);
+        }
+      }
+    },
+    [sortMode],
+  );
 
-  if (allEmpty) {
-    return (
-      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>{t('course.discover')}</Text>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('CourseSearch')}
-            style={styles.searchBtn}
-          >
-            <Ionicons name="search" size={22} color={colors.text} />
-          </TouchableOpacity>
-        </View>
-        <EmptyState
-          ionicon="walk-outline"
-          title={t('course.emptyAll')}
-          description={t('course.emptyAllMsg')}
+  const handleFilterSelect = useCallback((filter: DistanceFilter) => {
+    setActiveFilter(filter);
+    setFilterModalVisible(false);
+  }, []);
+
+  const isFilterActive = activeFilter.key !== 'all';
+
+  // ---- Sort label for distance tab ----
+  const getDistanceLabel = useCallback(() => {
+    if (sortMode === 'distance') {
+      return distanceAsc ? t('course.sortDistanceAsc') : t('course.sortDistanceDesc');
+    }
+    return t('course.sortDistance');
+  }, [sortMode, distanceAsc, t]);
+
+  // ---- Render helpers ----
+
+  const renderSortTabs = () => (
+    <View style={styles.sortRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.sortScrollContent}
+      >
+        {SORT_TABS.map((tab) => {
+          const isActive = sortMode === tab.key;
+          const label = tab.key === 'distance' ? getDistanceLabel() : t(tab.labelKey);
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.sortPill, isActive && styles.sortPillActive]}
+              onPress={() => handleSortPress(tab.key)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.sortPillText, isActive && styles.sortPillTextActive]}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+      <TouchableOpacity
+        style={[styles.filterBtn, isFilterActive && styles.filterBtnActive]}
+        onPress={() => setFilterModalVisible(true)}
+        activeOpacity={0.7}
+        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+      >
+        <Ionicons
+          name={isFilterActive ? 'funnel' : 'funnel-outline'}
+          size={18}
+          color={isFilterActive ? '#FFFFFF' : colors.textSecondary}
         />
-      </SafeAreaView>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderFavoritesSection = () => {
+    if (favoriteCourses.length === 0) return null;
+    return (
+      <View style={styles.favoritesSection}>
+        <View style={styles.favoritesTitleRow}>
+          <View style={[styles.sectionIconBadge, { backgroundColor: '#FF3B3018' }]}>
+            <Ionicons name="heart" size={14} color="#FF3B30" />
+          </View>
+          <Text style={styles.favoritesTitle}>{t('course.favorites')}</Text>
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.overlayScrollContent}
+        >
+          {favoriteCourses.map((course: FavoriteCourseItem) => (
+            <OverlayCard
+              key={course.id}
+              id={course.id}
+              title={course.title}
+              distanceMeters={course.distance_meters}
+              totalRuns={course.total_runs ?? 0}
+              routePreview={course.route_preview ?? []}
+              thumbnailUrl={course.thumbnail_url}
+              onPress={() => handleCoursePress(course.id)}
+            />
+          ))}
+        </ScrollView>
+      </View>
     );
-  }
+  };
+
+  const renderCourseItem = useCallback(
+    ({ item }: { item: CourseListItem }) => (
+      <CourseRowCard
+        course={item}
+        onPress={() => handleCoursePress(item.id)}
+      />
+    ),
+    [handleCoursePress],
+  );
+
+  const renderListHeader = () => (
+    <>
+      {renderFavoritesSection()}
+      {allCourses.length === 0 && !isLoadingAll && (
+        <View style={styles.emptyContainer}>
+          <EmptyState
+            ionicon="walk-outline"
+            title={t('course.emptyAll')}
+            description={t('course.emptyAllMsg')}
+          />
+        </View>
+      )}
+    </>
+  );
+
+  const renderListFooter = () => {
+    if (!isLoadingMoreAll) return <View style={styles.bottomPadding} />;
+    return (
+      <View style={styles.footerLoader}>
+        <ActivityIndicator size="small" color={colors.primary} />
+      </View>
+    );
+  };
+
+  const keyExtractor = useCallback((item: CourseListItem) => item.id, []);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <ScrollView
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>{t('course.discover')}</Text>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('CourseSearch')}
+          style={styles.searchBtn}
+        >
+          <Ionicons name="search" size={22} color={colors.text} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Sort tabs + Filter */}
+      {renderSortTabs()}
+
+      {/* Unified course list */}
+      <FlatList
+        data={allCourses}
+        renderItem={renderCourseItem}
+        keyExtractor={keyExtractor}
+        ListHeaderComponent={renderListHeader}
+        ListFooterComponent={renderListFooter}
+        contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.3}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -166,173 +384,52 @@ export default function CourseListScreen() {
             tintColor={colors.primary}
           />
         }
-        contentContainerStyle={styles.scrollContent}
+      />
+
+      {/* Filter Modal */}
+      <Modal
+        visible={filterModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFilterModalVisible(false)}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>{t('course.discover')}</Text>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('CourseSearch')}
-            style={styles.searchBtn}
-          >
-            <Ionicons name="search" size={22} color={colors.text} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Section 0: Favorites */}
-        {favoriteCourses.length > 0 && (
-          <View style={styles.section}>
-            <SectionHeader title={t('course.favorites')} ionicon="heart" iconColor="#FF3B30" />
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.overlayScrollContent}
-            >
-              {favoriteCourses.map((course: FavoriteCourseItem) => (
-                <OverlayCard
-                  key={course.id}
-                  id={course.id}
-                  title={course.title}
-                  distanceMeters={course.distance_meters}
-                  totalRuns={course.total_runs ?? 0}
-                  routePreview={course.route_preview ?? []}
-                  thumbnailUrl={course.thumbnail_url}
-                  onPress={() => handleCoursePress(course.id)}
-                />
-              ))}
-            </ScrollView>
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setFilterModalVisible(false)}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t('course.sortDistance')}</Text>
+            {DISTANCE_FILTERS.map((filter) => {
+              const isSelected = activeFilter.key === filter.key;
+              return (
+                <TouchableOpacity
+                  key={filter.key}
+                  style={[styles.modalOption, isSelected && styles.modalOptionActive]}
+                  onPress={() => handleFilterSelect(filter)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.modalOptionText,
+                      isSelected && styles.modalOptionTextActive,
+                    ]}
+                  >
+                    {t(filter.labelKey)}
+                  </Text>
+                  {isSelected && (
+                    <Ionicons name="checkmark" size={18} color={colors.primary} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </View>
-        )}
-
-        {/* Section 1: Nearby */}
-        {locationReady && (
-          <View style={styles.section}>
-            <SectionHeader title={t('course.nearbySection')} ionicon="location" iconColor="#FF3B30" />
-            {nearbyCourses.length === 0 ? (
-              <View style={styles.nearbyEmptyContainer}>
-                <Text style={styles.nearbyEmptyText}>{t('course.nearbyEmpty')}</Text>
-              </View>
-            ) : (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.overlayScrollContent}
-              >
-                {nearbyCourses.map((course) => (
-                  <OverlayCard
-                    key={course.id}
-                    id={course.id}
-                    title={course.title}
-                    distanceMeters={course.distance_meters}
-                    totalRuns={course.total_runs}
-                    routePreview={course.route_preview ?? []}
-                    thumbnailUrl={course.thumbnail_url}
-                    onPress={() => handleCoursePress(course.id)}
-                  />
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        )}
-
-        {/* Section 2: Popular */}
-        {popularCourses.length > 0 && (
-          <View style={styles.section}>
-            <SectionHeader
-              title={t('course.popularSection')}
-              ionicon="flame"
-              iconColor="#FF9500"
-              onMore={() =>
-                navigation.navigate('CourseSearch', { initialSort: 'total_runs' })
-              }
-            />
-            <View style={styles.verticalList}>
-              {popularCourses.slice(0, PREVIEW_LIMIT).map((course) => (
-                <CourseRowCard
-                  key={course.id}
-                  course={course}
-
-                  onPress={() => handleCoursePress(course.id)}
-                />
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Section 3: New */}
-        {newCourses.length > 0 && (
-          <View style={styles.section}>
-            <SectionHeader
-              title={t('course.newSection')}
-              ionicon="sparkles"
-              iconColor="#34C759"
-              onMore={() =>
-                navigation.navigate('CourseSearch', { initialSort: 'created_at' })
-              }
-            />
-            <View style={styles.verticalList}>
-              {newCourses.slice(0, PREVIEW_LIMIT).map((course) => (
-                <CourseRowCard
-                  key={course.id}
-                  course={course}
-
-                  onPress={() => handleCoursePress(course.id)}
-                />
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Bottom padding */}
-        <View style={styles.bottomPadding} />
-      </ScrollView>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-// ---- Section Header ----
-
-function SectionHeader({
-  title,
-  ionicon,
-  iconColor,
-  onMore,
-}: {
-  title: string;
-  ionicon?: keyof typeof Ionicons.glyphMap;
-  iconColor?: string;
-  onMore?: () => void;
-}) {
-  const colors = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-  const { t } = useTranslation();
-
-  return (
-    <View style={styles.sectionHeader}>
-      <View style={styles.sectionTitleRow}>
-        {ionicon && (
-          <View style={[styles.sectionIconBadge, { backgroundColor: (iconColor ?? colors.primary) + '18' }]}>
-            <Ionicons name={ionicon} size={14} color={iconColor ?? colors.primary} />
-          </View>
-        )}
-        <Text style={styles.sectionTitle}>{title}</Text>
-      </View>
-      {onMore && (
-        <TouchableOpacity
-          onPress={onMore}
-          style={styles.seeMoreHeaderBtn}
-          activeOpacity={0.7}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Text style={styles.seeMoreHeaderText}>{t('course.seeMore')}</Text>
-          <Ionicons name="chevron-forward" size={13} color={colors.textTertiary} />
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-}
-
-// ---- Overlay Card (Horizontal Scroll — Favorites / Nearby) ----
+// ---- Overlay Card (Horizontal Scroll — Favorites) ----
 
 interface OverlayCardProps {
   id: string;
@@ -362,7 +459,6 @@ const OverlayCard = React.memo(function OverlayCard({
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {/* Full-bleed route map */}
       {thumbnailUrl || (routePreview && routePreview.length >= 2) ? (
         <CourseThumbnailMap
           routePreview={routePreview}
@@ -376,8 +472,6 @@ const OverlayCard = React.memo(function OverlayCard({
           <Ionicons name="map-outline" size={32} color={colors.textTertiary} />
         </View>
       )}
-
-      {/* Semi-transparent info overlay at bottom */}
       <View style={styles.overlayCardInfo}>
         <Text style={styles.overlayCardTitle} numberOfLines={1}>{title}</Text>
         <Text style={styles.overlayCardMeta}>
@@ -408,7 +502,6 @@ const CourseRowCard = React.memo(function CourseRowCard({
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {/* Thumbnail */}
       {course.thumbnail_url || (course.route_preview && course.route_preview.length >= 2) ? (
         <CourseThumbnailMap
           routePreview={course.route_preview ?? []}
@@ -422,14 +515,14 @@ const CourseRowCard = React.memo(function CourseRowCard({
           <Ionicons name="map-outline" size={22} color={colors.textTertiary} />
         </View>
       )}
-
-      {/* Content */}
       <View style={styles.rowContent}>
         <Text style={styles.rowTitle} numberOfLines={1}>{course.title}</Text>
         <Text style={styles.vCardMeta}>
           {formatDistance(course.distance_meters)}
           <Text style={styles.vCardMetaSep}>{' · '}</Text>
-          <Text style={{ color: DIFF_COLOR[difficulty] ?? colors.textSecondary }}>{getDifficultyLabel(difficulty)}</Text>
+          <Text style={{ color: DIFF_COLOR[difficulty] ?? colors.textSecondary }}>
+            {getDifficultyLabel(difficulty)}
+          </Text>
           <Text style={styles.vCardMetaSep}>{' · '}</Text>
           {'참여 ' + formatNumber(course.stats.total_runs) + '회'}
         </Text>
@@ -446,9 +539,6 @@ const createStyles = (c: ThemeColors) =>
     container: {
       flex: 1,
       backgroundColor: c.background,
-    },
-    scrollContent: {
-      flexGrow: 1,
     },
 
     // -- Header --
@@ -475,21 +565,71 @@ const createStyles = (c: ThemeColors) =>
       alignItems: 'center',
     },
 
-    // -- Section --
-    section: {
-      marginTop: SPACING.xl,
-    },
-    sectionHeader: {
+    // -- Sort tabs --
+    sortRow: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
       alignItems: 'center',
-      paddingHorizontal: SPACING.xxl,
+      paddingRight: SPACING.xxl,
       marginBottom: SPACING.md,
     },
-    sectionTitleRow: {
+    sortScrollContent: {
+      paddingHorizontal: SPACING.xxl,
+      gap: SPACING.sm,
+      flexGrow: 1,
+    },
+    sortPill: {
+      paddingHorizontal: SPACING.lg,
+      paddingVertical: SPACING.sm,
+      borderRadius: BORDER_RADIUS.full,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    sortPillActive: {
+      backgroundColor: c.text,
+      borderColor: c.text,
+    },
+    sortPillText: {
+      fontSize: FONT_SIZES.sm,
+      fontWeight: '600',
+      color: c.textSecondary,
+    },
+    sortPillTextActive: {
+      color: c.background,
+    },
+    filterBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: BORDER_RADIUS.full,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginLeft: SPACING.sm,
+    },
+    filterBtnActive: {
+      backgroundColor: c.primary,
+      borderColor: c.primary,
+    },
+
+    // -- List --
+    listContent: {
+      paddingHorizontal: SPACING.xxl,
+      flexGrow: 1,
+    },
+
+    // -- Favorites section --
+    favoritesSection: {
+      marginBottom: SPACING.lg,
+      marginHorizontal: -SPACING.xxl, // counteract listContent padding for full-bleed scroll
+    },
+    favoritesTitleRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: SPACING.sm,
+      paddingHorizontal: SPACING.xxl,
+      marginBottom: SPACING.md,
     },
     sectionIconBadge: {
       width: 26,
@@ -498,36 +638,15 @@ const createStyles = (c: ThemeColors) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    sectionTitle: {
+    favoritesTitle: {
       fontSize: FONT_SIZES.lg,
       fontWeight: '800',
       color: c.text,
       letterSpacing: -0.3,
     },
-    seeMoreHeaderBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 2,
-    },
-    seeMoreHeaderText: {
-      fontSize: FONT_SIZES.sm,
-      fontWeight: '600',
-      color: c.textTertiary,
-    },
-
-    // -- Overlay horizontal scroll (Favorites / Nearby) --
     overlayScrollContent: {
       paddingHorizontal: SPACING.xxl,
       gap: SPACING.md,
-    },
-    nearbyEmptyContainer: {
-      paddingHorizontal: SPACING.xxl,
-      paddingVertical: SPACING.xl,
-    },
-    nearbyEmptyText: {
-      fontSize: FONT_SIZES.sm,
-      color: c.textTertiary,
-      fontWeight: '500',
     },
 
     // -- Overlay Card (map-style with overlaid info) --
@@ -569,13 +688,7 @@ const createStyles = (c: ThemeColors) =>
       fontVariant: ['tabular-nums'] as const,
     },
 
-    // -- Vertical list --
-    verticalList: {
-      paddingHorizontal: SPACING.xxl,
-      gap: SPACING.sm,
-    },
-
-    // -- Vertical Row Card (Popular / New) --
+    // -- Row Card --
     rowCard: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -585,6 +698,7 @@ const createStyles = (c: ThemeColors) =>
       gap: SPACING.md,
       borderWidth: 1,
       borderColor: c.border,
+      marginBottom: SPACING.sm,
       ...SHADOWS.sm,
     },
     rowThumb: {
@@ -626,26 +740,62 @@ const createStyles = (c: ThemeColors) =>
       opacity: 0.25,
     },
 
-    // -- See More Button --
-    seeMoreBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginTop: SPACING.md,
-      marginHorizontal: SPACING.xxl,
-      paddingVertical: SPACING.md,
-      borderRadius: BORDER_RADIUS.md,
-      backgroundColor: c.surface,
-      gap: 4,
+    // -- Empty state --
+    emptyContainer: {
+      paddingTop: SPACING.xxxl,
     },
-    seeMoreText: {
-      fontSize: FONT_SIZES.sm,
-      fontWeight: '700',
-      color: c.primary,
+
+    // -- Footer loader --
+    footerLoader: {
+      paddingVertical: SPACING.xl,
+      alignItems: 'center',
     },
 
     // -- Bottom padding --
     bottomPadding: {
       height: SPACING.xxxl + SPACING.xl,
+    },
+
+    // -- Filter Modal --
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalContent: {
+      width: '80%',
+      maxWidth: 320,
+      backgroundColor: c.card,
+      borderRadius: BORDER_RADIUS.lg,
+      padding: SPACING.xl,
+      ...SHADOWS.sm,
+    },
+    modalTitle: {
+      fontSize: FONT_SIZES.lg,
+      fontWeight: '800',
+      color: c.text,
+      marginBottom: SPACING.lg,
+      letterSpacing: -0.3,
+    },
+    modalOption: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: SPACING.md,
+      paddingHorizontal: SPACING.sm,
+      borderRadius: BORDER_RADIUS.sm,
+    },
+    modalOptionActive: {
+      backgroundColor: c.primary + '14',
+    },
+    modalOptionText: {
+      fontSize: FONT_SIZES.md,
+      fontWeight: '500',
+      color: c.text,
+    },
+    modalOptionTextActive: {
+      fontWeight: '700',
+      color: c.primary,
     },
   });

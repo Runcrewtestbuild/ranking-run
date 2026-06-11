@@ -29,6 +29,14 @@ interface CourseListState {
   currentPage: number;
   error: string | null;
 
+  // All courses (unified list for CourseListScreen)
+  allCourses: CourseListItem[];
+  isLoadingAll: boolean;
+  isLoadingMoreAll: boolean;
+  allHasNext: boolean;
+  allTotalCount: number;
+  allCurrentPage: number;
+
   // Filters
   filters: CourseListParams;
   viewMode: ViewMode;
@@ -66,6 +74,8 @@ interface CourseListState {
   setPendingStartCourseId: (id: string | null) => void;
   fetchCourses: (params?: CourseListParams) => Promise<void>;
   fetchMoreCourses: () => Promise<void>;
+  fetchAllCourses: (params: CourseListParams) => Promise<void>;
+  fetchMoreAllCourses: (params: CourseListParams) => Promise<void>;
   fetchNearbyCourses: (lat: number, lng: number) => Promise<void>;
   fetchPopularCourses: () => Promise<void>;
   fetchNewCourses: () => Promise<void>;
@@ -98,6 +108,13 @@ export const useCourseListStore = create<CourseListState>((set, get) => ({
   totalCount: 0,
   currentPage: 0,
   error: null,
+
+  allCourses: [],
+  isLoadingAll: false,
+  isLoadingMoreAll: false,
+  allHasNext: false,
+  allTotalCount: 0,
+  allCurrentPage: 0,
 
   filters: {
     order_by: 'total_runs',
@@ -183,6 +200,50 @@ export const useCourseListStore = create<CourseListState>((set, get) => ({
     } catch {
       set({ isLoadingMore: false });
       useToastStore.getState().showToast('error', '추가 코스를 불러올 수 없습니다');
+    }
+  },
+
+  fetchAllCourses: async (params: CourseListParams) => {
+    set({ isLoadingAll: true });
+    try {
+      const response = await courseService.getCourses({
+        ...params,
+        page: 0,
+        per_page: 20,
+      });
+      set({
+        allCourses: response.data,
+        allTotalCount: response.total_count,
+        allHasNext: response.has_next,
+        allCurrentPage: 0,
+        isLoadingAll: false,
+      });
+    } catch {
+      set({ isLoadingAll: false });
+    }
+  },
+
+  fetchMoreAllCourses: async (params: CourseListParams) => {
+    const { allHasNext, isLoadingMoreAll, allCurrentPage } = get();
+    if (!allHasNext || isLoadingMoreAll) return;
+
+    set({ isLoadingMoreAll: true });
+    const nextPage = allCurrentPage + 1;
+
+    try {
+      const response = await courseService.getCourses({
+        ...params,
+        page: nextPage,
+        per_page: 20,
+      });
+      set((state) => ({
+        allCourses: [...state.allCourses, ...response.data],
+        allHasNext: response.has_next,
+        allCurrentPage: nextPage,
+        isLoadingMoreAll: false,
+      }));
+    } catch {
+      set({ isLoadingMoreAll: false });
     }
   },
 
