@@ -7,7 +7,9 @@ import AuthStack from './AuthStack';
 import TabNavigator from './TabNavigator';
 import OnboardingScreen from '../screens/auth/OnboardingScreen';
 import { useTheme } from '../hooks/useTheme';
-import { ActivityIndicator, Alert, Linking, View, StatusBar } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Linking, View, StatusBar } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
+import { SECURE_STORE_KEYS } from '../utils/constants';
 import ToastContainer from '../components/common/ToastContainer';
 import {
   loadPersistedSession,
@@ -163,6 +165,31 @@ export default function RootNavigator() {
       useNetworkStore.getState().triggerSync();
     }
   }, [isLoading, isAuthenticated]);
+
+  // Refresh token when app comes back to foreground
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const subscription = AppState.addEventListener('change', async (nextState) => {
+      if (nextState !== 'active') return;
+
+      try {
+        const token = await SecureStore.getItemAsync(SECURE_STORE_KEYS.ACCESS_TOKEN);
+        if (!token) return;
+
+        const parts = token.split('.');
+        if (parts.length !== 3) return;
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+        if (payload.exp && payload.exp - Date.now() / 1000 < 600) {
+          await useAuthStore.getState().refreshAuth();
+        }
+      } catch {
+        // Decode/refresh failed — next API call handles it
+      }
+    });
+
+    return () => subscription.remove();
+  }, [isAuthenticated]);
 
   // --- Crash recovery: detect incomplete sessions on app start ---
   const checkCrashRecovery = useCallback(async () => {
