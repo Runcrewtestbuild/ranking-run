@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Image, StyleSheet } from 'react-native';
 import { useTheme } from '../../hooks/useTheme';
-import { MAPBOX_ACCESS_TOKEN, MAPBOX_DARK_STYLE, MAPBOX_LIGHT_STYLE } from '../../config/env';
+import { MAPBOX_ACCESS_TOKEN } from '../../config/env';
 
 
 interface CourseThumbnailMapProps {
@@ -73,9 +73,7 @@ export default React.memo(function CourseThumbnailMap({
 
     if (!routePreview || routePreview.length < 2 || !MAPBOX_ACCESS_TOKEN) return null;
 
-    const darkStyleId = MAPBOX_DARK_STYLE.replace('mapbox://styles/', '');
-    const lightStyleId = MAPBOX_LIGHT_STYLE.replace('mapbox://styles/', '');
-    const styleId = isDark ? darkStyleId : lightStyleId;
+    const styleId = isDark ? 'mapbox/dark-v11' : 'mapbox/light-v11';
 
     const pixelW = Math.min(Math.round(width * 2), 640);
     const pixelH = Math.min(Math.round(height * 2), 640);

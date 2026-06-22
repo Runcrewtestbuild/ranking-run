@@ -96,7 +96,7 @@ export default function RouteSnapshotGenerator({ forceRegenerate = false }: Rout
           const coursesResp = await courseService.getCourses({ per_page: 50 });
           for (const course of coursesResp.data) {
             if (itemsToProcess.length >= MAX_RUNS_PER_SESSION) break;
-            const needsUpgrade = !course.thumbnail_url || (course.thumbnail_url && course.thumbnail_url.includes('/thumbnails/'));
+            const needsUpgrade = !course.thumbnail_url || !course.thumbnail_url.includes('/snapshots/');
             if ((forceRegenerate || needsUpgrade) && course.route_preview && course.route_preview.length >= 2) {
               // Fetch full route_geometry from detail API
               try {
@@ -119,7 +119,7 @@ export default function RouteSnapshotGenerator({ forceRegenerate = false }: Rout
             if (!history.data || history.data.length === 0) break;
             for (const run of history.data) {
               if (itemsToProcess.length >= MAX_RUNS_PER_SESSION) break;
-              const needsUpgrade = !run.route_thumbnail_url || (run.route_thumbnail_url && run.route_thumbnail_url.includes('/thumbnails/'));
+              const needsUpgrade = !run.route_thumbnail_url || !run.route_thumbnail_url.includes('/snapshots/');
               if ((forceRegenerate || needsUpgrade) && run.route_preview && run.route_preview.length >= 2) {
                 // Fetch full route_geometry for accurate thumbnail (matches detail view)
                 try {
@@ -235,8 +235,8 @@ export default function RouteSnapshotGenerator({ forceRegenerate = false }: Rout
           console.log(`[RouteSnapshotGenerator] Captured snapshot for run ${currentRun.id}`);
         }
 
-        // Upload snapshot
-        const url = await runService.uploadRouteSnapshot(uri);
+        // Upload snapshot to snapshots/ folder (distinct from WorldScreen's images/ folder)
+        const url = await runService.uploadRouteSnapshot(uri, 'snapshot');
         if (!mountedRef.current) return;
 
         // Update record with thumbnail URL

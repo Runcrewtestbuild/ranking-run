@@ -107,7 +107,7 @@ export const runService = {
    * Upload a route snapshot image to the server.
    * Returns the public URL of the uploaded image.
    */
-  async uploadRouteSnapshot(fileUri: string): Promise<string> {
+  async uploadRouteSnapshot(fileUri: string, target: 'image' | 'snapshot' = 'image'): Promise<string> {
     const formData = new FormData();
     const filename = fileUri.split('/').pop() ?? 'route_snapshot.jpg';
     const match = /\.(\w+)$/.exec(filename);
@@ -121,7 +121,8 @@ export const runService = {
       type,
     } as unknown as Blob);
 
-    const result = await api.post<{ url: string }>('/uploads/image', formData);
+    const endpoint = target === 'snapshot' ? '/uploads/snapshot' : '/uploads/image';
+    const result = await api.post<{ url: string }>(endpoint, formData);
     return result.url;
   },
 
