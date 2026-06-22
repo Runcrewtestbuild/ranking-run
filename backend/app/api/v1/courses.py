@@ -214,7 +214,7 @@ async def update_course_thumbnail(
         raise NotFoundError(code="NOT_FOUND", message="Course not found")
     if course.creator_id != current_user.id:
         raise NotFoundError(code="NOT_FOUND", message="Course not found")
-    course.thumbnail_url = body.get("url")
+    course.thumbnail_url = body.get("url") or body.get("thumbnail_url")
     await db.commit()
     return {"ok": True}
 

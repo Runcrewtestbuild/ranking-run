@@ -241,7 +241,7 @@ export default function RouteSnapshotGenerator({ forceRegenerate = false }: Rout
 
         // Update record with thumbnail URL
         if (currentRun.type === 'course') {
-          await api.patch(`/courses/${currentRun.id}/thumbnail`, { thumbnail_url: url });
+          await api.patch(`/courses/${currentRun.id}/thumbnail`, { url });
         } else {
           await runService.updateRouteThumbnail(currentRun.id, url);
         }
