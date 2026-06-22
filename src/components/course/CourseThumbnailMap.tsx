@@ -68,8 +68,9 @@ export default React.memo(function CourseThumbnailMap({
   const bgColor = isDark ? '#1C1C1E' : '#F2F2F7';
 
   const imageUri = useMemo(() => {
-    // When a pre-captured snapshot URL is available, use it directly
-    if (thumbnailUrl) return thumbnailUrl;
+    // Only use snapshots/ prefix URLs (RouteSnapshotGenerator square 3D snapshots)
+    // Skip images/ prefix (WorldScreen portrait screenshots without route drawn)
+    if (thumbnailUrl && thumbnailUrl.includes('/snapshots/')) return thumbnailUrl;
 
     if (!routePreview || routePreview.length < 2 || !MAPBOX_ACCESS_TOKEN) return null;
 
