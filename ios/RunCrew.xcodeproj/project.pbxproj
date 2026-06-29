@@ -585,9 +585,17 @@
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
 						LastSwiftMigration = 1250;
+						DevelopmentTeam = "6Q5TZCGM35";
+						ProvisioningStyle = Automatic;
 					};
 					7910D078E6D3D3B4111A7372 = {
 						CreatedOnToolsVersion = 15.0;
+						DevelopmentTeam = "6Q5TZCGM35";
+						ProvisioningStyle = Automatic;
+					};
+					333B31858795D2D5FEF6DC9B = {
+						DevelopmentTeam = "6Q5TZCGM35";
+						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -913,7 +921,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 6Q5TZCGM35;
+				DEVELOPMENT_TEAM = "6Q5TZCGM35";
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
@@ -952,7 +960,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 6Q5TZCGM35;
+				DEVELOPMENT_TEAM = "6Q5TZCGM35";
 				INFOPLIST_FILE = RunCrew/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1001,6 +1009,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
 				WATCHOS_DEPLOYMENT_TARGET = 9.0;
+				DEVELOPMENT_TEAM = "6Q5TZCGM35";
 			};
 			name = Release;
 		};
@@ -1031,6 +1040,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
 				WATCHOS_DEPLOYMENT_TARGET = 9.0;
+				DEVELOPMENT_TEAM = "6Q5TZCGM35";
 			};
 			name = Debug;
 		};
@@ -1197,6 +1207,8 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 				VALIDATE_PRODUCT = YES;
+				DEVELOPMENT_TEAM = "6Q5TZCGM35";
+				CODE_SIGN_IDENTITY = "Apple Development";
 			};
 			name = Release;
 		};
@@ -1226,6 +1238,8 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
+				DEVELOPMENT_TEAM = "6Q5TZCGM35";
+				CODE_SIGN_IDENTITY = "Apple Development";
 			};
 			name = Debug;
 		};

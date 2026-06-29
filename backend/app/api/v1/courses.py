@@ -66,6 +66,10 @@ async def create_course(
         run_record_id=UUID(body.run_record_id),
     )
 
+    # Generate route thumbnail server-side
+    from app.tasks.thumbnail import generate_course_thumbnail
+    background_tasks.add_task(generate_course_thumbnail, course.id)
+
     matched = getattr(course, '_matched_coordinates', None)
     matched_route = [[c[0], c[1]] for c in matched] if matched else None
 
@@ -197,6 +201,17 @@ async def get_course_detail(
         checkpoints=detail.get("checkpoints"),
         dominion=CourseDominionBrief(**detail["dominion"]) if detail.get("dominion") else None,
     )
+
+
+@router.post("/thumbnails/backfill")
+async def backfill_thumbnails(
+    current_user: CurrentUser,
+    background_tasks: BackgroundTasks,
+):
+    """Generate thumbnails for all runs/courses missing snapshots/. Admin only."""
+    from app.tasks.thumbnail import backfill_thumbnails as do_backfill
+    background_tasks.add_task(do_backfill)
+    return {"status": "started"}
 
 
 @router.patch("/{course_id}/thumbnail")

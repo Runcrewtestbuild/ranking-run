@@ -179,12 +179,14 @@ export default function RootNavigator() {
 
         const parts = token.split('.');
         if (parts.length !== 3) return;
-        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+        let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        b64 += '='.repeat((4 - (b64.length % 4)) % 4);
+        const payload = JSON.parse(atob(b64));
         if (payload.exp && payload.exp - Date.now() / 1000 < 600) {
           await useAuthStore.getState().refreshAuth();
         }
       } catch {
-        // Decode/refresh failed — next API call handles it
+        await useAuthStore.getState().refreshAuth();
       }
     });
 

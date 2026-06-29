@@ -459,19 +459,13 @@ const OverlayCard = React.memo(function OverlayCard({
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {thumbnailUrl || (routePreview && routePreview.length >= 2) ? (
-        <CourseThumbnailMap
-          routePreview={routePreview}
-          thumbnailUrl={thumbnailUrl}
-          width={OVERLAY_CARD_WIDTH}
-          height={OVERLAY_CARD_HEIGHT}
-          borderRadius={BORDER_RADIUS.md}
-        />
-      ) : (
-        <View style={styles.overlayCardPlaceholder}>
-          <Ionicons name="map-outline" size={32} color={colors.textTertiary} />
-        </View>
-      )}
+      <CourseThumbnailMap
+        routePreview={routePreview}
+        thumbnailUrl={thumbnailUrl}
+        width={OVERLAY_CARD_WIDTH}
+        height={OVERLAY_CARD_HEIGHT}
+        borderRadius={BORDER_RADIUS.md}
+      />
       <View style={styles.overlayCardInfo}>
         <Text style={styles.overlayCardTitle} numberOfLines={1}>{title}</Text>
         <Text style={styles.overlayCardMeta}>
@@ -502,19 +496,13 @@ const CourseRowCard = React.memo(function CourseRowCard({
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {course.thumbnail_url || (course.route_preview && course.route_preview.length >= 2) ? (
-        <CourseThumbnailMap
-          routePreview={course.route_preview ?? []}
-          thumbnailUrl={course.thumbnail_url}
-          width={ROW_THUMB_SIZE}
-          height={ROW_THUMB_SIZE}
-          borderRadius={BORDER_RADIUS.sm}
-        />
-      ) : (
-        <View style={[styles.rowThumb, styles.rowThumbPlaceholder]}>
-          <Ionicons name="map-outline" size={22} color={colors.textTertiary} />
-        </View>
-      )}
+      <CourseThumbnailMap
+        routePreview={course.route_preview}
+        thumbnailUrl={course.thumbnail_url}
+        width={ROW_THUMB_SIZE}
+        height={ROW_THUMB_SIZE}
+        borderRadius={BORDER_RADIUS.sm}
+      />
       <View style={styles.rowContent}>
         <Text style={styles.rowTitle} numberOfLines={1}>{course.title}</Text>
         <Text style={styles.vCardMeta}>

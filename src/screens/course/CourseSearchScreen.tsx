@@ -102,20 +102,13 @@ const CourseRowCard = React.memo(function CourseRowCard({
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {/* Thumbnail */}
-      {course.thumbnail_url || (course.route_preview && course.route_preview.length >= 2) ? (
-        <CourseThumbnailMap
-          routePreview={course.route_preview ?? []}
-          thumbnailUrl={course.thumbnail_url}
-          width={THUMBNAIL_SIZE}
-          height={THUMBNAIL_SIZE}
-          borderRadius={BORDER_RADIUS.sm}
-        />
-      ) : (
-        <View style={[styles.rowThumbnail, styles.rowThumbnailPlaceholder]}>
-          <Ionicons name="map-outline" size={28} color={colors.textTertiary} />
-        </View>
-      )}
+      <CourseThumbnailMap
+        routePreview={course.route_preview}
+        thumbnailUrl={course.thumbnail_url}
+        width={THUMBNAIL_SIZE}
+        height={THUMBNAIL_SIZE}
+        borderRadius={BORDER_RADIUS.sm}
+      />
 
       {/* Info */}
       <View style={styles.rowInfo}>

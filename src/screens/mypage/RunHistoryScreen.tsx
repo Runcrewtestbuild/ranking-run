@@ -146,22 +146,15 @@ export default function RunHistoryScreen() {
         activeOpacity={0.7}
       >
         <View style={styles.runCardInner}>
-          {/* Route thumbnail or accent bar */}
-          {run.route_thumbnail_url || (run.route_preview && run.route_preview.length >= 2) ? (
-            <View style={styles.routeThumb}>
-              <CourseThumbnailMap
-                routePreview={run.route_preview ?? []}
-                thumbnailUrl={run.route_thumbnail_url}
-                width={56}
-                height={56}
-                borderRadius={8}
-              />
-            </View>
-          ) : (
-            <View style={styles.routeThumbPlaceholder}>
-              <Ionicons name="footsteps" size={20} color={colors.textTertiary} />
-            </View>
-          )}
+          <View style={styles.routeThumb}>
+            <CourseThumbnailMap
+              routePreview={run.route_preview}
+              thumbnailUrl={run.route_thumbnail_url}
+              width={56}
+              height={56}
+              borderRadius={8}
+            />
+          </View>
           <View style={styles.runBody}>
             <View style={styles.runHeader}>
               <Text style={styles.runTitle} numberOfLines={1}>

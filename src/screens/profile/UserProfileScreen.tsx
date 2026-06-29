@@ -268,19 +268,13 @@ const CourseCard = React.memo(function CourseCard({
       onPress={onPress}
       activeOpacity={0.7}
     >
-      {course.thumbnail_url || (course.route_preview && course.route_preview.length >= 2) ? (
-        <CourseThumbnailMap
-          routePreview={course.route_preview ?? []}
-          thumbnailUrl={course.thumbnail_url}
-          width={56}
-          height={56}
-          borderRadius={8}
-        />
-      ) : (
-        <View style={[styles.courseThumbnail, styles.courseThumbnailFallback]}>
-          <Ionicons name="map-outline" size={24} color={colors.textTertiary} />
-        </View>
-      )}
+      <CourseThumbnailMap
+        routePreview={course.route_preview}
+        thumbnailUrl={course.thumbnail_url}
+        width={56}
+        height={56}
+        borderRadius={8}
+      />
       <View style={styles.courseInfo}>
         <Text style={styles.courseTitle} numberOfLines={1}>{course.title}</Text>
         <Text style={styles.courseDistance}>{formatDistance(course.distance_meters)}</Text>

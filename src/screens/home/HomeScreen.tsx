@@ -631,18 +631,12 @@ export default function HomeScreen() {
                     activeOpacity={0.7}
                     onPress={() => navigation.navigate('CourseDetail', { courseId: course.id })}
                   >
-                    {course.thumbnail_url || (course.route_preview && course.route_preview.length >= 2) ? (
-                      <CourseThumbnailMap
-                        routePreview={course.route_preview ?? []}
-                        thumbnailUrl={course.thumbnail_url}
-                        width={160}
-                        height={90}
-                      />
-                    ) : (
-                      <View style={[styles.favThumbnail, styles.favThumbnailPlaceholder]}>
-                        <Ionicons name="map-outline" size={24} color={colors.textTertiary} />
-                      </View>
-                    )}
+                    <CourseThumbnailMap
+                      routePreview={course.route_preview}
+                      thumbnailUrl={course.thumbnail_url}
+                      width={160}
+                      height={90}
+                    />
                     <View style={styles.favInfo}>
                       <Text style={styles.favName} numberOfLines={1}>{course.title}</Text>
                       <Text style={styles.favMeta}>
@@ -879,19 +873,13 @@ export default function HomeScreen() {
                     activeOpacity={0.7}
                   >
                     <View style={styles.recentRunInner}>
-                      {run.route_thumbnail_url || (run.route_preview && run.route_preview.length >= 2) ? (
-                        <CourseThumbnailMap
-                          routePreview={run.route_preview ?? []}
-                          thumbnailUrl={run.route_thumbnail_url}
-                          width={80}
-                          height={80}
-                          borderRadius={10}
-                        />
-                      ) : (
-                        <View style={styles.recentRunIconPlaceholder}>
-                          <Ionicons name="footsteps" size={20} color={colors.textTertiary} />
-                        </View>
-                      )}
+                      <CourseThumbnailMap
+                        routePreview={run.route_preview}
+                        thumbnailUrl={run.route_thumbnail_url}
+                        width={80}
+                        height={80}
+                        borderRadius={10}
+                      />
                       <View style={styles.recentRunBody}>
                         <View style={styles.recentRunHeader}>
                           <Text style={styles.recentRunTitle} numberOfLines={1}>

@@ -1,19 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import { View, Image, StyleSheet } from 'react-native';
+import { Ionicons } from '../../lib/icons';
 import { useTheme } from '../../hooks/useTheme';
 import { MAPBOX_ACCESS_TOKEN } from '../../config/env';
 
-
 interface CourseThumbnailMapProps {
-  routePreview: number[][]; // [[lng, lat], ...]
+  routePreview?: number[][] | null;
   width: number;
   height: number;
   borderRadius?: number;
-  /** Pre-captured route snapshot URL. When provided, displayed instead of the Mapbox Static API image. */
   thumbnailUrl?: string | null;
 }
 
-/** Downsample points array to at most maxPts, keeping first and last. */
 function downsample(pts: number[][], maxPts: number): number[][] {
   if (pts.length <= maxPts) return pts;
   const step = (pts.length - 1) / (maxPts - 1);
@@ -25,7 +23,6 @@ function downsample(pts: number[][], maxPts: number): number[][] {
   return result;
 }
 
-/** Build a Mapbox Static Images API URL with a GeoJSON line overlay. */
 function buildStaticMapUrl(
   pts: number[][],
   styleId: string,
@@ -52,9 +49,11 @@ function buildStaticMapUrl(
 }
 
 /**
- * Route thumbnail using Mapbox Static Images API.
- * Renders a real map background with the route overlaid, but as a plain
- * <Image> — zero GPU/memory overhead unlike a full MapView.
+ * Route thumbnail display.
+ * - Dark mode + RSG snapshot exists → RSG 3D snapshot
+ * - Dark mode + no snapshot → Mapbox Static API dark-v11
+ * - Light mode → Mapbox Static API light-v11
+ * - No route data → placeholder icon
  */
 export default React.memo(function CourseThumbnailMap({
   routePreview,
@@ -68,22 +67,25 @@ export default React.memo(function CourseThumbnailMap({
   const bgColor = isDark ? '#1C1C1E' : '#F2F2F7';
 
   const imageUri = useMemo(() => {
-    // Only use snapshots/ prefix URLs (RouteSnapshotGenerator square 3D snapshots)
-    // Skip images/ prefix (WorldScreen portrait screenshots without route drawn)
-    if (thumbnailUrl && thumbnailUrl.includes('/snapshots/')) return thumbnailUrl;
+    const hasSnapshot = thumbnailUrl && thumbnailUrl.includes('/snapshots/');
 
-    if (!routePreview || routePreview.length < 2 || !MAPBOX_ACCESS_TOKEN) return null;
+    // Dark mode: prefer RSG 3D snapshot
+    if (isDark && hasSnapshot) return thumbnailUrl;
+
+    // Static API fallback (theme-aware)
+    if (!routePreview || routePreview.length < 2 || !MAPBOX_ACCESS_TOKEN) {
+      // No route data — use snapshot if available regardless of theme
+      if (hasSnapshot) return thumbnailUrl;
+      return null;
+    }
 
     const styleId = isDark ? 'mapbox/dark-v11' : 'mapbox/light-v11';
-
     const pixelW = Math.min(Math.round(width * 2), 640);
     const pixelH = Math.min(Math.round(height * 2), 640);
 
-    // First attempt: 100 points, 5 decimal places for better route detail
     let pts = downsample(routePreview, 100);
     let url = buildStaticMapUrl(pts, styleId, pixelW, pixelH, 5);
 
-    // If URL too long, progressively reduce points and precision
     if (url.length > 8000) {
       pts = downsample(routePreview, 60);
       url = buildStaticMapUrl(pts, styleId, pixelW, pixelH, 5);
@@ -99,7 +101,11 @@ export default React.memo(function CourseThumbnailMap({
   const [failed, setFailed] = useState(false);
 
   if (!imageUri || failed) {
-    return <View style={[styles.container, { width, height, borderRadius, backgroundColor: bgColor }]} />;
+    return (
+      <View style={[styles.container, styles.placeholder, { width, height, borderRadius, backgroundColor: bgColor }]}>
+        <Ionicons name="map-outline" size={Math.min(width, height) * 0.25} color={colors.textTertiary} />
+      </View>
+    );
   }
 
   return (
@@ -117,5 +123,9 @@ export default React.memo(function CourseThumbnailMap({
 const styles = StyleSheet.create({
   container: {
     overflow: 'hidden',
+  },
+  placeholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

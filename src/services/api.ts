@@ -109,8 +109,9 @@ function decodeJwtPayload(token: string): { exp?: number } | null {
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return null;
-    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    return JSON.parse(atob(payload));
+    let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    b64 += '='.repeat((4 - (b64.length % 4)) % 4);
+    return JSON.parse(atob(b64));
   } catch {
     return null;
   }

@@ -194,6 +194,10 @@ async def complete_run_session(
         distance_meters=run_record.distance_meters,
     )
 
+    # Generate route thumbnail server-side
+    from app.tasks.thumbnail import generate_run_thumbnail
+    background_tasks.add_task(generate_run_thumbnail, run_record.id)
+
     # Notify followers about run completion
     background_tasks.add_task(
         notify_followers_run_completed,

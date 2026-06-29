@@ -1,7 +1,12 @@
-"""Background task: course thumbnail generation via Mapbox Static Images API."""
+"""Background task: route thumbnail generation via Mapbox Static Images API.
 
-import asyncio
+Generates dark-v11 style thumbnails for runs and courses.
+Uploads to S3 snapshots/ folder.
+"""
+
+import json
 import logging
+import urllib.parse
 from uuid import UUID
 
 import httpx
@@ -12,52 +17,117 @@ from app.core.config import get_settings
 from app.core.storage import get_storage
 from app.db.session import async_session_factory
 from app.models.course import Course
+from app.models.run_record import RunRecord
 
 logger = logging.getLogger(__name__)
 
-settings = get_settings()
-
-# Mapbox Static Images API
-MAPBOX_STATIC_URL = "https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/static"
-THUMBNAIL_WIDTH = 600
-THUMBNAIL_HEIGHT = 300
+STYLE = "mapbox/dark-v11"
+IMG_SIZE = 640
 
 
-def _build_geojson_overlay(coords: list[tuple[float, float]]) -> str:
-    """Build a Mapbox GeoJSON overlay string for the route polyline.
+def _simplify(coords: list, max_pts: int = 80) -> list:
+    if len(coords) <= max_pts:
+        return coords
+    step = (len(coords) - 1) / (max_pts - 1)
+    result = [coords[int(i * step)] for i in range(max_pts - 1)]
+    result.append(coords[-1])
+    return result
 
-    Simplify coordinates if too many (URL length limit ~8000 chars).
-    """
-    # Simplify: keep at most 100 points evenly sampled
-    if len(coords) > 100:
-        step = len(coords) / 100
-        simplified = [coords[int(i * step)] for i in range(100)]
-        simplified.append(coords[-1])  # Always include last point
-        coords = simplified
 
-    coord_str = ",".join(f"[{lng},{lat}]" for lng, lat in coords)
-
-    return (
-        f"geojson({{\"type\":\"Feature\",\"geometry\":{{\"type\":\"LineString\","
-        f"\"coordinates\":[{coord_str}]}},\"properties\":{{\"stroke\":\"#FFC800\","
-        f"\"stroke-width\":5,\"stroke-opacity\":0.9}}}})"
+def _build_url(coords: list, token: str) -> str | None:
+    pts = _simplify(coords, 80)
+    geojson = json.dumps({
+        "type": "Feature",
+        "properties": {"stroke": "#FFD600", "stroke-width": 5, "stroke-opacity": 1},
+        "geometry": {
+            "type": "LineString",
+            "coordinates": [[round(c[0], 5), round(c[1], 5)] for c in pts],
+        },
+    }, separators=(",", ":"))
+    encoded = urllib.parse.quote(geojson)
+    url = (
+        f"https://api.mapbox.com/styles/v1/{STYLE}/static/"
+        f"geojson({encoded})/auto/{IMG_SIZE}x{IMG_SIZE}@2x"
+        f"?padding=60&logo=false&attribution=false&access_token={token}"
     )
+    if len(url) > 8192:
+        pts = _simplify(coords, 40)
+        geojson = json.dumps({
+            "type": "Feature",
+            "properties": {"stroke": "#FFD600", "stroke-width": 5, "stroke-opacity": 1},
+            "geometry": {
+                "type": "LineString",
+                "coordinates": [[round(c[0], 4), round(c[1], 4)] for c in pts],
+            },
+        }, separators=(",", ":"))
+        encoded = urllib.parse.quote(geojson)
+        url = (
+            f"https://api.mapbox.com/styles/v1/{STYLE}/static/"
+            f"geojson({encoded})/auto/{IMG_SIZE}x{IMG_SIZE}@2x"
+            f"?padding=60&logo=false&attribution=false&access_token={token}"
+        )
+    return url
+
+
+async def _fetch_and_upload(url: str) -> str | None:
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(url)
+    if resp.status_code != 200:
+        logger.warning("Mapbox returned %d", resp.status_code)
+        return None
+    if len(resp.content) < 5000:
+        logger.warning("Image too small (%d bytes), likely empty", len(resp.content))
+        return None
+    storage = get_storage()
+    return await storage.upload(data=resp.content, folder="snapshots", extension=".png")
+
+
+def _extract_coords(geometry) -> list | None:
+    try:
+        shape = to_shape(geometry)
+        coords = list(shape.coords)
+        if len(coords) < 2:
+            return None
+        return [[c[0], c[1]] for c in coords]
+    except Exception:
+        return None
+
+
+async def generate_run_thumbnail(run_record_id: UUID) -> None:
+    settings = get_settings()
+    if not settings.MAPBOX_ACCESS_TOKEN:
+        return
+
+    try:
+        async with async_session_factory() as db:
+            result = await db.execute(
+                select(RunRecord).where(RunRecord.id == run_record_id)
+            )
+            record = result.scalar_one_or_none()
+            if not record or not record.route_geometry:
+                return
+
+            coords = _extract_coords(record.route_geometry)
+            if not coords:
+                return
+
+            url = _build_url(coords, settings.MAPBOX_ACCESS_TOKEN)
+            if not url:
+                return
+
+            s3_url = await _fetch_and_upload(url)
+            if s3_url:
+                record.route_thumbnail_url = s3_url
+                await db.commit()
+                logger.info("Thumbnail generated for run %s", run_record_id)
+    except Exception:
+        logger.exception("Failed to generate thumbnail for run %s", run_record_id)
 
 
 async def generate_course_thumbnail(course_id: UUID) -> None:
-    """Generate a thumbnail image for a course using Mapbox Static Images API.
-
-    1. Fetch route_geometry from DB
-    2. Build Mapbox Static Images URL with GeoJSON overlay
-    3. Download the image
-    4. Upload to storage (local or S3)
-    5. Update course.thumbnail_url in DB
-    """
+    settings = get_settings()
     if not settings.MAPBOX_ACCESS_TOKEN:
-        logger.warning("MAPBOX_ACCESS_TOKEN not set, skipping thumbnail for course %s", course_id)
         return
-
-    await asyncio.sleep(3)
 
     try:
         async with async_session_factory() as db:
@@ -65,56 +135,85 @@ async def generate_course_thumbnail(course_id: UUID) -> None:
                 select(Course).where(Course.id == course_id)
             )
             course = result.scalar_one_or_none()
-
-            if course is None:
-                logger.warning("Course %s not found for thumbnail generation", course_id)
+            if not course or not course.route_geometry:
                 return
 
-            if course.route_geometry is None:
-                logger.warning("Course %s has no route geometry", course_id)
+            coords = _extract_coords(course.route_geometry)
+            if not coords:
                 return
 
-            # Extract coordinates from PostGIS geometry
-            shape = to_shape(course.route_geometry)
-            coords = list(shape.coords)  # [(lng, lat), ...]
-
-            if len(coords) < 2:
-                logger.warning("Course %s has insufficient coordinates (%d)", course_id, len(coords))
+            url = _build_url(coords, settings.MAPBOX_ACCESS_TOKEN)
+            if not url:
                 return
 
-            # Build Mapbox Static Images URL
-            overlay = _build_geojson_overlay(coords)
-            url = (
-                f"{MAPBOX_STATIC_URL}/{overlay}/auto/"
-                f"{THUMBNAIL_WIDTH}x{THUMBNAIL_HEIGHT}@2x"
-                f"?access_token={settings.MAPBOX_ACCESS_TOKEN}"
-                f"&padding=50"
-            )
-
-            # Download the image
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, timeout=30.0)
-
-            if response.status_code != 200:
-                logger.error(
-                    "Mapbox Static API returned %d for course %s: %s",
-                    response.status_code, course_id, response.text[:200],
-                )
-                return
-
-            # Upload to storage
-            storage = get_storage()
-            thumbnail_url = await storage.upload(
-                data=response.content,
-                folder="thumbnails",
-                extension=".png",
-            )
-
-            # Update course record
-            course.thumbnail_url = thumbnail_url
-            await db.commit()
-
-            logger.info("Thumbnail generated for course %s: %s", course_id, thumbnail_url)
-
+            s3_url = await _fetch_and_upload(url)
+            if s3_url:
+                course.thumbnail_url = s3_url
+                await db.commit()
+                logger.info("Thumbnail generated for course %s", course_id)
     except Exception:
         logger.exception("Failed to generate thumbnail for course %s", course_id)
+
+
+async def backfill_thumbnails() -> dict:
+    """Generate thumbnails for all runs/courses missing snapshots/ prefix."""
+    settings = get_settings()
+    if not settings.MAPBOX_ACCESS_TOKEN:
+        return {"error": "MAPBOX_ACCESS_TOKEN not set"}
+
+    stats = {"courses": 0, "runs": 0, "errors": 0}
+
+    try:
+        async with async_session_factory() as db:
+            # Courses
+            result = await db.execute(
+                select(Course).where(
+                    (Course.thumbnail_url.is_(None)) |
+                    (~Course.thumbnail_url.contains("/snapshots/"))
+                )
+            )
+            for course in result.scalars().all():
+                coords = _extract_coords(course.route_geometry) if course.route_geometry else None
+                if not coords:
+                    continue
+                try:
+                    url = _build_url(coords, settings.MAPBOX_ACCESS_TOKEN)
+                    if not url:
+                        continue
+                    s3_url = await _fetch_and_upload(url)
+                    if s3_url:
+                        course.thumbnail_url = s3_url
+                        stats["courses"] += 1
+                except Exception:
+                    stats["errors"] += 1
+            await db.commit()
+
+            # Runs
+            result = await db.execute(
+                select(RunRecord).where(
+                    (RunRecord.route_thumbnail_url.is_(None)) |
+                    (~RunRecord.route_thumbnail_url.contains("/snapshots/"))
+                )
+            )
+            for record in result.scalars().all():
+                coords = _extract_coords(record.route_geometry) if record.route_geometry else None
+                if not coords:
+                    continue
+                try:
+                    url = _build_url(coords, settings.MAPBOX_ACCESS_TOKEN)
+                    if not url:
+                        continue
+                    s3_url = await _fetch_and_upload(url)
+                    if s3_url:
+                        record.route_thumbnail_url = s3_url
+                        stats["runs"] += 1
+                except Exception:
+                    stats["errors"] += 1
+            await db.commit()
+
+    except Exception:
+        logger.exception("Backfill failed")
+        stats["errors"] += 1
+
+    logger.info("Backfill complete: %s", stats)
+    return stats
