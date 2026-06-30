@@ -47,6 +47,7 @@ export interface RunSummary {
   avgPaceSecondsPerKm: number;
   routePreview: [number, number][];
   thumbnailUrl: string | null;
+  thumbnailUrlLight: string | null;
 }
 
 export interface FeedActivity {

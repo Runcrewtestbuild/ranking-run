@@ -201,6 +201,7 @@ export interface CourseListItem {
   id: string;
   title: string;
   thumbnail_url: string | null;
+  thumbnail_url_light?: string | null;
   route_preview: number[][] | null;
   distance_meters: number;
   estimated_duration_seconds: number;
@@ -235,6 +236,7 @@ export interface NearbyCourse {
   id: string;
   title: string;
   thumbnail_url: string | null;
+  thumbnail_url_light?: string | null;
   route_preview: number[][] | null;
   distance_meters: number;
   estimated_duration_seconds: number;
@@ -315,6 +317,7 @@ export interface CourseDetail {
   elevation_gain_meters: number;
   elevation_profile: number[];
   thumbnail_url: string | null;
+  thumbnail_url_light?: string | null;
   is_public: boolean;
   created_at: string;
   creator: CourseCreator;
@@ -355,6 +358,7 @@ export interface CourseCreateResponse {
   title: string;
   distance_meters: number;
   thumbnail_url: string | null;
+  thumbnail_url_light?: string | null;
   share_url: string | null;
   matched_route: number[][] | null;
   created_at: string;
@@ -366,6 +370,7 @@ export interface MyCourse {
   description: string | null;
   distance_meters: number;
   thumbnail_url: string | null;
+  thumbnail_url_light?: string | null;
   is_public: boolean;
   course_type: 'normal' | 'loop' | null;
   lap_count: number | null;
@@ -718,6 +723,7 @@ export interface RunCompleteResponse {
   course_streak?: number;
   map_matching_confidence?: number;
   route_thumbnail_url?: string | null;
+  route_thumbnail_url_light?: string | null;
 }
 
 // ---- Run Records ----
@@ -745,6 +751,7 @@ export interface RecentRun {
   } | null;
   route_preview?: number[][] | null;
   route_thumbnail_url?: string | null;
+  route_thumbnail_url_light?: string | null;
   goal_data?: RunGoalData | null;
 }
 
@@ -763,6 +770,7 @@ export interface RunHistoryItem {
   device_model?: string | null;
   route_preview?: number[][] | null;
   route_thumbnail_url?: string | null;
+  route_thumbnail_url_light?: string | null;
   goal_data?: RunGoalData | null;
 }
 
@@ -798,6 +806,7 @@ export interface RunRecordDetail {
     ranking_at_time: number | null;
   };
   route_thumbnail_url?: string | null;
+  route_thumbnail_url_light?: string | null;
   goal_data?: RunGoalData | null;
 }
 
@@ -847,6 +856,7 @@ export interface FavoriteCourseItem {
   id: string;
   title: string;
   thumbnail_url: string | null;
+  thumbnail_url_light?: string | null;
   route_preview?: number[][] | null;
   distance_meters: number;
   estimated_duration_seconds: number;
@@ -875,6 +885,7 @@ export interface PublicProfileCourse {
   title: string;
   distance_meters: number;
   thumbnail_url: string | null;
+  thumbnail_url_light?: string | null;
   route_preview: number[][] | null;
   total_runs: number;
   like_count: number;

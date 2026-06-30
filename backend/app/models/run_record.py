@@ -122,8 +122,9 @@ class RunRecord(Base, UUIDPrimaryKeyMixin):
         nullable=False,
     )
 
-    # Route snapshot thumbnail (uploaded from client after run)
+    # Route snapshot thumbnails (server-generated via Mapbox Static API)
     route_thumbnail_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    route_thumbnail_url_light: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # Relationships
     user: Mapped["User"] = relationship("User", lazy="joined")

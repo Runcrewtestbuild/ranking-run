@@ -269,8 +269,8 @@ const CourseCard = React.memo(function CourseCard({
       activeOpacity={0.7}
     >
       <CourseThumbnailMap
-        routePreview={course.route_preview}
         thumbnailUrl={course.thumbnail_url}
+        thumbnailUrlLight={course.thumbnail_url_light}
         width={56}
         height={56}
         borderRadius={8}

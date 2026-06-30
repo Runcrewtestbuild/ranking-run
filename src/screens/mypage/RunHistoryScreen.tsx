@@ -148,8 +148,8 @@ export default function RunHistoryScreen() {
         <View style={styles.runCardInner}>
           <View style={styles.routeThumb}>
             <CourseThumbnailMap
-              routePreview={run.route_preview}
               thumbnailUrl={run.route_thumbnail_url}
+              thumbnailUrlLight={run.route_thumbnail_url_light}
               width={56}
               height={56}
               borderRadius={8}

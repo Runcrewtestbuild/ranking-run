@@ -195,6 +195,7 @@ class RunCompleteRequest(BaseModel):
     uploaded_chunk_sequences: list[int] = []
 
     route_thumbnail_url: str | None = None
+    route_thumbnail_url_light: str | None = None
 
 
 class RankingInfo(BaseModel):
@@ -224,6 +225,7 @@ class RunCompleteResponse(BaseModel):
     course_streak: int | None = None
     map_matching_confidence: float | None = None
     route_thumbnail_url: str | None = None
+    route_thumbnail_url_light: str | None = None
 
 
 # --- Run Recover ---
@@ -277,6 +279,7 @@ class RunRecordDetail(BaseModel):
     course: RunCourseInfo | None = None
     course_completion: RunCourseCompletion | None = None
     route_thumbnail_url: str | None = None
+    route_thumbnail_url_light: str | None = None
     goal_data: dict | None = None
 
 
@@ -294,6 +297,7 @@ class RunHistoryItem(BaseModel):
     device_model: str | None = None
     route_preview: list[list[float]] | None = None
     route_thumbnail_url: str | None = None
+    route_thumbnail_url_light: str | None = None
     goal_data: dict | None = None
 
 
@@ -314,6 +318,7 @@ class RecentRun(BaseModel):
     finished_at: datetime
     course: RunCourseInfo | None = None
     route_thumbnail_url: str | None = None
+    route_thumbnail_url_light: str | None = None
     goal_data: dict | None = None
 
 

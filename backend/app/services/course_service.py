@@ -333,6 +333,9 @@ class CourseService:
 
         if source_run.route_thumbnail_url:
             course.thumbnail_url = source_run.route_thumbnail_url
+        if source_run.route_thumbnail_url_light:
+            course.thumbnail_url_light = source_run.route_thumbnail_url_light
+        if source_run.route_thumbnail_url or source_run.route_thumbnail_url_light:
             await db.flush()
 
         # Generate checkpoints (500m interval, skip if < 1km)
@@ -426,6 +429,7 @@ class CourseService:
             "elevation_gain_meters": course.elevation_gain_meters,
             "elevation_profile": course.elevation_profile,
             "thumbnail_url": get_thumbnail_url_for_course(course),
+            "thumbnail_url_light": course.thumbnail_url_light,
             "is_public": course.is_public,
             "created_at": course.created_at,
             "creator": creator_info,
@@ -610,6 +614,7 @@ class CourseService:
                 "id": str(course.id),
                 "title": course.title,
                 "thumbnail_url": get_thumbnail_url_for_course(course),
+                "thumbnail_url_light": course.thumbnail_url_light,
                 "route_preview": get_route_preview(course),
                 "distance_meters": course.distance_meters,
                 "estimated_duration_seconds": course.estimated_duration_seconds,
@@ -662,6 +667,7 @@ class CourseService:
                 "id": str(course.id),
                 "title": course.title,
                 "thumbnail_url": get_thumbnail_url_for_course(course),
+                "thumbnail_url_light": course.thumbnail_url_light,
                 "route_preview": get_route_preview(course),
                 "distance_meters": course.distance_meters,
                 "estimated_duration_seconds": course.estimated_duration_seconds,

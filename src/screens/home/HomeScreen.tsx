@@ -632,8 +632,8 @@ export default function HomeScreen() {
                     onPress={() => navigation.navigate('CourseDetail', { courseId: course.id })}
                   >
                     <CourseThumbnailMap
-                      routePreview={course.route_preview}
                       thumbnailUrl={course.thumbnail_url}
+                      thumbnailUrlLight={course.thumbnail_url_light}
                       width={160}
                       height={90}
                     />
@@ -874,8 +874,8 @@ export default function HomeScreen() {
                   >
                     <View style={styles.recentRunInner}>
                       <CourseThumbnailMap
-                        routePreview={run.route_preview}
                         thumbnailUrl={run.route_thumbnail_url}
+                        thumbnailUrlLight={run.route_thumbnail_url_light}
                         width={80}
                         height={80}
                         borderRadius={10}

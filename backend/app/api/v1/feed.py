@@ -101,6 +101,7 @@ def _build_run_summary(run_record) -> RunSummary | None:
         avg_pace_seconds_per_km=run_record.avg_pace_seconds_per_km,
         course_title=course_title,
         route_thumbnail_url=run_record.route_thumbnail_url,
+        route_thumbnail_url_light=run_record.route_thumbnail_url_light,
         route_preview=route_preview,
     )
 

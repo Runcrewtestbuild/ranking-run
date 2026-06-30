@@ -24,6 +24,7 @@ class RunSummary(BaseModel):
     avg_pace_seconds_per_km: int | None = None
     course_title: str | None = None
     route_thumbnail_url: str | None = None
+    route_thumbnail_url_light: str | None = None
     route_preview: list[list[float]] | None = None  # [[lng, lat], ...] simplified
 
 

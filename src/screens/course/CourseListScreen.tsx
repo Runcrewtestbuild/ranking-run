@@ -306,6 +306,7 @@ export default function CourseListScreen() {
               totalRuns={course.total_runs ?? 0}
               routePreview={course.route_preview ?? []}
               thumbnailUrl={course.thumbnail_url}
+              thumbnailUrlLight={course.thumbnail_url_light}
               onPress={() => handleCoursePress(course.id)}
             />
           ))}
@@ -438,6 +439,7 @@ interface OverlayCardProps {
   totalRuns: number;
   routePreview: number[][];
   thumbnailUrl?: string | null;
+  thumbnailUrlLight?: string | null;
   onPress: () => void;
 }
 
@@ -445,8 +447,8 @@ const OverlayCard = React.memo(function OverlayCard({
   title,
   distanceMeters,
   totalRuns,
-  routePreview,
   thumbnailUrl,
+  thumbnailUrlLight,
   onPress,
 }: OverlayCardProps) {
   const { t } = useTranslation();
@@ -460,8 +462,8 @@ const OverlayCard = React.memo(function OverlayCard({
       activeOpacity={0.7}
     >
       <CourseThumbnailMap
-        routePreview={routePreview}
         thumbnailUrl={thumbnailUrl}
+        thumbnailUrlLight={thumbnailUrlLight}
         width={OVERLAY_CARD_WIDTH}
         height={OVERLAY_CARD_HEIGHT}
         borderRadius={BORDER_RADIUS.md}
@@ -497,8 +499,8 @@ const CourseRowCard = React.memo(function CourseRowCard({
       activeOpacity={0.7}
     >
       <CourseThumbnailMap
-        routePreview={course.route_preview}
         thumbnailUrl={course.thumbnail_url}
+        thumbnailUrlLight={course.thumbnail_url_light}
         width={ROW_THUMB_SIZE}
         height={ROW_THUMB_SIZE}
         borderRadius={BORDER_RADIUS.sm}

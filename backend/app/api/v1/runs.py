@@ -262,6 +262,7 @@ async def complete_run_session(
         course_streak=course_streak_value,
         map_matching_confidence=run_record.map_matching_confidence,
         route_thumbnail_url=run_record.route_thumbnail_url,
+        route_thumbnail_url_light=run_record.route_thumbnail_url_light,
     )
 
 
@@ -404,6 +405,7 @@ async def get_run_record_detail(
         course=course_info,
         course_completion=course_completion,
         route_thumbnail_url=record.route_thumbnail_url,
+        route_thumbnail_url_light=record.route_thumbnail_url_light,
         goal_data=record.goal_data,
     )
 
@@ -517,6 +519,7 @@ async def get_public_run_record_detail(
         course=course_info,
         course_completion=course_completion,
         route_thumbnail_url=record.route_thumbnail_url,
+        route_thumbnail_url_light=record.route_thumbnail_url_light,
         goal_data=record.goal_data,
     )
 

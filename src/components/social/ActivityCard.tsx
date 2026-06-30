@@ -145,8 +145,8 @@ const RunStats = memo(function RunStats({ runRecord, styles: s, colors, t }: Run
   return (
     <View style={s.runStatsContainer}>
       <CourseThumbnailMap
-        routePreview={runRecord.routePreview}
         thumbnailUrl={runRecord.thumbnailUrl}
+        thumbnailUrlLight={runRecord.thumbnailUrlLight}
         width={mapWidth - SPACING.md * 2}
         height={180}
         borderRadius={BORDER_RADIUS.md}

@@ -60,6 +60,7 @@ class Course(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     elevation_gain_meters: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     elevation_profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    thumbnail_url_light: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text), server_default="{}")
     difficulty: Mapped[str | None] = mapped_column(String(10), nullable=True, default=None)

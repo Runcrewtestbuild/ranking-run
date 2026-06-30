@@ -87,6 +87,7 @@ async def get_favorite_courses(
             id=str(course.id),
             title=course.title,
             thumbnail_url=get_thumbnail_url_for_course(course),
+            thumbnail_url_light=course.thumbnail_url_light,
             route_preview=get_route_preview(course),
             distance_meters=course.distance_meters,
             estimated_duration_seconds=course.estimated_duration_seconds,

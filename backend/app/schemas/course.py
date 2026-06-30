@@ -50,6 +50,7 @@ class CourseCreateResponse(BaseModel):
     title: str
     distance_meters: int
     thumbnail_url: str | None = None
+    thumbnail_url_light: str | None = None
     share_url: str | None = None
     matched_route: list[list[float]] | None = None
     created_at: datetime
@@ -60,6 +61,7 @@ class CourseListItem(BaseModel):
     id: str
     title: str
     thumbnail_url: str | None
+    thumbnail_url_light: str | None = None
     route_preview: list[list[float]] | None = Field(
         None, description="Simplified [[lng, lat], ...] for thumbnail map rendering"
     )
@@ -110,6 +112,7 @@ class CourseDetail(BaseModel):
     elevation_gain_meters: int
     elevation_profile: list[float] | None
     thumbnail_url: str | None
+    thumbnail_url_light: str | None = None
     is_public: bool
     created_at: datetime
     creator: CourseCreatorInfo
@@ -168,6 +171,7 @@ class NearbyCourse(BaseModel):
     id: str
     title: str
     thumbnail_url: str | None
+    thumbnail_url_light: str | None = None
     route_preview: list[list[float]] | None = Field(
         None, description="Simplified [[lng, lat], ...] for thumbnail map rendering"
     )
@@ -189,6 +193,7 @@ class MyCourseItem(BaseModel):
     description: str | None = None
     distance_meters: int
     thumbnail_url: str | None
+    thumbnail_url_light: str | None = None
     is_public: bool
     course_type: str | None = None
     lap_count: int | None = None
