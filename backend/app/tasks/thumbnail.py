@@ -22,7 +22,7 @@ from app.models.run_record import RunRecord
 logger = logging.getLogger(__name__)
 
 DARK_STYLE = "mapbox/dark-v11"
-LIGHT_STYLE = "mapbox/light-v11"
+LIGHT_STYLE = "mapbox/outdoors-v12"
 IMG_SIZE = 640
 
 
