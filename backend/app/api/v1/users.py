@@ -647,6 +647,7 @@ async def get_my_runs(
                 device_model=device_model,
                 route_preview=route_preview,
                 route_thumbnail_url=record.route_thumbnail_url,
+                route_thumbnail_url_light=record.route_thumbnail_url_light,
                 goal_data=record.goal_data,
             )
         )
