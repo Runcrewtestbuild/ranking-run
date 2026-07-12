@@ -413,7 +413,6 @@ const createStyles = (colors: ThemeColors) =>
       display: 'none',
     },
     listContent: {
-      paddingTop: SPACING.md,
       paddingBottom: SPACING.huge + SPACING.xxxl,
     },
     footerLoader: {
