@@ -67,6 +67,7 @@ export type HomeStackParamList = {
   GroupRunList: undefined;
   GroupRunCreate: undefined;
   GroupRunLobby: { groupRunId: string };
+  FavoriteCourses: undefined;
 };
 
 export type CourseStackParamList = {

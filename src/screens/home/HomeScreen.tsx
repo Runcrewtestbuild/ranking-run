@@ -610,7 +610,7 @@ export default function HomeScreen() {
                   <Text style={styles.favTitle}>{t('home.favoriteCourses')}</Text>
                 </View>
                 <TouchableOpacity
-                  onPress={() => navigation.getParent()?.navigate('CourseTab')}
+                  onPress={() => navigation.navigate('FavoriteCourses')}
                   activeOpacity={0.7}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   accessibilityRole="button"

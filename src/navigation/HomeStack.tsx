@@ -30,6 +30,7 @@ import GroupRunListScreen from '../screens/grouprun/GroupRunListScreen';
 import GroupRunCreateScreen from '../screens/grouprun/GroupRunCreateScreen';
 import GroupRunLobbyScreen from '../screens/grouprun/GroupRunLobbyScreen';
 import FeedDetailScreen from '../screens/social/FeedDetailScreen';
+import FavoriteCoursesScreen from '../screens/course/FavoriteCoursesScreen';
 import { useTheme } from '../hooks/useTheme';
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
@@ -73,6 +74,7 @@ export default function HomeStack() {
       <Stack.Screen name="GroupRunCreate" component={GroupRunCreateScreen} />
       <Stack.Screen name="GroupRunLobby" component={GroupRunLobbyScreen} />
       <Stack.Screen name="FeedDetail" component={FeedDetailScreen} />
+      <Stack.Screen name="FavoriteCourses" component={FavoriteCoursesScreen} />
     </Stack.Navigator>
   );
 }
