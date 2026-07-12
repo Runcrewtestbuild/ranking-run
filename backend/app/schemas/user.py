@@ -25,6 +25,7 @@ class UserResponse(BaseModel):
     total_runs: int
     total_points: int = 0
     runner_level: int = 1
+    run_visibility: str = "public"
     created_at: datetime
 
     model_config = {"from_attributes": True}

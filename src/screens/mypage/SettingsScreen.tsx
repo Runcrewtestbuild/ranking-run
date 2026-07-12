@@ -234,7 +234,7 @@ export default function SettingsScreen() {
                   { key: 'followers', label: t('settings.runVisibility.followers'), icon: 'people-outline' as const },
                   { key: 'private', label: t('settings.runVisibility.private'), icon: 'lock-closed-outline' as const },
                 ] as const).map((opt) => {
-                  const currentVisibility = (user as any)?.run_visibility ?? 'public';
+                  const currentVisibility = user?.run_visibility ?? 'public';
                   const isSelected = currentVisibility === opt.key;
                   return (
                     <TouchableOpacity
@@ -251,7 +251,7 @@ export default function SettingsScreen() {
                       activeOpacity={0.7}
                       onPress={async () => {
                         try {
-                          await api.patch('/users/me', { run_visibility: opt.key });
+                          await api.patch('/users/me/profile', { run_visibility: opt.key });
                           useAuthStore.getState().setUser({ ...user!, run_visibility: opt.key } as any);
                         } catch {
                           // silent

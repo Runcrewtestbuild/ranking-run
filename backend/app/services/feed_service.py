@@ -13,6 +13,7 @@ from app.models.activity_feed import ActivityFeed
 from app.models.follow import Follow
 from app.models.reaction import Reaction
 from app.models.run_record import RunRecord
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +213,12 @@ class FeedService:
         recommended_activities: list[ActivityFeed] = []
         if remaining > 0:
             seen_ids = [a.id for a in following_activities]
+            private_user_ids = (
+                select(User.id).where(
+                    User.run_visibility.in_(["private", "followers"])
+                )
+            )
+            run_activity_types = ["run_completed", "pr_achieved"]
             rec_query = (
                 select(ActivityFeed)
                 .options(joinedload(ActivityFeed.user))
@@ -219,6 +226,10 @@ class FeedService:
                 .where(
                     ActivityFeed.user_id.notin_(following_ids),
                     ActivityFeed.id.notin_(seen_ids) if seen_ids else True,
+                    ~(
+                        (ActivityFeed.activity_type.in_(run_activity_types))
+                        & (ActivityFeed.user_id.in_(private_user_ids))
+                    ),
                 )
                 .order_by(ActivityFeed.created_at.desc())
                 .offset(page * remaining)
@@ -251,12 +262,16 @@ class FeedService:
         user_id: UUID,
         page: int = 0,
         per_page: int = 20,
+        hide_runs: bool = False,
     ) -> tuple[list[ActivityFeed], int]:
         """Get paginated activities for a single user."""
+        run_activity_types = ["run_completed", "pr_achieved"]
+        filters = [ActivityFeed.user_id == user_id]
+        if hide_runs:
+            filters.append(ActivityFeed.activity_type.notin_(run_activity_types))
+
         count_result = await db.execute(
-            select(func.count(ActivityFeed.id)).where(
-                ActivityFeed.user_id == user_id
-            )
+            select(func.count(ActivityFeed.id)).where(*filters)
         )
         total_count = count_result.scalar_one() or 0
 
@@ -264,7 +279,7 @@ class FeedService:
             select(ActivityFeed)
             .options(joinedload(ActivityFeed.user))
             .options(joinedload(ActivityFeed.run_record))
-            .where(ActivityFeed.user_id == user_id)
+            .where(*filters)
             .order_by(ActivityFeed.created_at.desc())
             .offset(page * per_page)
             .limit(per_page)

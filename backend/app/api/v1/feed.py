@@ -258,11 +258,31 @@ async def get_user_activities(
     feed_service: FeedService = Depends(Provide[Container.feed_service]),
 ) -> ActivityFeedPaginatedResponse:
     """Get paginated activities for a specific user."""
+    hide_runs = False
+    if user_id != current_user.id:
+        from app.models.user import User
+        from app.models.follow import Follow
+        target_user = await db.get(User, user_id)
+        if target_user:
+            vis = getattr(target_user, "run_visibility", "public")
+            if vis == "private":
+                hide_runs = True
+            elif vis == "followers":
+                is_follower = await db.execute(
+                    select(Follow.id).where(
+                        Follow.follower_id == current_user.id,
+                        Follow.following_id == user_id,
+                    ).limit(1)
+                )
+                if not is_follower.scalar_one_or_none():
+                    hide_runs = True
+
     activities, total_count = await feed_service.get_user_activities(
         db=db,
         user_id=user_id,
         page=page,
         per_page=per_page,
+        hide_runs=hide_runs,
     )
 
     activity_ids = [a.id for a in activities]

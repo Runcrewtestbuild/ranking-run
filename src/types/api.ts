@@ -70,6 +70,7 @@ export interface UserProfile {
   country: string | null;
   activity_region?: string;
   crew_name?: string | null;
+  run_visibility?: string;
   total_distance_meters: number;
   total_runs: number;
   total_points: number;
