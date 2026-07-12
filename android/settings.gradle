@@ -1,10 +1,10 @@
 pluginManagement {
-    def nc = new File("/opt/homebrew/bin/node").exists() ? "/opt/homebrew/bin/node" : "node"
+    def nc = "/opt/homebrew/bin/node"
     includeBuild(new File([nc, "--print", "require.resolve('@react-native/gradle-plugin/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().toString())
 }
 plugins { id("com.facebook.react.settings") }
 
-def nodeCmd = new File("/opt/homebrew/bin/node").exists() ? "/opt/homebrew/bin/node" : "node"
+def nodeCmd = "/opt/homebrew/bin/node"
 
 extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
   if (System.getenv('EXPO_USE_COMMUNITY_AUTOLINKING') == '1') {
@@ -33,6 +33,7 @@ dependencyResolutionManagement {
     }
   }
 }
+
 
 
 apply from: new File([nodeCmd, "--print", "require.resolve('expo/package.json')"].execute(null, rootDir).text.trim(), "../scripts/autolinking.gradle");
